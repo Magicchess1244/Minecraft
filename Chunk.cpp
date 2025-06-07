@@ -62,7 +62,7 @@ void ChunckPrefab::GenerateChunkCaves()
 			bool CheeseCave = Hole <= -0.9f || Hole >= 0.9f;
 			bool NodleCave = (0.04f > Hole && Hole > -0.04f);
 
-			if ((CheeseCave || NodleCave) && Blocks[x][y] != 4) {
+			if ((CheeseCave || NodleCave) && (Blocks[x][y] != 4 && Blocks[x][y] != 5)) {
 				Blocks[x][y] = 0;
 			}
 		}

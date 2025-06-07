@@ -21,8 +21,6 @@ SOCKET hostSocket;
 SOCKET serverSocket;
 u_long mode = 0;
 
-fd_set readSet;
-
 enum Commands {
 	UPDATE_PLAYER_POS,
 	UPDATE_BLOCKS,
@@ -42,39 +40,68 @@ Vector2 PlayerPos[8] = { {800, 1000}, {800, 1000}, {800, 1000}, {800, 1000}, {80
 //Networking functions
 void UpdatePlayerPos(int X, int Y, SOCKET socket) 
 {
-	const char* command = (char*)UPDATE_PLAYER_POS;
-	int sent = send(socket, command, (int)strlen(command), 0);
-	if (sent == SOCKET_ERROR) {
-		std::cerr << "Failed to send command: UPDATE_PLAYER_POS \n";
-	}
-	
-	int x = htonl(X);
-	int sentX = send(socket, (char*)&x, sizeof(x), 0);
+	/*
+	const int command = UPDATE_PLAYER_POS;
+	int sent = send(serverSocket, reinterpret_cast<const char*>(&command), sizeof(command), 0);
 
-	int y = htonl(Y);
-	int sentY = send(socket, (char*)&y, sizeof(y), 0);
+	if (sent == SOCKET_ERROR) {
+		std::cerr << "Failed to send pos\n";
+	}
+	else {
+		//std::cout << "Sending pos from server...\n";
+	}
+
+	int32_t netSeed = 0;
+	char* buffer = reinterpret_cast<char*>(&netSeed);
+	int bytesToReceive = sizeof(netSeed);
+
+	int x = send(serverSocket, reinterpret_cast<const char*>(&X), bytesToReceive, 0);
+	int y = send(serverSocket, reinterpret_cast<const char*>(&Y), bytesToReceive, 0);
+	if (x == 0 || y == 0) {
+		std::cerr << "Connection closed by server.\n";
+		return;
+	}
+	else if (x < 0 || y < 0) {
+		std::cerr << "recv() failed with error: " << WSAGetLastError() << "\n";
+		return;
+	}
+	*/
 }
 void UpdateBlock(int Type, int X, int Y, SOCKET socket)
 {
-	const char* command = (char*)UPDATE_BLOCKS;
-	int sent = send(serverSocket, command, (int)strlen(command), 0);
+	/*
+	const int command = UPDATE_BLOCKS;
+	int sent = send(serverSocket, reinterpret_cast<const char*>(&command), sizeof(command), 0);
+
 	if (sent == SOCKET_ERROR) {
-		std::cerr << "Failed to send command\n";
+		std::cerr << "Failed to send block info\n";
+	}
+	else {
+		//std::cout << "Sending pos from server...\n";
 	}
 
-	int x = htonl(X);
-	int sentX = send(serverSocket, (char*)&x, sizeof(x), 0);
+	int32_t netSeed = 0;
+	char* buffer = reinterpret_cast<char*>(&netSeed);
+	int bytesToReceive = sizeof(netSeed);
 
-	int y = htonl(Y);
-	int sentY = send(serverSocket, (char*)&y, sizeof(y), 0);
-
-	int type = htonl(Type);
-	int sentType = send(serverSocket, (char*)&type, sizeof(type), 0);
+	int x = send(serverSocket, reinterpret_cast<const char*>(&X), bytesToReceive, 0);
+	int y = send(serverSocket, reinterpret_cast<const char*>(&Y), bytesToReceive, 0);
+	int type = send(serverSocket, reinterpret_cast<const char*>(&Type), bytesToReceive, 0);
+	if (x == 0 || y == 0 || type == 0) {
+		std::cerr << "Connection closed by server.\n";
+		return;
+	}
+	else if (x < 0 || y < 0 || type < 0) {
+		std::cerr << "recv() failed with error: " << WSAGetLastError() << "\n";
+		return;
+	}
+	*/
 }
 void GetSeed()
 {
-	const char* command = (char*)GET_SEED;
-	int sent = send(serverSocket, command, (int)strlen(command), 0);
+	const int command = GET_SEED;
+	int sent = send(serverSocket, reinterpret_cast<const char*>(&command), sizeof(command), 0);
+
 	if (sent == SOCKET_ERROR) {
 		std::cerr << "Failed to send command\n";
 	}
@@ -288,35 +315,51 @@ void AcceptClients() {
 
 	}
 }
-void MultiPlayer() {
-
+void MultiPlayer() 
+{
 	while (Running) {
+		fd_set readSet;
 		FD_ZERO(&readSet);
 		FD_SET(serverSocket, &readSet);
-
 		for (SOCKET client : clients) {
 			FD_SET(client, &readSet);
 		}
 
-		timeval timeout = { 0, 100000 }; // 100 ms timeout
+		timeval timeout = { 1, 100 };
 		int result = select(0, &readSet, NULL, NULL, &timeout);
+		std::cout << "Select result: " << result << std::endl;
 
 		if (result > 0) {
-			for (auto it = clients.begin(); it != clients.end(); ++it) {
-				SOCKET client = *it;
+			/*
+			if (FD_ISSET(hostSocket, &readSet)) {
+				std::cout << "New client connection detected." << std::endl;
+				SOCKET newClient = accept(hostSocket, NULL, NULL);
+
+				if (newClient != INVALID_SOCKET) {
+					u_long mode = 1;
+					ioctlsocket(newClient, FIONBIO, &mode);
+					clients.push_back(newClient);
+				}
+			}
+			*/
+			//std::cout << "Checking client" << std::endl;
+			for (SOCKET client : clients) {
 				if (FD_ISSET(client, &readSet)) {
 					char buffer[BUFFER_SIZE];
-					int bytesReceived = recv(client, buffer, sizeof(buffer), 0);
+					int bytesReceived = recv(client, buffer, sizeof(buffer), 1);
 					if (bytesReceived <= 0) {
 						closesocket(client);
-						it = clients.erase(it);
-						--it;
+						continue;
 					}
 					else {
+						
 						handleClientMessage(client, buffer);
 					}
 				}
 			}
+		}
+		else {
+			std::cout << "There are no clients" << std::endl;
 		}
 	}
 }
@@ -607,14 +650,15 @@ int main(int Argc, char* Argv[])
 
 	std::thread multiplayerThread(MultiPlayer);
 	std::thread acceptThread(AcceptClients);
-
+	
+	GameSetUp(Side == 0);
 	GameSetUp(Side == 0);
 
 	std::thread UiThread(Ui);
 
 	multiplayerThread.join();
 	acceptThread.join();
-	UiThread.join();
+	UiThread.detach();
 
 	if (!Running) {
 		std::cout << "Exiting game..." << std::endl;
@@ -624,7 +668,6 @@ int main(int Argc, char* Argv[])
 		acceptThread.detach();
 		acceptThread.~thread();
 
-		UiThread.detach();
 		UiThread.~thread();
 	}
 
