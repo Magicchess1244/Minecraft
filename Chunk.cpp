@@ -25,7 +25,7 @@ void ChunckPrefab::GenerateChunk()
 void ChunckPrefab::GenerateChunkSurface()
 {
 	for (int x = 0; x < this->xSize; x++) {
-		int Height = (int)(35 + (PerlinNoise(xPos + x, 0, 4, 0, 0.1f) * 25));
+		int Height = (int)(35 + (PerlinNoise((float)xPos + x, 0, 4, 0, 0.1f) * 25));
 		int ActualHeight = Height;
 
 		if (Height < 33) {
@@ -57,7 +57,7 @@ void ChunckPrefab::GenerateChunkCaves()
 	for (int x = 0; x < this->xSize; x++) {
 		for (int y = 2; y < this->ySize; y++)
 		{
-			float Hole = PerlinNoise(xPos + x, y, 3, 3, 0.1f);
+			float Hole = PerlinNoise((float)xPos + x, (float)y, 3, 3, 0.1f);
 
 			bool CheeseCave = Hole <= -0.9f || Hole >= 0.9f;
 			bool NodleCave = (0.04f > Hole && Hole > -0.04f);

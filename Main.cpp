@@ -7,35 +7,17 @@
 #include <vector>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <ccomplex>
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define PORT 8080
-#define BUFFER_SIZE 1024
+#define Max_Player 8
 
-std::mutex myMutex;
-
-std::vector<SOCKET> clients;
-SOCKET hostSocket;
-SOCKET serverSocket;
-u_long mode = 0;
 
 enum Commands {
 	UPDATE_PLAYER_POS,
 	UPDATE_BLOCKS,
 	GET_SEED
 };
-
-int Side = 1;
-
-const int FullRange = 16;
-const int yRange = 10;
-const char* SERVER_IP = "127.0.0.1";
-int seed = 0;
-bool Running = true;
-
-Vector2 PlayerPos[8] = { {800, 1000}, {800, 1000}, {800, 1000}, {800, 1000}, {800, 1000}, {800, 1000},{800, 1000}, {800, 1000} };
 
 //Networking functions
 void UpdatePlayerPos(int X, int Y, SOCKET socket) 
@@ -97,9 +79,9 @@ void UpdateBlock(int Type, int X, int Y, SOCKET socket)
 	}
 	*/
 }
-void GetSeed()
+int GetSeed(SOCKET serverSocket)
 {
-	const int command = GET_SEED;
+	const int command = htonl(GET_SEED);
 	int sent = send(serverSocket, reinterpret_cast<const char*>(&command), sizeof(command), 0);
 
 	if (sent == SOCKET_ERROR) {
@@ -116,107 +98,120 @@ void GetSeed()
 	int result = recv(serverSocket, buffer, bytesToReceive, 0);
 	if (result == 0) {
 		std::cerr << "Connection closed by server.\n";
-		return;
+		return 0;
 	}
 	else if (result < 0) {
 		std::cerr << "recv() failed with error: " << WSAGetLastError() << "\n";
-		return;
+		return 0;
 	}
 
-	int32_t receivedSeed = ntohl(netSeed); // Convert from network byte order to host byte order
+	int32_t receivedSeed = ntohl(netSeed);
 	std::cout << "Received seed: " << receivedSeed << std::endl;
-	seed = receivedSeed;
+	return receivedSeed;
 }
-void handleClientMessage(SOCKET client, char* InfoRecived)  
+void handleClientMessage(SOCKET client, std::vector<SOCKET>& clients, bool server, int seed, bool& Running)
 {  
-	int command = (int)InfoRecived;
-
-	if (Side == 0) { // Server  
-		if (command == UPDATE_PLAYER_POS) {
-			int x_net, y_net;  
-			int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);  
-			int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);  
-			if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net)) {  
-				for (SOCKET client : clients)  
-				{  
-					UpdatePlayerPos(x_net, y_net, client);  
-				}  
-			}  
-			else {  
-				std::cerr << "Failed to receive player position\n";  
-			}  
-		}  
-		else if (command == UPDATE_BLOCKS) {  
-			std::cout << "Received command: " << command << "\n";  
-			int x_net, y_net, type_net;  
-			int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);  
-			int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);  
-			int receivedType = recv(client, (char*)&type_net, sizeof(type_net), 0);  
-			if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net) && receivedType == sizeof(type_net)) {  
-				short* PlaceBlockType = 0;  
-				for (SOCKET client : clients)  
-				{  
-					UpdateBlock(type_net, x_net, y_net, client);  
-				}  
-			}  
-			else {  
-				std::cerr << "Failed to receive block position\n";  
-			}  
-		}  
-		else if (command == GET_SEED) {  
+	std::cout << "Running: " << Running << std::endl;
+	while (Running) {
+		int command;
+		int result = recv(client, (char*)&command, sizeof(command), 0);
+		command = ntohl(command);
+		if (result > 0)
+		{
 			std::cout << "Received command: " << command << "\n";
-			int netSeed = htonl(seed);  
-			int sent = send(client, (char*)&netSeed, sizeof(netSeed), 0);  
-			if (sent == SOCKET_ERROR) {  
-				std::cerr << "Failed to send seed\n";  
-			}  
-		}  
-	} 
-	else {  
-		if (command == UPDATE_PLAYER_POS) {  
-			int x_net, y_net;  
-			int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);  
-			int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);  
-			if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net)) {  
-				std::lock_guard<std::mutex> lock(myMutex);  
-				PlayerPos[1].x = ntohl(x_net);  
-				PlayerPos[1].y = ntohl(y_net);  
+
+			if (server) { // Server  
+				if (command == UPDATE_PLAYER_POS) {
+					int x_net, y_net;
+					int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);
+					int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);
+					if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net)) {
+						for (SOCKET client : clients)
+						{
+							UpdatePlayerPos(x_net, y_net, client);
+						}
+					}
+					else {
+						std::cerr << "Failed to receive player position\n";
+					}
+				}
+				else if (command == UPDATE_BLOCKS) {
+					std::cout << "Received command: " << command << "\n";
+					int x_net, y_net, type_net;
+					int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);
+					int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);
+					int receivedType = recv(client, (char*)&type_net, sizeof(type_net), 0);
+					if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net) && receivedType == sizeof(type_net)) {
+						short* PlaceBlockType = 0;
+						for (SOCKET client : clients)
+						{
+							UpdateBlock(type_net, x_net, y_net, client);
+						}
+					}
+					else {
+						std::cerr << "Failed to receive block position\n";
+					}
+				}
+				else if (command == GET_SEED) {
+					std::cout << "Received command: " << command << "\n";
+					int netSeed = htonl(seed);
+					int sent = send(client, (char*)&netSeed, sizeof(netSeed), 0);
+					if (sent == SOCKET_ERROR) {
+						std::cerr << "Failed to send seed\n";
+					}
+				}
 			}
-			else {  
-				std::cerr << "Failed to receive player position\n";  
-			}  
-		}  
-		else if (command == UPDATE_BLOCKS) {  
-			std::cout << "Received block update command\n";  
-			int x_net, y_net, type_net;  
-			int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);  
-			int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);  
-			int receivedType = recv(client, (char*)&type_net, sizeof(type_net), 0);  
-			if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net) && receivedType == sizeof(type_net)) {  
-				short* PlaceBlockType = 0;  
-				PlaceBlock(ntohl(type_net), { (float)ntohl(x_net), (float)ntohl(y_net) }, yRange, PlayerPos[1], PlaceBlockType);  
-			}  
-			else {  
-				std::cerr << "Failed to receive block position\n";  
-			}  
-		}  
-	}  
+			/*
+			else {
+				if (command == UPDATE_PLAYER_POS) {
+					int x_net, y_net;
+					int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);
+					int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);
+					if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net)) {
+						std::lock_guard<std::mutex> lock(myMutex);
+						PlayerPos[1].x = ntohl(x_net);
+						PlayerPos[1].y = ntohl(y_net);
+					}
+					else {
+						std::cerr << "Failed to receive player position\n";
+					}
+				}
+				else if (command == UPDATE_BLOCKS) {
+					std::cout << "Received block update command\n";
+					int x_net, y_net, type_net;
+					int receivedX = recv(client, (char*)&x_net, sizeof(x_net), 0);
+					int receivedY = recv(client, (char*)&y_net, sizeof(y_net), 0);
+					int receivedType = recv(client, (char*)&type_net, sizeof(type_net), 0);
+					if (receivedX == sizeof(x_net) && receivedY == sizeof(y_net) && receivedType == sizeof(type_net)) {
+						short* PlaceBlockType = 0;
+						PlaceBlock(ntohl(type_net), { (float)ntohl(x_net), (float)ntohl(y_net) }, yRange, PlayerPos[1], PlaceBlockType);
+					}
+					else {
+						std::cerr << "Failed to receive block position\n";
+					}
+				}
+			}
+			*/
+		}
+	}
 }
 
-int MakeServer()
+SOCKET MakeServer()
 {
 	WSAData wsaData;
 	if (WSAStartup(WINSOCK_VERSION, &wsaData) != 0) {
 		std::cerr << "Failed to initialize WinSock\n";
-		return 1;
+		return INVALID_SOCKET;
 	}
 
-	hostSocket = socket(AF_INET, SOCK_STREAM, 0);
+	SOCKET hostSocket = socket(AF_INET, SOCK_STREAM, 0);
 	if (hostSocket == INVALID_SOCKET) {
 		std::cerr << "Socket creation failed\n";
 		WSACleanup();
-		return 1;
+		return INVALID_SOCKET;
 	}
+
+	int PORT = 8080;
 
 	sockaddr_in serverAddr{};
 	serverAddr.sin_family = AF_INET;
@@ -227,24 +222,27 @@ int MakeServer()
 		std::cerr << "Bind failed\n";
 		closesocket(hostSocket);
 		WSACleanup();
-		return 1;
+		return INVALID_SOCKET;
 	}
 
 	if (listen(hostSocket, SOMAXCONN) == SOCKET_ERROR) {
 		std::cerr << "Listen failed\n";
 		closesocket(hostSocket);
 		WSACleanup();
-		return 1;
+		return INVALID_SOCKET;
 	}
 
 	std::cout << "Server listening on port " << PORT << "...\n";
-	return 0;
+	return hostSocket;
 }
-int MakeClient()
+SOCKET MakeClient()
 {
 	WSADATA wsaData;
 	WSAStartup(WINSOCK_VERSION, &wsaData);
-	serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+	SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+	int PORT = 8080;
+	const char* SERVER_IP = "127.0.0.1";
 
 	sockaddr_in server;
 	server.sin_family = AF_INET;
@@ -260,171 +258,121 @@ int MakeClient()
 		std::cout << "Connected to the server.\n";
 	}
 
-	return 0;
+
+	return serverSocket;
 }
-int CloseServer()
+int CloseServer(std::vector<SOCKET>& sockets)
 {
-	if (Side == 0)
+	for (SOCKET socket : sockets)
 	{
-		closesocket(hostSocket);
+		closesocket(socket);
 	}
-	for (int i = 0; i < clients.size(); i++)
-	{
-		closesocket(clients[i]);
-	}
-	closesocket(serverSocket);
 	WSACleanup();
 	std::cout << "Server closed.\n";
 	return 0;
 }
-int SetUpServer()
+void SetUpServer(int& Side, std::vector<SOCKET>& sockets, SOCKET& hostSocket)
 {
 	int choice;
 	std::cout << "Choose an option:\n1. Start Server\n2. Start Client\n";
 	std::cin >> choice;
 	if (choice == 1) {
 		Side = 0;
-		return (MakeServer() & MakeClient());
+		hostSocket = MakeServer();
+		sockets.push_back(MakeClient());
 	}
 	else if (choice == 2) {
 		Side = 1;
-		return MakeClient();
+		sockets.push_back(MakeClient());
 	}
 	else {
 		std::cerr << "Invalid choice.\n";
-		return 1;
 	}
+	std::cout << "num clients: " << sockets.size() << std::endl;
+	std::cout << "clients: " << sockets[0] << std::endl;
 }
-void AcceptClients() {
-	if (Side == 0) {
-		while (Running && clients.size() < 8) {
-			sockaddr_in client;
-			int clientSize = sizeof(sockaddr_in);
+void AcceptClients(SOCKET hostSocket, std::vector<SOCKET>& sockets,bool& Running, int seed) {
+	while (sockets.size() < Max_Player) {
+		sockaddr_in client;
+		int clientSize = sizeof(sockaddr_in);
 
-			SOCKET clientSocket = accept(hostSocket, (sockaddr*)&client, &clientSize);
-			if (clientSocket == INVALID_SOCKET) {
-				std::cerr << "accept() failed with error: " << WSAGetLastError() << std::endl;
-				continue;
-			}
-
-			std::lock_guard<std::mutex> lock(myMutex); // Protect the clients vector
-			clients.push_back(clientSocket);
-			std::cout << clients.size() << " clients connected." << std::endl;
-			std::cout << "Client connected! Socket: " << clientSocket << std::endl;
+		SOCKET clientSocket = accept(hostSocket, (sockaddr*)&client, &clientSize);
+		if (clientSocket == INVALID_SOCKET) {
+			std::cerr << "accept() failed with error: " << WSAGetLastError() << std::endl;
+			continue;
 		}
 
-	}
-}
-void MultiPlayer() 
-{
-	while (Running) {
-		fd_set readSet;
-		FD_ZERO(&readSet);
-		FD_SET(serverSocket, &readSet);
-		for (SOCKET client : clients) {
-			FD_SET(client, &readSet);
-		}
+		sockets.push_back(clientSocket);
+		std::cout << sockets.size() << " clients connected." << std::endl;
+		std::cout << "Client connected! Socket: " << clientSocket << std::endl;
 
-		timeval timeout = { 1, 100 };
-		int result = select(0, &readSet, NULL, NULL, &timeout);
-		std::cout << "Select result: " << result << std::endl;
-
-		if (result > 0) {
-			/*
-			if (FD_ISSET(hostSocket, &readSet)) {
-				std::cout << "New client connection detected." << std::endl;
-				SOCKET newClient = accept(hostSocket, NULL, NULL);
-
-				if (newClient != INVALID_SOCKET) {
-					u_long mode = 1;
-					ioctlsocket(newClient, FIONBIO, &mode);
-					clients.push_back(newClient);
-				}
-			}
-			*/
-			//std::cout << "Checking client" << std::endl;
-			for (SOCKET client : clients) {
-				if (FD_ISSET(client, &readSet)) {
-					char buffer[BUFFER_SIZE];
-					int bytesReceived = recv(client, buffer, sizeof(buffer), 1);
-					if (bytesReceived <= 0) {
-						closesocket(client);
-						continue;
-					}
-					else {
-						
-						handleClientMessage(client, buffer);
-					}
-				}
-			}
-		}
-		else {
-			std::cout << "There are no clients" << std::endl;
-		}
+		std::thread(handleClientMessage, clientSocket, std::ref(sockets), true, seed, std::ref(Running)).detach();
 	}
 }
 
 //UI function
-int FindSlot(Slot* Inventory, short Type) {
-	for (int i = 0; i < 8; i++) {
-		if ((Inventory[i].Type == Type || Inventory[i].Type == 0) && Inventory[i].Amount < 64) {
-			Inventory[i].Type = Type;
-			return i;
+int FindSlot(std::vector<Slot>& Inventory, short Type) {
+	int index = 0;
+	for (Slot slot : Inventory) {
+		index++;
+		if ((slot.Type == Type || slot.Type == 0) && slot.Amount < 64) {
+			slot.Type = Type;
+			return index;
 		}
 	}
 	std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
-	return -1; // Inventory full
 }
-void Input(Vector2* PlayerDirection, bool OnGround, int* InventorySlots, Vector2* PlayerPos) {  
+void Input(Vector2& PlayerDirection, bool OnGround, int& InventorySlots, Vector2& PlayerPos, Vector2 Range) {
 	const bool* KeyboardState = SDL_GetKeyboardState(NULL);  
 
-	PlayerDirection->x = 0;  
+	PlayerDirection.x = 0;  
 	
 	if (KeyboardState[SDL_SCANCODE_A] || KeyboardState[SDL_SCANCODE_LEFT]) {  
-		PlayerDirection->x = -1;  
+		PlayerDirection.x = -1;  
 	}  
 	if (KeyboardState[SDL_SCANCODE_D] || KeyboardState[SDL_SCANCODE_RIGHT]) {  
-		PlayerDirection->x = 1;  
+		PlayerDirection.x = 1;  
 	}  
 
-	if ((KeyboardState[SDL_SCANCODE_W] || KeyboardState[SDL_SCANCODE_UP] || KeyboardState[SDL_SCANCODE_SPACE]) && Collition(PlayerPos, { 0, -1 }, FullRange, yRange, true, false)) {
-		PlayerDirection->y = 1;  
+	if ((KeyboardState[SDL_SCANCODE_W] || KeyboardState[SDL_SCANCODE_UP] || KeyboardState[SDL_SCANCODE_SPACE]) && Collition(PlayerPos, { 0, -1 }, (int)Range.x, Range.y, true, false)) {
+		PlayerDirection.y = 1;  
 	}  
 
 	if (KeyboardState[SDL_SCANCODE_1]) {  
-		*InventorySlots = 0;  
+		InventorySlots = 0;  
 	} else if (KeyboardState[SDL_SCANCODE_2]) {  
-		*InventorySlots = 1;  
+		InventorySlots = 1;  
 	} else if (KeyboardState[SDL_SCANCODE_3]) {
-		*InventorySlots = 2;
+		InventorySlots = 2;
 	} else if (KeyboardState[SDL_SCANCODE_4]) {
-		*InventorySlots = 3;
+		InventorySlots = 3;
 	} else if (KeyboardState[SDL_SCANCODE_5]) {
-		*InventorySlots = 4;
+		InventorySlots = 4;
 	} else if (KeyboardState[SDL_SCANCODE_6]) {
-		*InventorySlots = 5;
+		InventorySlots = 5;
 	} else if (KeyboardState[SDL_SCANCODE_7]) {
-		*InventorySlots = 6;
+		InventorySlots = 6;
 	} else if (KeyboardState[SDL_SCANCODE_8]) {
-		*InventorySlots = 7;
+		InventorySlots = 7;
 	}
 }
-void DrawBG(SDL_Renderer* Renderer, Vector2* PlayerPos){
-	int CurrentChunck = (int)floorf((PlayerPos->x) / 16);
-	int RelativeX = (int)(PlayerPos->x) % 16;
-	int xRange = FullRange - RelativeX;
+void DrawBG(SDL_Renderer* Renderer, Vector2& PlayerPos, Vector2 Range){
+
+	int CurrentChunck = (int)floorf((PlayerPos.x) / 16);
+	int RelativeX = (int)(PlayerPos.x) % 16;
+	int xRange = Range.x - RelativeX;
 	Mesh mesh = { 0 };
 	ChunkGenerator(CurrentChunck);
-	if (PlayerPos->y == 1000) {
-		PlayerPos->y = (float)GetHeight(CurrentChunck);
+	if (PlayerPos.y == 1000) {
+		PlayerPos.y = (float)GetHeight(CurrentChunck);
 		//std::cout << "PlayerPos: " << PlayerPos.x << ", " << PlayerPos.y << std::endl;
 	}
 
 	//std::cout << "PlayerPos: " << PlayerPos.x << ", " << PlayerPos.y << std::endl;
 	//std::cout << "CurrentChunck: " << CurrentChunck << std::endl;
 
-	DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos->y, xRange, yRange, FullRange, &mesh, true);
-	SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices, xRange * yRange * 4, mesh.Indices, xRange * yRange * 6);
+	DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos.y, xRange, Range.y, Range.x, mesh, true);
+	SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
 	//PrintChunk(CurrentChunck, 0, 0, xRange, 64, FullRange);
 
 
@@ -435,21 +383,21 @@ void DrawBG(SDL_Renderer* Renderer, Vector2* PlayerPos){
 		RelativeX = 0;
 		CurrentChunck++;
 
-		DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos->y, xRange, yRange, FullRange, &mesh, false);
-		SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices, xRange * yRange * 4, mesh.Indices, xRange * yRange * 6);
+		DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos.y, xRange, Range.y, Range.x, mesh, false);
+		SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
 		//PrintChunk(CurrentChunck, RelativeX, PlayerPos.y, xRange, yRange, FullRange);
 	}
 
 }
-void DrawPlayer(SDL_Renderer* Renderer) {
-	std::lock_guard<std::mutex> lock(myMutex);
+void DrawPlayer(SDL_Renderer* Renderer, Vector2 Range, std::vector<Vector2>& PlayerPos) {
+
 	int dx = (int)(PlayerPos[1].x - PlayerPos[0].x);
 	int dy = (int)(PlayerPos[1].y - PlayerPos[0].y);
 
-	bool InsideX = std::abs(dx) <= (FullRange / 2);
+	bool InsideX = std::abs(dx) <= (Range.x / 2);
 	if (InsideX) {
-		int RelativeX = (FullRange / 2 - 1 + dx) * BlockSize;
-		int RelativeY = (yRange / 2 - 2 - dy) * BlockSize;
+		int RelativeX = (Range.x / 2 - 1 + dx) * BlockSize;
+		int RelativeY = (Range.y / 2 - 2 - dy) * BlockSize;
 
 		SDL_FRect OtherPlayerRect = {
 			(float)RelativeX,
@@ -463,19 +411,19 @@ void DrawPlayer(SDL_Renderer* Renderer) {
 
 	SDL_SetRenderDrawColor(Renderer, 255, 0, 0, 255);
 	SDL_FRect PlayerRect = {
-		(float)(FullRange / 2 - 1) * BlockSize,
-		(float)(yRange / 2 - 2) * BlockSize,
+		(float)(Range.x / 2 - 1) * BlockSize,
+		(float)(Range.y / 2 - 2) * BlockSize,
 		(float)BlockSize,
 		(float)BlockSize * 2
 	};
 	SDL_RenderFillRect(Renderer, &PlayerRect);
 }
-int Ui()
+int Ui(SOCKET serverSocket, Vector2 Range, bool& Running)
 {
 	int width = 600;
 	int height = 400;
 
-	Size(width, height, yRange, FullRange);
+	Size(width, height, Range.y, Range.x);
 
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		std::cout << "Error initializing SDL: " << SDL_GetError();
@@ -502,17 +450,25 @@ int Ui()
 
 	bool FullScreen = false;
 	Vector2 PlayerDirection = { 0, 0 };
+	std::vector<Vector2> PlayerPos;
+	PlayerPos.resize(Max_Player);
+	for (Vector2 Pos : PlayerPos) {
+		Pos = { 800, 1000 };
+	}
+
 	SDL_Event Event;
-	Slot Inventory[8] = { {60, 1}, {5 , 5}, 0, 0, 0, 0, 0, 0 };
+	std::vector<Slot> Inventory;
+	Inventory.resize(8);
+	Inventory.push_back({ 60, 1 });
+	Inventory.push_back({ 5, 5 });
+
 	int InventorySlot = 0;
 
 	while (Running){
-		myMutex.lock();
 		UpdatePlayerPos((int)PlayerPos[0].x, (int)PlayerPos[0].y, serverSocket);
 
 		PlayerDirection.x = 0;
-		bool OnGround = Collition(&PlayerPos[0], { 0, -1 }, FullRange, yRange, false, false);
-		myMutex.unlock();
+		bool OnGround = Collition(PlayerPos[0], { 0, -1 }, Range.x, Range.y, false, false);
 
 		if (!OnGround) {
 			PlayerDirection.y -= 0.5f;
@@ -522,15 +478,13 @@ int Ui()
 
 		while (SDL_PollEvent(&Event)) {
 			if (Event.type == SDL_EVENT_QUIT) {
-				myMutex.lock();
 				Running = false;
-				myMutex.unlock();
 				break;
 			} else if (Event.type == SDL_EVENT_WINDOW_RESIZED) {
 				width = Event.window.data1;
 				height = Event.window.data2;
 
-				Size(width, height, yRange, FullRange);
+				Size(width, height, Range.y, Range.x);
 			}
 
 			if (Event.type == SDL_EVENT_KEY_DOWN)
@@ -538,9 +492,7 @@ int Ui()
 				SDL_Keycode KeyPressed = Event.key.scancode;
 
 				if (KeyPressed == SDL_SCANCODE_ESCAPE) {
-					myMutex.lock();
 					Running = false;
-					myMutex.unlock();
 					break;
 				}
 				else if (KeyPressed == SDL_SCANCODE_F11) {
@@ -550,11 +502,9 @@ int Ui()
 			}
 			else if (Event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
 				if (Event.button.button == SDL_BUTTON_LEFT) {
-					myMutex.lock();
 					short Type = 0;
-					PlaceBlock(0, { Event.button.x, Event.button.y }, yRange, PlayerPos[0], &Type);
+					PlaceBlock(0, { Event.button.x, Event.button.y }, Range.y, PlayerPos[0], Type);
 					UpdateBlock(0, (int)Event.button.x, (int)Event.button.y, serverSocket);
-					myMutex.unlock();
 					if (Type != 0)
 					{
 						Inventory[FindSlot(Inventory, Type)].Amount++;
@@ -564,8 +514,7 @@ int Ui()
 				}
 				else if (Event.button.button == SDL_BUTTON_RIGHT && Inventory[InventorySlot].Amount > 0) {
 					short Type = NULL;
-					myMutex.lock();
-					if (PlaceBlock(Inventory[InventorySlot].Type, { Event.button.x, Event.button.y }, yRange, PlayerPos[0], &Type))
+					if (PlaceBlock(Inventory[InventorySlot].Type, { Event.button.x, Event.button.y }, Range.y, PlayerPos[0], Type))
 					{
 						//std::cout << Type << std::endl;
 						UpdateBlock(Inventory[InventorySlot].Type, (int)Event.button.x, (int)Event.button.y, serverSocket);
@@ -577,21 +526,19 @@ int Ui()
 							Inventory[InventorySlot].Type = 0;
 						}
 					}
-					myMutex.unlock();
 				}
 			}
 		}
 
-		Input(&PlayerDirection, OnGround, &InventorySlot, &PlayerPos[0]);
+		Input(PlayerDirection, OnGround, InventorySlot, PlayerPos[0], Range);
 
 		PlayerDirection.x = SDL_clamp(PlayerDirection.x, -1, 1);
 		PlayerDirection.y = SDL_clamp(PlayerDirection.y, -1, 1);
-		myMutex.lock();
 
-		if (PlayerDirection.x != 0  && !Collition(&PlayerPos[0], { PlayerDirection.x, 0 }, FullRange, yRange, false, false)){
+		if (PlayerDirection.x != 0  && !Collition(PlayerPos[0], { PlayerDirection.x, 0 }, Range.x, Range.y, false, false)){
 			PlayerPos[0].x += PlayerDirection.x;
 		}
-		if (PlayerDirection.y != 0 && !Collition(&PlayerPos[0], { 0, PlayerDirection.y }, FullRange, yRange, false, false)) {
+		if (PlayerDirection.y != 0 && !Collition(PlayerPos[0], { 0, PlayerDirection.y }, Range.x, Range.y, false, false)) {
 			PlayerPos[0].y += PlayerDirection.y;
 		}
 
@@ -600,15 +547,14 @@ int Ui()
 		SDL_RenderClear(Renderer);
 		
 
-		DrawBG(Renderer, &PlayerPos[0]);
+		DrawBG(Renderer, PlayerPos[0], Range);
 		ShowInventor(Renderer, width, height, Inventory, InventorySlot);
 
-		PlayerPos[0].x = SDL_clamp(PlayerPos[0].x, 9, 1600 - (int)(FullRange / 2));
-		PlayerPos[0].y = SDL_clamp(PlayerPos[0].y, -4, 64 - yRange);
+		PlayerPos[0].x = SDL_clamp(PlayerPos[0].x, 9, 1600 - (int)(Range.x / 2));
+		PlayerPos[0].y = SDL_clamp(PlayerPos[0].y, -4, 64 - Range.y);
 		
-		myMutex.unlock();
 
-		DrawPlayer(Renderer);
+		DrawPlayer(Renderer, Range, PlayerPos);
 
 		SDL_RenderPresent(Renderer);
 		SDL_Delay(1000 / 10);
@@ -616,12 +562,12 @@ int Ui()
 	SDL_DestroyRenderer(Renderer);
 	SDL_DestroyWindow(Window);
 	SDL_Quit();
-	CloseServer();
 
 	return 0;
 }
-int GameSetUp(bool GenerateSeed) 
+int GameSetUp(bool GenerateSeed, SOCKET serverSocket) 
 {
+	int seed = 0;
 	if (GenerateSeed)
 	{
 		srand((unsigned int)time(0));
@@ -630,7 +576,7 @@ int GameSetUp(bool GenerateSeed)
 	}
 	else
 	{
-		GetSeed();
+		seed = GetSeed(serverSocket);
 	}
 
 	std::cout << "Seed: " << seed << std::endl;
@@ -638,38 +584,39 @@ int GameSetUp(bool GenerateSeed)
 	srand(seed);
 	SetGradients();
 
-	return 0;
+	return seed;
 }
 
 int main(int Argc, char* Argv[])
 {
-	if (SetUpServer() != 0)
+	bool Running = true;
+
+	int Side = 0;
+	std::vector<SOCKET> sockets;
+	sockets.resize(Max_Player);
+	sockets.clear();
+	SOCKET hostSockets;
+
+	SetUpServer(Side, std::ref(sockets), std::ref(hostSockets));
+	int seed = GameSetUp(Side == 0, sockets[0]);
+
+	std::thread acceptThread;
+	if (Side == 0)
 	{
-		std::cout << "Error setting up server." << std::endl;
-	}
-
-	std::thread multiplayerThread(MultiPlayer);
-	std::thread acceptThread(AcceptClients);
-	
-	GameSetUp(Side == 0);
-	GameSetUp(Side == 0);
-
-	std::thread UiThread(Ui);
-
-	multiplayerThread.join();
-	acceptThread.join();
-	UiThread.detach();
-
-	if (!Running) {
-		std::cout << "Exiting game..." << std::endl;
-		multiplayerThread.detach();
-		multiplayerThread.~thread();
-
+		acceptThread = std::thread(AcceptClients, hostSockets, std::ref(sockets), std::ref(Running), seed);
 		acceptThread.detach();
-		acceptThread.~thread();
-
-		UiThread.~thread();
 	}
+	std::thread(handleClientMessage, sockets[0], std::ref(sockets),false, seed, std::ref(Running)).detach();
+
+	Vector2 Range = { 16, 10 };
+	std::thread UiThread(Ui, sockets[0], Range, std::ref(Running));
+	UiThread.detach();
+	while (Running) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	}
+
+	std::cout << "Exiting game..." << std::endl;
+	CloseServer(sockets);
 
 	return 0;
 }

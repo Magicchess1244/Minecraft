@@ -48,7 +48,7 @@ const HeightsDif ErrotionHeight[10] = {
 	{-0.2f, ySize * 0.2f},
 	{-0.4f, ySize * 0.6f},
 	{-0.5f, ySize * 0.5f},
-	{0.8f, ySize * 0.9},
+	{0.8f, ySize * 0.9f},
 	{0, ySize},
 };
 const HeightsDif PeaksAndValiesHeight[6] = {
