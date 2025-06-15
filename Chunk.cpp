@@ -31,6 +31,7 @@ void ChunckPrefab::GenerateChunkSurface()
 		if (Height < 33) {
 			Height = 33;
 		}
+
 		for (int y = Height; y > -1; y--) {
 			if (y <= ActualHeight)
 			{

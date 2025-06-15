@@ -27,8 +27,8 @@ Biome GetBiome(float Humudity, float Temperature)
 	}
 	return TheBiome;
 }
-int GetHeight(float Continentalness, float Errotion, float PeakAndVallies) {
+
+int GetHeight(float Continentalness, float Errotion, float PeakAndValleys) {
 	return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight));
-	//return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight) + BaseHeight(Errotion, 10, ErrotionHeight) + BaseHeight(PeakAndVallies, 7, PeaksAndValiesHeight)) / 3;
 }
 

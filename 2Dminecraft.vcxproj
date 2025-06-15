@@ -140,6 +140,8 @@
     <ClCompile Include="BiomeBuilder.cpp" />
     <ClCompile Include="Chunk.cpp" />
     <ClCompile Include="ChunkManager.cpp" />
+    <ClCompile Include="GameClient.cpp" />
+    <ClCompile Include="GameServer.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="PerlinNoise.cpp" />
   </ItemGroup>
@@ -147,6 +149,8 @@
     <ClInclude Include="BiomeBuilder.h" />
     <ClInclude Include="Chunck.h" />
     <ClInclude Include="ChunkManager.h" />
+    <ClInclude Include="GameClient.h" />
+    <ClInclude Include="GameServer.h" />
     <ClInclude Include="PerlinNoise.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
