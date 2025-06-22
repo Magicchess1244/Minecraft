@@ -36,7 +36,7 @@ namespace ChunckManager {
 	bool PlaceBlock(int BlockType, Vector2 Position, int yRange, Vector2 PlayerPosition, short& Type);
 	void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange);
 	int GetHeight(int xPos);
-	void ShowInventor(SDL_Renderer** Renderer, int width, int height, std::vector<Slot>& Inventory, int InventorySlot, TTF_Font* font);
+	void ShowInventor(SDL_Renderer* Renderer, int width, int height, std::vector<Slot>& Inventory, int InventorySlot, TTF_Font* font);
 	void SimulateWater(int chunkIndex);
 };
 #endif

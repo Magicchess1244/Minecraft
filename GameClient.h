@@ -7,6 +7,7 @@
 #include <SDL3/SDL.h>
 #include "PerlinNoise.h"
 #include "ChunkManager.h"
+#include <WS2tcpip.h>
 
 static constexpr unsigned int MAX_PLAYERS = 8;
 
@@ -45,9 +46,6 @@ public:
 		return seed;
 	}
 
-	void set_socket(SOCKET connection) {
-		server = connection;
-	}
 	SOCKET get_socket(){
 		return server;
 	}
@@ -67,6 +65,37 @@ public:
 	Color get_color() const {
 		return {255,0,0};
 	}
+
+	void MakeClient() {
+		WSADATA wsaData;
+		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+			std::cerr << "WSAStartup failed.\n";
+			return;
+		}
+
+		SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+		if (serverSocket == INVALID_SOCKET) {
+			std::cerr << "Failed to create socket.\n";
+			return;
+		}
+
+		int PORT = 8080;
+		const char* SERVER_IP = "127.0.0.1";
+
+		sockaddr_in server;
+		server.sin_family = AF_INET;
+		server.sin_port = htons(PORT);
+		inet_pton(AF_INET, SERVER_IP, &server.sin_addr);
+
+		if (connect(serverSocket, (sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
+			std::cerr << "Failed to connect to the server.\n";
+			closesocket(serverSocket);
+			return;
+		}
+
+		std::cout << "Connected to the server.\n";
+		this->server = serverSocket;
+	}
 };
 
 namespace BitMiner {
@@ -75,7 +104,7 @@ namespace BitMiner {
 	void DrawBG(SDL_Renderer* Renderer, Vector2& PlayerPos, Vector2 Range);
 	void DrawPlayer(SDL_Renderer* Renderer, Vector2 Range, std::vector<Player>& PlayerPos);
 	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer);
-	void Render(SDL_Event event, SDL_Renderer** renderer, SDL_Window** window, Vector2 Range, int width, int height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font);
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector2 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font);
 	void PlayerMovement(Vector2& playerDirection, Vector2& range, Player& player, int& inventorySlot);
-	int GameLoop(bool& running, GameClient& game);
+	void GameLoop(bool& running, GameClient& game);
 }

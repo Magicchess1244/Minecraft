@@ -1,11 +1,13 @@
 #include "GameClient.h"
 #include <SDL3_ttf/SDL_ttf.h>
+#include <SDL3_image/SDL_image.h>
 #include <windows.h>
 #include <filesystem>
 #include <WinSock2.h>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "SDL3_ttf.lib")
+#pragma comment(lib, "SDL3_image.lib")
 
 void GameClient::set_seed() {
 	int res;
@@ -151,29 +153,29 @@ namespace BitMiner {
 		SDL_RenderFillRect(Renderer, &InsidePlayerRect);
 	}
 
-    int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer)
-    {
-       if (SDL_Init(SDL_INIT_VIDEO) < 0) { // Fixing SDL_Init condition
-           std::cout << "Error initializing SDL: " << SDL_GetError();
-           return 1;
-       } else {
-           std::cout << "SDL initialized successfully." << std::endl;
-       }
+	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer)
+	{
+	   if (SDL_Init(SDL_INIT_VIDEO) < 0) { // Fixing SDL_Init condition
+		   std::cout << "Error initializing SDL: " << SDL_GetError();
+		   return 1;
+	   } else {
+		   std::cout << "SDL initialized successfully." << std::endl;
+	   }
 
-       *Window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-       if (*Window == nullptr) { // Fixing pointer dereference
-           std::cout << "Error creating window: " << SDL_GetError();
-           SDL_Quit();
-           return 1;
-       }
+	   *Window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	   if (*Window == nullptr) { // Fixing pointer dereference
+		   std::cout << "Error creating window: " << SDL_GetError();
+		   SDL_Quit();
+		   return 1;
+	   }
 
-       *Renderer = SDL_CreateRenderer(*Window, NULL);
-       if (*Renderer == nullptr) { // Fixing pointer dereference
-           std::cout << "Error creating renderer: " << SDL_GetError();
-           SDL_DestroyWindow(*Window);
-           SDL_Quit();
-           return 1;
-       }
+	   *Renderer = SDL_CreateRenderer(*Window, NULL);
+	   if (*Renderer == nullptr) { // Fixing pointer dereference
+		   std::cout << "Error creating renderer: " << SDL_GetError();
+		   SDL_DestroyWindow(*Window);
+		   SDL_Quit();
+		   return 1;
+	   }
 	   if (!SDL_Init(SDL_INIT_VIDEO)) {
 		   std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
 		   return -1;
@@ -185,9 +187,9 @@ namespace BitMiner {
 		   SDL_Quit();
 		   return -1;
 	   }
-       return 0; // Ensure function returns success
-    }
-	void Render( SDL_Event event, SDL_Renderer** renderer, SDL_Window** window, Vector2 Range, int width, int height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font)
+	   return 0; // Ensure function returns success
+	}
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector2 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font)
 	{
 			while (SDL_PollEvent(&event)) {
 				if (event.type == SDL_EVENT_QUIT) {
@@ -211,7 +213,7 @@ namespace BitMiner {
 					}
 					else if (KeyPressed == SDL_SCANCODE_F11) {
 						FullScreen = !FullScreen;
-						SDL_SetWindowFullscreen(*window, FullScreen);
+						SDL_SetWindowFullscreen(window, FullScreen);
 					}
 				}
 				else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -244,15 +246,15 @@ namespace BitMiner {
 					}
 				}
 			}
-			SDL_SetRenderDrawColor(*renderer, 0, 0, 0, 255);
-			SDL_RenderClear(*renderer);
+			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+			SDL_RenderClear(renderer);
 
 
-			DrawBG(*renderer, players[0].Position, Range);
+			DrawBG(renderer, players[0].Position, Range);
 			ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 			
-			DrawPlayer(*renderer, Range, std::ref(players));
-			SDL_RenderPresent(*renderer);
+			DrawPlayer(renderer, Range, std::ref(players));
+			SDL_RenderPresent(renderer);
 			SDL_Delay(1000 / 10);
 	}
 	void PlayerMovement(Vector2& playerDirection, Vector2& range, Player& player, int& inventorySlot)  { 
@@ -282,8 +284,12 @@ namespace BitMiner {
 		player.Position.y = SDL_clamp(player.Position.y, -4, 64 - range.y);  
 	}
 
-	int GameLoop(bool& running, GameClient& game)
+	void GameLoop(bool& running, GameClient& game)
 	{
+		
+		game.MakeClient();
+		game.set_seed();
+
 		Vector2 Range = { 16, 10 };
 		int width = 600;
 		int height = 400;
@@ -293,7 +299,6 @@ namespace BitMiner {
 
 		bool fullScreen = false;
 		Vector2 playerDirection = { 0, 0 };
-
 
 		SDL_Event event{};
 		std::vector<Slot> inventory;
@@ -315,6 +320,38 @@ namespace BitMiner {
 
 		TTF_Font* font = TTF_OpenFont("Quantico-Bold.ttf", 24);
 
+		/*
+		SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+		SDL_FRect rect = { 0,0,100,100 };
+		SDL_RenderFillRect(renderer, &rect);
+
+		SDL_Color White = { 200, 200, 200 };
+		SDL_Surface* surface = TTF_RenderText_Blended(font, "HelloWorld SDL3 TTF",sizeof("HelloWorld SDL3 TTF"), White);
+		SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface); 
+		SDL_DestroySurface(surface);
+		SDL_FRect dstRect{ 100, 100, 200, 80 };
+		SDL_RenderTexture(renderer, texture, NULL, &dstRect);
+		SDL_DestroyTexture(texture);
+
+		SDL_RenderPresent(renderer);
+		*/
+
+
+		SDL_Surface* surface = IMG_Load("Texture.png");
+		SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+		SDL_DestroySurface(surface);
+
+		SDL_Vertex vertices[4];
+		vertices[0] = { {100, 100}, SDL_FColor{255, 255, 255, 255}, {0.0f, 0.0f} };
+		vertices[1] = { {200, 100}, SDL_FColor{255, 255, 255, 255}, {1.0f, 0.0f} };
+		vertices[2] = { {200, 200}, SDL_FColor{255, 255, 255, 255}, {1.0f, 1.0f} };
+		vertices[3] = { {100, 200}, SDL_FColor{255, 255, 255, 255}, {0.0f, 1.0f} };
+
+		int indices[] = { 0, 1, 2, 0, 2, 3 };
+
+		SDL_RenderClear(renderer);
+		SDL_RenderGeometry(renderer, texture, vertices, 4, indices, 6);
+		SDL_RenderPresent(renderer);
 
 		ChunckManager::Size(width, height, Range.y, Range.x);
 		
@@ -323,7 +360,7 @@ namespace BitMiner {
 
 		while (running) {
 			PlayerMovement(std::ref(playerDirection), std::ref(Range), std::ref(p[0]), std::ref(inventorySlot));
-			Render(event, &renderer, &window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font);
+			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font);
 		}
 
 		SDL_DestroyRenderer(renderer);
@@ -332,6 +369,6 @@ namespace BitMiner {
 		TTF_Quit();
 
 
-		return 0;
+		return;
 	}
 }

@@ -2,6 +2,7 @@
 #include "Chunck.h"
 #include <SDL3/SDL_render.h>
 #include <iostream>
+#include <sstream>
 #include <map>
 #include <queue>
 #include <utility>
@@ -152,47 +153,41 @@ namespace ChunckManager {
 	{
 		return Chunks[xPos].Height;
 	}
-	void ShowInventor(SDL_Renderer** Renderer, int width, int height, std::vector<Slot>& Inventory, int InventorySlot, TTF_Font* font)
+	void ShowInventor(SDL_Renderer* Renderer, int width, int height, std::vector<Slot>& Inventory, int InventorySlot, TTF_Font* font)
 	{
-		SDL_SetRenderDrawColor(*Renderer, 157, 76, 0, 255);
+		SDL_SetRenderDrawColor(Renderer, 157, 76, 0, 255);
 		SDL_FRect InventoryRect = { (float)(width / 2) - (BlockSize * 4), (height - (BlockSize * 1.3f)), (BlockSize * 1.1f) * 8 + (BlockSize * .1f), (BlockSize * 1.2f) };
-		SDL_RenderFillRect(*Renderer, &InventoryRect);
+		SDL_RenderFillRect(Renderer, &InventoryRect);
 
 		for (int i = 0; i < 8; i++)
 		{
 			if (InventorySlot == i)
 			{
-				SDL_SetRenderDrawColor(*Renderer, 255, 153, 56, 255);
+				SDL_SetRenderDrawColor(Renderer, 255, 153, 56, 255);
 			}
 			else
 			{
-				SDL_SetRenderDrawColor(*Renderer, 204, 102, 0, 255);
+				SDL_SetRenderDrawColor(Renderer, 204, 102, 0, 255);
 			}
 			SDL_FRect InventoryRect = { (float)(((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.1f)), (float)((height - (BlockSize * 1.3f)) + (BlockSize * 0.1f)), (float)BlockSize, (float)BlockSize };
-			SDL_RenderFillRect(*Renderer, &InventoryRect);
+			SDL_RenderFillRect(Renderer, &InventoryRect);
 
 			if (Inventory[i].Type != 0)
 			{
-				SDL_SetRenderDrawColor(*Renderer, (Uint8)(BlockDef[Inventory[i].Type].Color.r * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.g * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.b * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.a * 255));
+				SDL_SetRenderDrawColor(Renderer, (Uint8)(BlockDef[Inventory[i].Type].Color.r * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.g * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.b * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.a * 255));
 				SDL_FRect BlockRect = { ((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.3f), (height - (BlockSize * 1.3f)) + (BlockSize * 0.3f), BlockSize * 0.6f, BlockSize * 0.6f };
-				SDL_RenderFillRect(*Renderer, &BlockRect);
+				SDL_RenderFillRect(Renderer, &BlockRect);
 				//Add be a number
-				if (Inventory[i].Amount != 0)
+				if (Inventory[i].Amount > 1)
 				{
-					/*
-					SDL_Color color = { 255, 255, 255, 255 };
-					SDL_Surface* surface = TTF_RenderText_Blended(font, (const char*)Inventory[i].Amount, sizeof(Inventory[0].Amount), color);
-					
-					if (!surface) {
-						printf("TTF_RenderText_Blended error: %s\n");
-						return;
-					}
-
-					SDL_Texture* textTexture = SDL_CreateTextureFromSurface(*Renderer, surface);
-					
-					//const SDL_FRect textRect = { (float)(((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.85f)), (float)((height - (BlockSize * 1.3f)) + (BlockSize * 0.9f)), (float)BlockSize * 0.15f, (float)BlockSize * 0.1f };
-					SDL_RenderTexture(*Renderer, textTexture, NULL, NULL);
-					*/
+					std::string text = std::to_string(Inventory[i].Amount);
+					SDL_Color White = { 200, 200, 200 };
+					SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), sizeof(text.c_str()), White);
+					SDL_Texture* texture = SDL_CreateTextureFromSurface(Renderer, surface);
+					SDL_DestroySurface(surface);
+					SDL_FRect dstRect{ (float)(((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.8f)), (float)((height - (BlockSize * 1.1f)) + (BlockSize * 0.4f)), BlockSize * 0.5f , BlockSize * 0.5f};
+					SDL_RenderTexture(Renderer, texture, NULL, &dstRect);
+					SDL_DestroyTexture(texture);
 				}
 			}
 
