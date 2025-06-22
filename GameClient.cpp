@@ -30,7 +30,7 @@ void GameClient::set_color() {
 	int res;
 	char buf[8];
 	unsigned int server_color[3] = {};
-	const char* command = (char*)GetColor;
+	const char* command = "GetColor";
 
 	res = send(this->server, command, sizeof(command), 0);
 	if (res <= 0) std::cerr << "Error requesting color from the server.";
@@ -84,17 +84,18 @@ namespace BitMiner {
 			}
 		}
 	}
-	void DrawBG(SDL_Renderer* Renderer, Vector2& PlayerPos, Vector2 Range) {
+	void DrawBG(SDL_Renderer* Renderer, Vector2& PlayerPos, Vector2 Range, SDL_Texture* texture) {
 		int CurrentChunck = (int)floorf((PlayerPos.x) / 16);
 		int RelativeX = (int)(PlayerPos.x) % 16;
 		int xRange = Range.x - RelativeX;
 		Mesh mesh = { 0 };
+		
 		ChunckManager::ChunkGenerator(CurrentChunck);
-
 		ChunckManager::DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos.y, xRange, Range.y, Range.x, mesh, true);
-		SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
-		//ChunckManager::PrintChunk(CurrentChunck, 0, 0, xRange, 64, Range.x);
 
+
+
+		SDL_RenderGeometry(Renderer, texture, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
 
 		if ((RelativeX - Range.x) < RelativeX)
 		{
@@ -104,8 +105,7 @@ namespace BitMiner {
 			CurrentChunck++;
 
 			ChunckManager::DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos.y, xRange, Range.y, Range.x, mesh, false);
-			SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
-			//PrintChunk(CurrentChunck, RelativeX, PlayerPos.y, xRange, yRange, FullRange);
+			SDL_RenderGeometry(Renderer, texture, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
 		}
 
 	}
@@ -189,7 +189,7 @@ namespace BitMiner {
 	   }
 	   return 0; // Ensure function returns success
 	}
-	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector2 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font)
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector2 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture)
 	{
 			while (SDL_PollEvent(&event)) {
 				if (event.type == SDL_EVENT_QUIT) {
@@ -250,7 +250,7 @@ namespace BitMiner {
 			SDL_RenderClear(renderer);
 
 
-			DrawBG(renderer, players[0].Position, Range);
+			DrawBG(renderer, players[0].Position, Range, texture);
 			ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 			
 			DrawPlayer(renderer, Range, std::ref(players));
@@ -335,23 +335,16 @@ namespace BitMiner {
 
 		SDL_RenderPresent(renderer);
 		*/
+		SDL_Surface* surface = SDL_LoadBMP("Textures.bmp");
+		if (!surface) {
+			std::cerr << "SDL_LoadBMP failed: " << SDL_GetError() << std::endl;
+		}
 
-
-		SDL_Surface* surface = IMG_Load("Texture.png");
 		SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
 		SDL_DestroySurface(surface);
-
-		SDL_Vertex vertices[4];
-		vertices[0] = { {100, 100}, SDL_FColor{255, 255, 255, 255}, {0.0f, 0.0f} };
-		vertices[1] = { {200, 100}, SDL_FColor{255, 255, 255, 255}, {1.0f, 0.0f} };
-		vertices[2] = { {200, 200}, SDL_FColor{255, 255, 255, 255}, {1.0f, 1.0f} };
-		vertices[3] = { {100, 200}, SDL_FColor{255, 255, 255, 255}, {0.0f, 1.0f} };
-
-		int indices[] = { 0, 1, 2, 0, 2, 3 };
-
-		SDL_RenderClear(renderer);
-		SDL_RenderGeometry(renderer, texture, vertices, 4, indices, 6);
-		SDL_RenderPresent(renderer);
+		if (!texture) {
+			std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
+		}
 
 		ChunckManager::Size(width, height, Range.y, Range.x);
 		
@@ -360,7 +353,7 @@ namespace BitMiner {
 
 		while (running) {
 			PlayerMovement(std::ref(playerDirection), std::ref(Range), std::ref(p[0]), std::ref(inventorySlot));
-			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font);
+			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font, texture);
 		}
 
 		SDL_DestroyRenderer(renderer);

@@ -32,6 +32,7 @@ namespace ChunckManager {
 	void ChunkGenerator(int Chunk);
 	void DrawChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange, Mesh& mesh, bool FirstChunck);
 	void PrintChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange);
+	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
 	bool Collition(Vector2& PlayerPos, Vector2 Direction, int FullRange, int yRange, bool Swim, bool Block);
 	bool PlaceBlock(int BlockType, Vector2 Position, int yRange, Vector2 PlayerPosition, short& Type);
 	void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange);

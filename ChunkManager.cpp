@@ -46,6 +46,20 @@ namespace ChunckManager {
 		std::cout << std::endl;
 		std::cout << std::endl;
 	}
+	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY) {
+		const int tileSize = 16;
+		const int atlasSize = 64;
+		const float pixelNudge = 0.25f; // or 0.25f if needed
+
+		int tilesPerRow = atlasSize / tileSize;
+		int tileX = tileIndex % tilesPerRow;
+		int tileY = tileIndex / tilesPerRow;
+
+		float u = (tileX * tileSize + cornerX * (tileSize - pixelNudge * 2) + pixelNudge) / (float)atlasSize;
+		float v = (tileY * tileSize + cornerY * (tileSize - pixelNudge * 2) + pixelNudge) / (float)atlasSize;
+
+		return { u, v };
+	}
 	void DrawChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange, Mesh& mesh, bool FirstChunck)
 	{
 		int xSize = Chunks[i].xSize;
@@ -61,19 +75,17 @@ namespace ChunckManager {
 		for (int y = 0; y < yRange; y++) {
 			for (int x = 0; x < xRange; x++) {
 
-				SDL_FColor Color;
-
-				Color = BlockDef[Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y]].Color;
+				SDL_FColor Color = {1,1,1,1};//BlockDef[Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y]].Color;
 
 				int vIndex = quadIndex * 4;
 				int iIndex = quadIndex * 6;
 				float FlipX = (float)(x + OffSet) * BlockSize;
 				float FlipY = (float)(yRange - y - 1) * BlockSize;
 
-				mesh.Vertices[vIndex + 0] = { {FlipX, FlipY}, Color };
-				mesh.Vertices[vIndex + 1] = { {FlipX + BlockSize, FlipY}, Color };
-				mesh.Vertices[vIndex + 2] = { {FlipX, FlipY + BlockSize}, Color };
-				mesh.Vertices[vIndex + 3] = { {FlipX + BlockSize, FlipY + BlockSize}, Color };
+				mesh.Vertices[vIndex + 0] = { {FlipX, FlipY}, Color, getUV(Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y], 0, 0)};
+				mesh.Vertices[vIndex + 1] = { {FlipX + BlockSize, FlipY}, Color, getUV(Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y], 1, 0) };
+				mesh.Vertices[vIndex + 2] = { {FlipX, FlipY + BlockSize}, Color, getUV(Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y], 0, 1) };
+				mesh.Vertices[vIndex + 3] = { {FlipX + BlockSize, FlipY + BlockSize}, Color, getUV(Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y], 1, 1) };
 
 				mesh.Indices[iIndex + 0] = vIndex + 0;
 				mesh.Indices[iIndex + 1] = vIndex + 1;
