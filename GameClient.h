@@ -29,7 +29,7 @@ class GameClient
 {
 private:
 	unsigned int seed;
-	unsigned int player_count;
+	unsigned int player_count = 0;
 	std::vector<Player> players;
 	SOCKET server;
 

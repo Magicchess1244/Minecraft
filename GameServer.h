@@ -7,7 +7,7 @@ class GameServer
 {
 private:
 	unsigned int seed;
-	unsigned int player_count;
+	unsigned int player_count = 0;
 	SOCKET listener;
 	std::vector<SOCKET> sockets;
 	std::vector<Player> players;
@@ -76,7 +76,7 @@ public:
 		return sockets;
 	}
 
-	void handlePlayers(SOCKET player, bool Running);
+	void handlePlayers(SOCKET player, bool Running, int Id);
 
 	void AcceptClients(bool& Running, Vector2 Range);
 

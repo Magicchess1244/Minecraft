@@ -4,10 +4,24 @@
 #include <windows.h>
 #include <filesystem>
 #include <WinSock2.h>
+#include <string>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "SDL3_ttf.lib")
 #pragma comment(lib, "SDL3_image.lib")
+
+std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
+	std::vector<std::string> tokens;
+	size_t start = 0;
+	size_t end;
+
+	while ((end = s.find(delimiter, start)) != std::string::npos) {
+		tokens.push_back(s.substr(start, end - start));
+		start = end + delimiter.length();
+	}
+	tokens.push_back(s.substr(start));
+	return tokens;
+}
 
 void GameClient::set_seed() {
 	int res;
@@ -28,21 +42,30 @@ void GameClient::set_seed() {
 }
 void GameClient::set_color() {
 	int res;
-	char buf[8];
+	char buf[11];
 	unsigned int server_color[3] = {};
-	const char* command = "GetColor";
+	const char* command = "getColor";
+
+	std::cout << "getColor" << std::endl;
 
 	res = send(this->server, command, sizeof(command), 0);
 	if (res <= 0) std::cerr << "Error requesting color from the server.";
 	res = recv(this->server, buf, sizeof(buf), 0);
 	if (res <= 0) std::cerr << "Error receiving color from the server.";
+	else std::cout << "recived" << std::endl;
 
-	for (int i = 0; i < 3; i++) {
-		server_color[i] = static_cast<unsigned int>(buf[i]);
+	std::cout << "color" << std::endl;
+	int i = 0;
+	for (auto w : split(buf, ",")) {
+		server_color[i++] = std::stoi(w);
 	}
 
-	std::cout << "New client color: " << server_color << std::endl;
-	this->players[0].color = Color{server_color[0], server_color[1], server_color[2] };
+	std::cout << "New client color: " << server_color[0] << "," << server_color[1] <<"," << server_color[2] << std::endl;
+
+	std::cout << "niggas online: " << this->players.size() << std::endl;
+	if (this->players.size() > 0) {
+		this->players[0].color = Color{ server_color[0], server_color[1], server_color[2] };
+	}
 }
 
 //UI function
@@ -286,9 +309,11 @@ namespace BitMiner {
 
 	void GameLoop(bool& running, GameClient& game)
 	{
-		
+		game.add_player({ {800.0, 64.0}, {255, 0, 0} });
+
 		game.MakeClient();
 		game.set_seed();
+		game.set_color();
 
 		Vector2 Range = { 16, 10 };
 		int width = 600;
@@ -348,7 +373,6 @@ namespace BitMiner {
 
 		ChunckManager::Size(width, height, Range.y, Range.x);
 		
-		game.add_player({ {800.0, 64.0}, {255, 0, 0} });
 		auto p = game.get_players();
 
 		while (running) {

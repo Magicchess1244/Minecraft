@@ -5,18 +5,17 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-void GameServer::handlePlayers(SOCKET player, bool Running)
+void GameServer::handlePlayers(SOCKET player, bool Running, int Id)
 {
-	char buf[16];
-	int res;
-
+	char buf[16] = {};
+	int res = 0;
+	//std::cout << player << std::endl;
 
 	while (Running) {
-		std::cout << player << std::endl;
 
 		res = recv(player, buf, sizeof(buf), 0);
 
-		std::cout << res << std::endl;
+		//std::cout << res << std::endl;
 
 		if (res <= 0) {
 			std::cerr << "Client disconnected or error occurred\n";
@@ -24,7 +23,7 @@ void GameServer::handlePlayers(SOCKET player, bool Running)
 			return;
 		}
 
-		std::cout << "Result: " << res << "\n";
+		//std::cout << "Result: " << res << "\n";
 		std::cout << "Buf:" << buf << "\n";
 
 		if (strcmp(buf, "seed") == 0) {
@@ -33,45 +32,16 @@ void GameServer::handlePlayers(SOCKET player, bool Running)
 			std::cout << res << std::endl;
 
 		}
-	}
+		else if (strcmp(buf, "getColor") == 0) {
+			std::string color_str = std::to_string(this->players[Id].color.r) + "," +  
+								   std::to_string(this->players[Id].color.g) + "," +  
+								   std::to_string(this->players[Id].color.b);
+			std::cout << "sending..." << std::endl;
+			res = send(player, color_str.c_str(), color_str.size(), 0);
 
-	/*
-
-	if (cmd == UPDATE_PLAYER_POS) {
-		std::cout << "Received command: " << cmd << "\n";
-		for (int i = 0; i < clients.size(); i++) {
-			if (client != clients[i]) {
-				//UpdatePlayerPos(clients[i],
-					//SDL_Color{ (Uint8)command[3], (Uint8)command[4], (Uint8)command[5], 255 },
-					//Vector2{ (float)command[1], (float)command[2] });
-			}
+			std::cout << "Color: " << color_str[0] <<  std::endl;
 		}
 	}
-	else if (cmd == GET_SEED) {
-		std::cout << "Received command: " << cmd << "\n";
-		char seedPacket[6] = {
-			seed,
-			0,0,0,0,0
-		};
-		int sent = send(client, seedPacket, sizeof(seedPacket), 0);
-		if (sent == SOCKET_ERROR) {
-			std::cerr << "Failed to send seed\n";
-		}
-	}
-	else if (cmd == GET_COLOR) {
-		std::cout << "Received command: " << cmd << "\n";
-		char colorPacket[6] = {
-			PlayerColors[id].r,
-			PlayerColors[id].g,
-			PlayerColors[id].b,
-			0,0,0
-		};
-		int sent = send(client, colorPacket, sizeof(colorPacket), 0);
-		if (sent != sizeof(colorPacket)) {
-			std::cerr << "Failed to send color packet\n";
-		}
-	}
-	*/
 }
 
 void GameServer::AcceptClients(bool& Running, Vector2 Range)
@@ -99,10 +69,9 @@ void GameServer::AcceptClients(bool& Running, Vector2 Range)
 
 		this->add_socket(clientSocket, Player{ Vector2{ 800, 64 }, PlayerColors[player_count] });
 
-		std::cout << player_count << " clients connected." << std::endl;
-		std::cout << "Client connected! Socket: " << clientSocket << std::endl;
+		//std::cout << player_count << " clients connected." << std::endl;
+		//std::cout << "Client connected! Socket: " << clientSocket << std::endl;
 
-		std::thread(&GameServer::handlePlayers, this, clientSocket, true).detach();
-		std::cout << "a" << std::endl;
+		std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count - 1).detach();
 	}
 }
