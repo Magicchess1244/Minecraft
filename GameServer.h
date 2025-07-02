@@ -78,7 +78,7 @@ public:
 
 	void handlePlayers(SOCKET player, bool Running, int Id);
 
-	void AcceptClients(bool& Running, Vector2 Range);
+	void AcceptClients(bool& Running, Vector3 Range);
 
 	~GameServer()
 	{

@@ -81,7 +81,7 @@ namespace BitMiner {
 		}
 		std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
 	}
-	void Input(Vector2& PlayerDirection, bool OnGround, int& InventorySlots, Vector2& PlayerPos, Vector2 Range) {
+	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos, Vector3 Range) {
 		const bool* KeyboardState = SDL_GetKeyboardState(NULL);
 		const bool move_up = (KeyboardState[SDL_SCANCODE_W] ||
 			KeyboardState[SDL_SCANCODE_UP] ||
@@ -107,7 +107,7 @@ namespace BitMiner {
 			}
 		}
 	}
-	void DrawBG(SDL_Renderer* Renderer, Vector2& PlayerPos, Vector2 Range, SDL_Texture* texture) {
+	void DrawBG(SDL_Renderer* Renderer, Vector3& PlayerPos, Vector3 Range, SDL_Texture* texture) {
 		int CurrentChunck = (int)floorf((PlayerPos.x) / 16);
 		int RelativeX = (int)(PlayerPos.x) % 16;
 		int xRange = Range.x - RelativeX;
@@ -132,7 +132,7 @@ namespace BitMiner {
 		}
 
 	}
-	void DrawPlayer(SDL_Renderer* Renderer, Vector2 Range, std::vector<Player>& PlayerPos)
+	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 	{
 		//Other player
 		for (Player Position : PlayerPos)
@@ -212,7 +212,7 @@ namespace BitMiner {
 	   }
 	   return 0; // Ensure function returns success
 	}
-	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector2 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture)
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture)
 	{
 			while (SDL_PollEvent(&event)) {
 				if (event.type == SDL_EVENT_QUIT) {
@@ -273,14 +273,15 @@ namespace BitMiner {
 			SDL_RenderClear(renderer);
 
 
-			DrawBG(renderer, players[0].Position, Range, texture);
-			ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
+
+			//DrawBG(renderer, players[0].Position, Range, texture);
+			//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 			
 			DrawPlayer(renderer, Range, std::ref(players));
 			SDL_RenderPresent(renderer);
 			SDL_Delay(1000 / 10);
 	}
-	void PlayerMovement(Vector2& playerDirection, Vector2& range, Player& player, int& inventorySlot)  { 
+	void PlayerMovement(Vector3& playerDirection, Vector3& range, Player& player, int& inventorySlot)  { 
 		
 		playerDirection.x = 0;  
 		bool OnGround = ChunckManager::Collition(player.Position, { 0, -1 }, range.x, range.y, false, false);
@@ -315,7 +316,7 @@ namespace BitMiner {
 		game.set_seed();
 		game.set_color();
 
-		Vector2 Range = { 16, 10 };
+		Vector3 Range = { 16, 10 };
 		int width = 600;
 		int height = 400;
 
@@ -323,7 +324,7 @@ namespace BitMiner {
 		SDL_Renderer* renderer = nullptr;
 
 		bool fullScreen = false;
-		Vector2 playerDirection = { 0, 0 };
+		Vector3 playerDirection = { 0, 0 };
 
 		SDL_Event event{};
 		std::vector<Slot> inventory;
@@ -376,7 +377,7 @@ namespace BitMiner {
 		auto p = game.get_players();
 
 		while (running) {
-			PlayerMovement(std::ref(playerDirection), std::ref(Range), std::ref(p[0]), std::ref(inventorySlot));
+			//PlayerMovement(std::ref(playerDirection), std::ref(Range), std::ref(p[0]), std::ref(inventorySlot));
 			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font, texture);
 		}
 

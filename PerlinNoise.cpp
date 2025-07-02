@@ -11,7 +11,7 @@ short ErrotionGra[1000][2]{};
 short TemperatureGra[1000][2]{};
 short HumidGra[1000][2]{};
 
-float DotProduct(Vector2 a, Vector2 b)
+float DotProduct(Vector3 a, Vector3 b)
 {
 	return a.x * b.x + a.y * b.y;
 }
@@ -37,15 +37,15 @@ float BasicPerlinNoise(float xPos, float yPos)
 	const int xMax = xMin + 8;
 	const int yMax = yMin + 8;
 
-	Vector2 G0 = { cos((Gradients[xMinG][yMinG] * 36) * PI / 180), sin((Gradients[xMinG][yMinG] * 36) * PI / 180) };
-	Vector2 G1 = { cos((Gradients[xMinG + 1][yMinG] * 36) * PI / 180), sin((Gradients[xMinG + 1][yMinG] * 36) * PI / 180) };
-	Vector2 G2 = { cos((Gradients[xMinG][yMinG + 1] * 36) * PI / 180), sin((Gradients[xMinG][yMinG + 1] * 36) * PI / 180) };
-	Vector2 G3 = { cos((Gradients[xMinG + 1][yMinG + 1] * 36) * PI / 180), sin((Gradients[xMinG + 1][yMinG + 1] * 36) * PI / 180) };
+	Vector3 G0 = { cos((Gradients[xMinG][yMinG] * 36) * PI / 180), sin((Gradients[xMinG][yMinG] * 36) * PI / 180) };
+	Vector3 G1 = { cos((Gradients[xMinG + 1][yMinG] * 36) * PI / 180), sin((Gradients[xMinG + 1][yMinG] * 36) * PI / 180) };
+	Vector3 G2 = { cos((Gradients[xMinG][yMinG + 1] * 36) * PI / 180), sin((Gradients[xMinG][yMinG + 1] * 36) * PI / 180) };
+	Vector3 G3 = { cos((Gradients[xMinG + 1][yMinG + 1] * 36) * PI / 180), sin((Gradients[xMinG + 1][yMinG + 1] * 36) * PI / 180) };
 
-	Vector2 D0 = { xPos - xMin, yPos - yMin };
-	Vector2 D1 = { xPos - xMax, yPos - yMin };
-	Vector2 D2 = { xPos - xMin, yPos - yMax };
-	Vector2 D3 = { xPos - xMax, yPos - yMax };
+	Vector3 D0 = { xPos - xMin, yPos - yMin };
+	Vector3 D1 = { xPos - xMax, yPos - yMin };
+	Vector3 D2 = { xPos - xMin, yPos - yMax };
+	Vector3 D3 = { xPos - xMax, yPos - yMax };
 
 	float Lerp1 = Lerp(DotProduct(G0, D0), DotProduct(G1, D1), Fade((float)(xPos - xMin) / 8));
 	float Lerp2 = Lerp(DotProduct(G2, D2), DotProduct(G3, D3), Fade((float) (xPos - xMin) / 8));

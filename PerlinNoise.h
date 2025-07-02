@@ -3,9 +3,8 @@
 
 typedef struct
 {
-	float x;
-	float y;
-} Vector2;
+	float x, y, z;
+} Vector3;
 
 float Lerp(float a, float b, float t);
 float PerlinNoise(float xPos, float yPos, int Octaves, int Type, float ConstFrecuancy);

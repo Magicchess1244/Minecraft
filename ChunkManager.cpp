@@ -62,6 +62,7 @@ namespace ChunckManager {
 	}
 	void DrawChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange, Mesh& mesh, bool FirstChunck)
 	{
+		/*
 		int xSize = Chunks[i].xSize;
 		int ySize = Chunks[i].ySize;
 		int xPos = Chunks[i].xPos;
@@ -97,8 +98,9 @@ namespace ChunckManager {
 				quadIndex++;
 			}
 		}
+		*/
 	}
-	bool Collition(Vector2& PlayerPos, Vector2 Direction, int FullRange, int yRange, bool Swim, bool Block)
+	bool Collition(Vector3& PlayerPos, Vector3 Direction, int FullRange, int yRange, bool Swim, bool Block)
 	{
 
 		int newX = (int)(PlayerPos.x + (int)(FullRange / 2.0f - 1) + Direction.x);
@@ -125,7 +127,7 @@ namespace ChunckManager {
 
 		return (blockFoot || blockHead);
 	}
-	bool PlaceBlock(int BlockType, Vector2 Position, int yRange, Vector2 PlayerPosition, short& Type)
+	bool PlaceBlock(int BlockType, Vector3 Position, int yRange, Vector3 PlayerPosition, short& Type)
 	{
 		Position.x = (int)(Position.x / BlockSize) + PlayerPosition.x;
 		Position.y = (yRange - (int)(Position.y / BlockSize) - 1) + PlayerPosition.y;

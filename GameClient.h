@@ -21,7 +21,7 @@ enum Commands
 };
 
 typedef struct {
-	Vector2 Position;
+	Vector3 Position;
 	Color color;
 } Player;
 
@@ -100,11 +100,11 @@ public:
 
 namespace BitMiner {
 	int FindSlot(std::vector<Slot>& Inventory, short Type);
-	void Input(Vector2& PlayerDirection, bool OnGround, int& InventorySlots, Vector2& PlayerPos, Vector2 Range);
-	void DrawBG(SDL_Renderer* Renderer, Vector2& PlayerPos, Vector2 Range, SDL_Texture* texture);
-	void DrawPlayer(SDL_Renderer* Renderer, Vector2 Range, std::vector<Player>& PlayerPos);
+	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos, Vector3 Range);
+	void DrawBG(SDL_Renderer* Renderer, Vector3& PlayerPos, Vector3 Range, SDL_Texture* texture);
+	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos);
 	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer);
-	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector2 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture);
-	void PlayerMovement(Vector2& playerDirection, Vector2& range, Player& player, int& inventorySlot);
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture);
+	void PlayerMovement(Vector3& playerDirection, Vector3& range, Player& player, int& inventorySlot);
 	void GameLoop(bool& running, GameClient& game);
 }

@@ -15,7 +15,7 @@ int main(int Argc, char* Argv[])
 
 	int choice = 0;
 	bool is_running = true;
-	Vector2 Range = { 16, 10 };
+	Vector3 Range = { 16, 10 };
 
 	do {
 		std::cout << "Choose an option:\n1. Start Server\n2. Start Client\n";

@@ -44,7 +44,7 @@ void GameServer::handlePlayers(SOCKET player, bool Running, int Id)
 	}
 }
 
-void GameServer::AcceptClients(bool& Running, Vector2 Range)
+void GameServer::AcceptClients(bool& Running, Vector3 Range)
 {
 	std::map<int, Color> PlayerColors = {
 		{0, {255, 0, 0} },
@@ -67,7 +67,7 @@ void GameServer::AcceptClients(bool& Running, Vector2 Range)
 			continue;
 		}
 
-		this->add_socket(clientSocket, Player{ Vector2{ 800, 64 }, PlayerColors[player_count] });
+		this->add_socket(clientSocket, Player{ Vector3{ 800, 64 }, PlayerColors[player_count] });
 
 		//std::cout << player_count << " clients connected." << std::endl;
 		//std::cout << "Client connected! Socket: " << clientSocket << std::endl;
