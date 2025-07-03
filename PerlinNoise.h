@@ -7,7 +7,7 @@ typedef struct
 } Vector3;
 
 float Lerp(float a, float b, float t);
-float PerlinNoise(float xPos, float yPos, int Octaves, int Type, float ConstFrecuancy);
+float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency);
 void SetGradients();
 
 #endif

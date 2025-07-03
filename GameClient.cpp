@@ -10,6 +10,9 @@
 #pragma comment(lib, "SDL3_ttf.lib")
 #pragma comment(lib, "SDL3_image.lib")
 
+Vector3 vectors[] = {
+	{ 50, 50, 10 }, { 50, 100, 1 }, { 100, 50, 1 }, { 100, 100, 1 }
+};
 std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
 	std::vector<std::string> tokens;
 	size_t start = 0;
@@ -95,7 +98,8 @@ namespace BitMiner {
 			PlayerDirection.x = move_left ? -1 : 1;
 		}
 
-		if (move_up && ChunckManager::Collition(PlayerPos, { 0, -1 }, Range.x, Range.y, true, false)) {
+		Vector3 pos = { (float)PlayerPos.x, (float)PlayerPos.y - 1, (float)PlayerPos.z };
+		if (move_up && ChunckManager::Collition(pos, Range.x, Range.y, true, false)) {
 			PlayerDirection.y = 1;
 		}
 
@@ -108,30 +112,27 @@ namespace BitMiner {
 		}
 	}
 	void DrawBG(SDL_Renderer* Renderer, Vector3& PlayerPos, Vector3 Range, SDL_Texture* texture) {
-		int CurrentChunck = (int)floorf((PlayerPos.x) / 16);
-		int RelativeX = (int)(PlayerPos.x) % 16;
+		Vector3 CurrentChunk = {
+			floorf(PlayerPos.x / 32),
+			floorf(PlayerPos.y),
+			floorf(PlayerPos.z / 32)
+		};
+
+		int RelativeX = ((int)PlayerPos.x) % 32;
+		int RelativeZ = ((int)PlayerPos.z) % 32;
+
 		int xRange = Range.x - RelativeX;
+		int zRange = Range.z - RelativeZ;
+
 		Mesh mesh = { 0 };
-		
-		ChunckManager::ChunkGenerator(CurrentChunck);
-		ChunckManager::DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos.y, xRange, Range.y, Range.x, mesh, true);
+		int faces = 0;
 
+		ChunckManager::ChunkGenerator(CurrentChunk);
+		ChunckManager::RenderChunk(PlayerPos, mesh, faces);
 
-
-		SDL_RenderGeometry(Renderer, texture, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
-
-		if ((RelativeX - Range.x) < RelativeX)
-		{
-			ChunckManager::ChunkGenerator(CurrentChunck + 1);
-			xRange = RelativeX;
-			RelativeX = 0;
-			CurrentChunck++;
-
-			ChunckManager::DrawChunk(CurrentChunck, RelativeX, (int)PlayerPos.y, xRange, Range.y, Range.x, mesh, false);
-			SDL_RenderGeometry(Renderer, texture, mesh.Vertices, xRange * Range.y * 4, mesh.Indices, xRange * Range.y * 6);
-		}
-
+		SDL_RenderGeometry(Renderer, texture, mesh.Vertices, faces * 4, mesh.Indices, faces * 6);
 	}
+
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 	{
 		//Other player
@@ -269,22 +270,21 @@ namespace BitMiner {
 					}
 				}
 			}
-			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+			SDL_SetRenderDrawColor(renderer, 0, 178, 255, 255);
 			SDL_RenderClear(renderer);
 
-
-
-			//DrawBG(renderer, players[0].Position, Range, texture);
+			DrawBG(renderer, players[0].Position, Range, texture);
 			//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 			
-			DrawPlayer(renderer, Range, std::ref(players));
+			//DrawPlayer(renderer, Range, std::ref(players));
 			SDL_RenderPresent(renderer);
 			SDL_Delay(1000 / 10);
 	}
 	void PlayerMovement(Vector3& playerDirection, Vector3& range, Player& player, int& inventorySlot)  { 
 		
 		playerDirection.x = 0;  
-		bool OnGround = ChunckManager::Collition(player.Position, { 0, -1 }, range.x, range.y, false, false);
+		Vector3 pos = { player.Position.x, player.Position.y - 1, player.Position.z };
+		bool OnGround = ChunckManager::Collition(pos, range.x, range.y, false, false);
 
 		if (!OnGround) {  
 			playerDirection.y -= 0.5f;  
@@ -297,10 +297,13 @@ namespace BitMiner {
 		playerDirection.x = SDL_clamp(playerDirection.x, -1, 1);  
 		playerDirection.y = SDL_clamp(playerDirection.y, -1, 1);  
 
-		if (playerDirection.x != 0 && !ChunckManager::Collition(player.Position, { playerDirection.x, 0 }, range.x, range.y, false, false)) {
+		Vector3 pos1 = { player.Position.x + playerDirection.x, player.Position.y, player.Position.z };
+        if (playerDirection.x != 0 && !ChunckManager::Collition(pos, range.x, range.y, false, false)) {
 			player.Position.x += playerDirection.x;  
 		}  
-		if (playerDirection.y != 0 && !ChunckManager::Collition(player.Position, { 0, playerDirection.y }, range.x, range.y, false, false)) {
+
+		Vector3 pos2 = { player.Position.x, player.Position.y + playerDirection.y, player.Position.z };
+		if (playerDirection.y != 0 && !ChunckManager::Collition(pos, range.x, range.y, false, false)) {
 			player.Position.y += playerDirection.y;  
 		}  
 
@@ -310,13 +313,13 @@ namespace BitMiner {
 
 	void GameLoop(bool& running, GameClient& game)
 	{
-		game.add_player({ {800.0, 64.0}, {255, 0, 0} });
+		game.add_player({ {10.0f, 64.0f, 10.0f}, {255, 0, 0} });
 
 		game.MakeClient();
 		game.set_seed();
 		game.set_color();
 
-		Vector3 Range = { 16, 10 };
+		Vector3 Range = { 16, 10 , 16};
 		int width = 600;
 		int height = 400;
 

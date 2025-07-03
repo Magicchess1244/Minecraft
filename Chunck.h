@@ -5,13 +5,14 @@
 
 class ChunckPrefab {
 public:
-	const int xSize = 16;
+	const int xSize = 32;
 	const int ySize = 64;
 	int xPos = -1;
+	int zPos = -1;
 	int Height;
 	Biome biome;
 
-	int Blocks[16][64] = { 0 };
+	int Blocks[32][64][32] = {0};
 	void ShowChunk();
 	void GenerateChunk();
 private:
