@@ -63,21 +63,73 @@ namespace ChunckManager {
 
 		return { u, v };
 	}
+	void DrawFace(Mesh& mesh, int quadIndex, Vector3 Pos, float fov, int blockID, FaceDirection dir, float pitch)
+	{
+		SDL_FColor color = { 1, 1, 1, 1 };
+		int vIndex = quadIndex * 4;
+		int iIndex = quadIndex * 6;
+
+		// Define a unit quad in the XY plane (bottom-left origin)
+		Vector3 verts[4] = {
+			{0, 0, 0},
+			{BlockSize, 0, 0},
+			{0, BlockSize, 0},
+			{BlockSize, BlockSize, 0}
+		};
+
+		// Rotate the quad to the correct face direction
+		for (int i = 0; i < 4; i++)
+		{
+			float vx = verts[i].x;
+			float vy = verts[i].y;
+			float vz = verts[i].z;
+
+			switch (dir) {
+			case FACE_FRONT:   verts[i] = { Pos.x + vx,     Pos.y + vy,     Pos.z + BlockSize }; break;
+			case FACE_BACK:    verts[i] = { Pos.x + vx,     Pos.y + vy,     Pos.z };            break;
+			case FACE_LEFT:    verts[i] = { Pos.x,          Pos.y + vy,     Pos.z + vx };       break;
+			case FACE_RIGHT:   verts[i] = { Pos.x + BlockSize, Pos.y + vy,  Pos.z + vx };       break;
+			case FACE_TOP:     verts[i] = { Pos.x + vx,     Pos.y + BlockSize, Pos.z + vz };    break;
+			case FACE_BOTTOM:  verts[i] = { Pos.x + vx,     Pos.y,          Pos.z + vz };       break;
+			}
+		}
+		for (int i = 0; i < 4; i++) {
+		// Project to 2D
+			float px = verts[i].x;
+			float py = verts[i].y;
+			float pz = verts[i].z;
+
+			float screenX = px / (pz * fov);
+			float screenY = py / (pz * fov);
+
+			mesh.Vertices[vIndex + i] = {
+				{ screenX, screenY },
+				color,
+				getUV(blockID, i % 2, (int)i / 2)
+			};
+		}
+
+		// Add indices for two triangles
+		mesh.Indices[iIndex + 0] = vIndex + 0;
+		mesh.Indices[iIndex + 1] = vIndex + 1;
+		mesh.Indices[iIndex + 2] = vIndex + 2;
+		mesh.Indices[iIndex + 3] = vIndex + 2;
+		mesh.Indices[iIndex + 4] = vIndex + 1;
+		mesh.Indices[iIndex + 5] = vIndex + 3;
+	}
 	void RenderChunk(Vector3 cameraPos, Mesh& mesh, int& faces) {
 		int chunkX = (int)cameraPos.x;
 		int chunkZ = (int)cameraPos.z;
 
 		ChunckPrefab& chunk = Chunks[chunkX][chunkZ];
-		const float fov = 1.0f; //tanf((45.0f / 180.0f) * 3.14159f / 2.0f);
+		const float fov = 1;//(float)tanf((45.0f / 2.0f / 180.0f) * 3.14159f);
 		int quadIndex = 0;
 
-		for (int y = 0; y < Chunks[chunkX][chunkZ].ySize; y++) {
-			for (int x = 0; x < Chunks[chunkX][chunkZ].xSize; x++) {
+		for (int y = 0; y < Chunks[chunkX][chunkZ].ySize - cameraPos.y; y++) {
+			for (int x = 0; x < Chunks[chunkX][chunkZ].xSize - cameraPos.x; x++) {
 				for (int z = 1; z < 2; z++) {
 					int blockID = Chunks[chunkX][chunkZ].Blocks[x][y][z];
 					if (blockID == 0) continue;
-
-					SDL_FColor color = { 1, 1, 1, 1 }; // Use BlockDef[blockID].Color if available
 
 					float FlipX = (x + chunk.xPos - cameraPos.x) * BlockSize;
 					float FlipY = (chunk.ySize - y - 1 - cameraPos.y) * BlockSize;
@@ -85,23 +137,28 @@ namespace ChunckManager {
 
 					if (FlipZ == 0) FlipZ = 0.0001f;
 
-					int vIndex = quadIndex * 4;
-					int iIndex = quadIndex * 6;
-
-					mesh.Vertices[vIndex + 0] = { {FlipX / (FlipZ * fov), FlipY / (FlipZ * fov)}, color };//, getUV(blockID, 0, 0) };
-					mesh.Vertices[vIndex + 1] = { {(FlipX + BlockSize) / (FlipZ * fov), FlipY / (FlipZ * fov)}, color };//, getUV(blockID, 1, 0) };
-					mesh.Vertices[vIndex + 2] = { {FlipX / (FlipZ * fov), (FlipY + BlockSize) / (FlipZ * fov)}, color };//, getUV(blockID, 0, 1) };
-					mesh.Vertices[vIndex + 3] = { {(FlipX + BlockSize) / (FlipZ * fov), (FlipY + BlockSize) / (FlipZ * fov)}, color }; //, getUV(blockID, 1, 1) };
-
-					mesh.Indices[iIndex + 0] = vIndex + 0;
-					mesh.Indices[iIndex + 1] = vIndex + 1;
-					mesh.Indices[iIndex + 2] = vIndex + 2;
-					mesh.Indices[iIndex + 3] = vIndex + 2;
-					mesh.Indices[iIndex + 4] = vIndex + 1;
-					mesh.Indices[iIndex + 5] = vIndex + 3;
-
-					quadIndex++;
-					faces++;
+					for (int i = -1; i < 2; i += 2)
+					{
+						chunkX = (int)SDL_clamp(cameraPos.x + i, 0, INFINITY) / chunk.xSize;
+						chunkZ = (int)SDL_clamp(cameraPos.z + i, 0, INFINITY) / chunk.xSize;
+						if (isTransparent(Chunks[chunkX][chunkZ].Blocks[(x + i) % chunk.xSize][y][z]))
+						{
+							DrawFace(std::ref(mesh), quadIndex, { FlipX, FlipY, FlipZ }, fov, blockID, FaceDirection(FACE_LEFT + ((i + 1) / 2)), 0);
+							quadIndex++;
+							faces++;
+						}if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][(z + i) % chunk.ySize][z]))
+						{
+							DrawFace(std::ref(mesh), quadIndex, { FlipX, FlipY, FlipZ }, fov, blockID, FaceDirection(FACE_BOTTOM + ((i + 1) / 2)), 0);
+							quadIndex++;
+							faces++;
+						}
+						if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][y][(z + i) % chunk.xSize]))
+						{
+							DrawFace(std::ref(mesh), quadIndex, { FlipX, FlipY, FlipZ }, fov, blockID, FaceDirection(FACE_FRONT + ((i + 1) / 2)), 0);
+							quadIndex++;
+							faces++;
+						}
+					}
 				}
 			}
 		}

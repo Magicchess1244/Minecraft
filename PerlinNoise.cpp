@@ -6,8 +6,8 @@
 #define PI 3.1415926535
 #define AngleToRadians(angle) ((angle * 36) * (PI / 180.0f))
 
-short xGradients[500][10][500];
-short zGradients[500][10][500];
+short xGradients[100][10][100];
+short zGradients[100][10][100];
 
 float DotProduct(Vector3 a, Vector3 b)
 {
@@ -124,9 +124,9 @@ float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency)
 }
 void SetGradients()
 {
-	for (int x = 0; x < 500; x++) {
+	for (int x = 0; x < 100; x++) {
 		for (int y = 0; y < 10; y++) {
-			for (int z = 0; z < 500; z++) {
+			for (int z = 0; z < 100; z++) {
 				xGradients[x][y][z] = rand() % 10;
 				zGradients[x][y][z] = rand() % 10;
 			}

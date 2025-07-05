@@ -7,12 +7,10 @@
 #include <string>
 
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "SDL3.lib")
 #pragma comment(lib, "SDL3_ttf.lib")
 #pragma comment(lib, "SDL3_image.lib")
 
-Vector3 vectors[] = {
-	{ 50, 50, 10 }, { 50, 100, 1 }, { 100, 50, 1 }, { 100, 100, 1 }
-};
 std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
 	std::vector<std::string> tokens;
 	size_t start = 0;
@@ -71,6 +69,8 @@ void GameClient::set_color() {
 	}
 }
 
+const float FOV = (float)tanf((45.0f / 2.0f / 180.0f) * 3.14159f);
+
 //UI function
 namespace BitMiner {
 	int FindSlot(std::vector<Slot>& Inventory, short Type) {
@@ -118,12 +118,6 @@ namespace BitMiner {
 			floorf(PlayerPos.z / 32)
 		};
 
-		int RelativeX = ((int)PlayerPos.x) % 32;
-		int RelativeZ = ((int)PlayerPos.z) % 32;
-
-		int xRange = Range.x - RelativeX;
-		int zRange = Range.z - RelativeZ;
-
 		Mesh mesh = { 0 };
 		int faces = 0;
 
@@ -132,11 +126,10 @@ namespace BitMiner {
 
 		SDL_RenderGeometry(Renderer, texture, mesh.Vertices, faces * 4, mesh.Indices, faces * 6);
 	}
-
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 	{
 		//Other player
-		for (Player Position : PlayerPos)
+		for (const Player Position : PlayerPos)
 		{
 			int dx = (int)(Position.Position.x - PlayerPos[0].Position.x);
 			int dy = (int)(Position.Position.y - PlayerPos[0].Position.y);
@@ -176,7 +169,6 @@ namespace BitMiner {
 		};
 		SDL_RenderFillRect(Renderer, &InsidePlayerRect);
 	}
-
 	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer)
 	{
 	   if (SDL_Init(SDL_INIT_VIDEO) < 0) { // Fixing SDL_Init condition
@@ -212,6 +204,21 @@ namespace BitMiner {
 		   return -1;
 	   }
 	   return 0; // Ensure function returns success
+	}
+	void Face(Mesh& mesh, int iIndex = 0, int vIndex = 0, Player players = {}, Vector3 verts[4] = {}, SDL_FColor color = {})
+	{
+		for (int i = 0; i < 4; i++)
+		{
+			mesh.Vertices[i + iIndex].position = { (verts[i].x + players.Position.x) / ((verts[i].z + players.Position.z) * FOV) , (verts[i].y + players.Position.y) / ((verts[i].z + players.Position.z) * FOV) };
+			mesh.Vertices[i + iIndex].color = color;
+		}
+
+		mesh.Indices[iIndex + 0] = vIndex + 0;
+		mesh.Indices[iIndex + 1] = vIndex + 1;
+		mesh.Indices[iIndex + 2] = vIndex + 2;
+		mesh.Indices[iIndex + 3] = vIndex + 2;
+		mesh.Indices[iIndex + 4] = vIndex + 1;
+		mesh.Indices[iIndex + 5] = vIndex + 3;
 	}
 	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture)
 	{
@@ -273,6 +280,29 @@ namespace BitMiner {
 			SDL_SetRenderDrawColor(renderer, 0, 178, 255, 255);
 			SDL_RenderClear(renderer);
 
+			Mesh mesh = { 0 };	
+			Vector3 Front[4] = {
+				{0, 0, 0},
+				{BlockSize, 0, 0},
+				{0, BlockSize, 0},
+				{BlockSize, BlockSize, 0}
+			};
+			Vector3 Right[4] = {
+				{BlockSize, 0, 0},
+				{BlockSize, 0, BlockSize},
+				{BlockSize, BlockSize, 0},
+				{BlockSize, BlockSize, BlockSize},
+			};
+
+			int iIndex = 0, vIndex = 0;
+
+			//Face(std::ref(mesh), iIndex, vIndex, players[0], Front, {1, 0, 0, 1});
+			//iIndex += 6;
+			//vIndex += 4;
+			
+			Face(std::ref(mesh), iIndex, vIndex, players[0], Right, { 0, 1, 0, 1 });
+
+			SDL_RenderGeometry(renderer, nullptr, mesh.Vertices, 8, mesh.Indices, 12);
 			DrawBG(renderer, players[0].Position, Range, texture);
 			//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 			
@@ -313,11 +343,11 @@ namespace BitMiner {
 
 	void GameLoop(bool& running, GameClient& game)
 	{
-		game.add_player({ {10.0f, 64.0f, 10.0f}, {255, 0, 0} });
+		game.add_player({ {1.0f, 24.0f, 1.0f}, {255, 0, 0} });
 
-		game.MakeClient();
-		game.set_seed();
-		game.set_color();
+		//game.MakeClient();
+		//game.set_seed();
+		//game.set_color();
 
 		Vector3 Range = { 16, 10 , 16};
 		int width = 600;
@@ -343,9 +373,6 @@ namespace BitMiner {
 		int inventorySlot = 0;
 
 		SetUpRender(&window, &renderer);
-
-		char buffer[MAX_PATH];
-		GetModuleFileNameA(NULL, buffer, MAX_PATH);
 
 		TTF_Font* font = TTF_OpenFont("Quantico-Bold.ttf", 24);
 

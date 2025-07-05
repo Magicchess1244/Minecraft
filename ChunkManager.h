@@ -25,11 +25,20 @@ typedef struct {
 	bool Top;
 	bool Water;
 } Block;
+enum FaceDirection {
+	FACE_FRONT,
+	FACE_BACK,
+	FACE_LEFT,
+	FACE_RIGHT,
+	FACE_BOTTOM,
+	FACE_TOP
+};
 
 extern Block BlockDef[BlockNum];
 extern int BlockSize;
 namespace ChunckManager {
 	void ChunkGenerator(Vector3 Chunk);
+	void DrawFace(Mesh& mesh, int quadIndex, Vector3 Pos, float fov, int blockID, FaceDirection dir, float pitch);
 	void RenderChunk(Vector3 cameraPos, Mesh& mesh, int& faces);
 	void PrintChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange);
 	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
