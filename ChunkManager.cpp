@@ -20,6 +20,41 @@ Block BlockDef[BlockNum] = {
 	{"Water", 5, { 0, 0.4f, 0.8f, 1 }, NULL, false, true}
 };
 
+Mesh mesh {};
+Vector3 Verts[6][4] = {
+	{//Front
+		{ 0, 0, 0 },
+		{BlockSize, 0, 0},
+		{0, BlockSize, 0},
+		{BlockSize, BlockSize, 0} },
+	{//Back
+		{BlockSize, 0, BlockSize},
+		{0, 0, BlockSize},
+		{BlockSize, BlockSize, BlockSize},
+		{0, BlockSize, BlockSize} },
+	{//Right
+		{BlockSize, 0, 0},
+		{BlockSize, 0, BlockSize},
+		{BlockSize, BlockSize, 0},
+		{BlockSize, BlockSize, BlockSize} },
+	{//Left
+		{0, 0, BlockSize},
+		{0, 0, 0},
+		{0, BlockSize, BlockSize},
+		{0, BlockSize, 0} },
+	{//Top
+		{0, BlockSize, 0},
+		{BlockSize, BlockSize, 0},
+		{0, BlockSize, BlockSize},
+		{BlockSize, BlockSize, BlockSize} },
+	{//Bottom
+		{0, 0, 0},
+		{BlockSize, 0, 0},
+		{0, 0, BlockSize},
+		{BlockSize, 0, BlockSize}
+	}
+};
+
 int BlockSize = 50;
 
 namespace ChunckManager {
@@ -63,66 +98,50 @@ namespace ChunckManager {
 
 		return { u, v };
 	}
-	void DrawFace(Mesh& mesh, int quadIndex, Vector3 Pos, float fov, int blockID, FaceDirection dir, float pitch)
+	void Face(Mesh& mesh, int FOV, Vector3 cameraPos, Vector3 blockPos, Vector3 verts[4] = {}, int color = 0, Vector3 ScreenSize = {})
 	{
-		SDL_FColor color = { 1, 1, 1, 1 };
-		int vIndex = quadIndex * 4;
-		int iIndex = quadIndex * 6;
-
-		// Define a unit quad in the XY plane (bottom-left origin)
-		Vector3 verts[4] = {
-			{0, 0, 0},
-			{BlockSize, 0, 0},
-			{0, BlockSize, 0},
-			{BlockSize, BlockSize, 0}
-		};
-
-		// Rotate the quad to the correct face direction
-		for (int i = 0; i < 4; i++)
-		{
-			float vx = verts[i].x;
-			float vy = verts[i].y;
-			float vz = verts[i].z;
-
-			switch (dir) {
-			case FACE_FRONT:   verts[i] = { Pos.x + vx,     Pos.y + vy,     Pos.z + BlockSize }; break;
-			case FACE_BACK:    verts[i] = { Pos.x + vx,     Pos.y + vy,     Pos.z };            break;
-			case FACE_LEFT:    verts[i] = { Pos.x,          Pos.y + vy,     Pos.z + vx };       break;
-			case FACE_RIGHT:   verts[i] = { Pos.x + BlockSize, Pos.y + vy,  Pos.z + vx };       break;
-			case FACE_TOP:     verts[i] = { Pos.x + vx,     Pos.y + BlockSize, Pos.z + vz };    break;
-			case FACE_BOTTOM:  verts[i] = { Pos.x + vx,     Pos.y,          Pos.z + vz };       break;
-			}
-		}
+		//std::cout << "\n \n";
 		for (int i = 0; i < 4; i++) {
-		// Project to 2D
-			float px = verts[i].x;
-			float py = verts[i].y;
-			float pz = verts[i].z;
+			float Px = verts[i].x - cameraPos.x;
+			float Py = verts[i].y - cameraPos.y;
+			float Pz = verts[i].z - cameraPos.z;
 
-			float screenX = px / (pz * fov);
-			float screenY = py / (pz * fov);
+			//std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
 
-			mesh.Vertices[vIndex + i] = {
-				{ screenX, screenY },
-				color,
-				getUV(blockID, i % 2, (int)i / 2)
-			};
+			float screenX = Px;
+			float screenY = Py;
+
+			if (Pz != 0.0f) {
+				screenX = (Px / (Pz * FOV)) + (ScreenSize.x / 2.0f);
+				screenY = (Py / (Pz * FOV)) + (ScreenSize.y / 2.0f);
+			}
+			else {
+				screenX += ScreenSize.x / 2.0f;
+				screenY += ScreenSize.y / 2.0f;
+			}
+			//std::cout << " 2D:\t Px: " << screenX << " Py: " << screenY << std::endl;
+
+			mesh.Vertices.push_back({ screenX, screenY });
+			mesh.Vertices.back().color = BlockDef[color].Color;
 		}
 
-		// Add indices for two triangles
-		mesh.Indices[iIndex + 0] = vIndex + 0;
-		mesh.Indices[iIndex + 1] = vIndex + 1;
-		mesh.Indices[iIndex + 2] = vIndex + 2;
-		mesh.Indices[iIndex + 3] = vIndex + 2;
-		mesh.Indices[iIndex + 4] = vIndex + 1;
-		mesh.Indices[iIndex + 5] = vIndex + 3;
+		mesh.Indices.push_back(mesh.vIndex + 0);
+		mesh.Indices.push_back(mesh.vIndex + 1);
+		mesh.Indices.push_back(mesh.vIndex + 2);
+
+		mesh.Indices.push_back(mesh.vIndex + 2);
+		mesh.Indices.push_back(mesh.vIndex + 1);
+		mesh.Indices.push_back(mesh.vIndex + 3);
+
+		mesh.iIndex += 6;
+		mesh.vIndex += 4;
 	}
-	void RenderChunk(Vector3 cameraPos, Mesh& mesh, int& faces) {
+	void RenderChunk(Vector3 cameraPos, Vector3 screenSize, Mesh& mesh, int& faces) {
 		int chunkX = (int)cameraPos.x;
 		int chunkZ = (int)cameraPos.z;
 
 		ChunckPrefab& chunk = Chunks[chunkX][chunkZ];
-		const float fov = 1;//(float)tanf((45.0f / 2.0f / 180.0f) * 3.14159f);
+		const float fov = (float)tanf((45.0f / 2.0f / 180.0f) * 3.14159f);
 		int quadIndex = 0;
 
 		for (int y = 0; y < Chunks[chunkX][chunkZ].ySize - cameraPos.y; y++) {
@@ -135,26 +154,21 @@ namespace ChunckManager {
 					float FlipY = (chunk.ySize - y - 1 - cameraPos.y) * BlockSize;
 					float FlipZ = (z + chunk.zPos - cameraPos.z) * BlockSize;
 
-					if (FlipZ == 0) FlipZ = 0.0001f;
-
+					Vector3 blockPos = { FlipX, FlipY, FlipZ };
 					for (int i = -1; i < 2; i += 2)
 					{
 						chunkX = (int)SDL_clamp(cameraPos.x + i, 0, INFINITY) / chunk.xSize;
 						chunkZ = (int)SDL_clamp(cameraPos.z + i, 0, INFINITY) / chunk.xSize;
-						if (isTransparent(Chunks[chunkX][chunkZ].Blocks[(x + i) % chunk.xSize][y][z]))
-						{
-							DrawFace(std::ref(mesh), quadIndex, { FlipX, FlipY, FlipZ }, fov, blockID, FaceDirection(FACE_LEFT + ((i + 1) / 2)), 0);
+						if (isTransparent(Chunks[chunkX][chunkZ].Blocks[(x + i) % chunk.xSize][y][z])) {
+							Face(std::ref(mesh), fov, cameraPos, blockPos,Verts[3 - (int)((i + 1) / 2)], blockID, screenSize);
 							quadIndex++;
 							faces++;
-						}if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][(z + i) % chunk.ySize][z]))
-						{
-							DrawFace(std::ref(mesh), quadIndex, { FlipX, FlipY, FlipZ }, fov, blockID, FaceDirection(FACE_BOTTOM + ((i + 1) / 2)), 0);
+						} if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][(z + i) % chunk.ySize][z])) {
+							Face(std::ref(mesh), fov, cameraPos, blockPos, Verts[5 - (int)((i + 1) / 2)], blockID, screenSize);
 							quadIndex++;
 							faces++;
-						}
-						if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][y][(z + i) % chunk.xSize]))
-						{
-							DrawFace(std::ref(mesh), quadIndex, { FlipX, FlipY, FlipZ }, fov, blockID, FaceDirection(FACE_FRONT + ((i + 1) / 2)), 0);
+						} if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][y][(z + i) % chunk.xSize])) {
+							Face(std::ref(mesh), fov, cameraPos, blockPos, Verts[1 - (int)((i + 1) / 2)], blockID, screenSize);
 							quadIndex++;
 							faces++;
 						}

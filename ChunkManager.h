@@ -10,8 +10,10 @@
 
 typedef struct
 {
-	SDL_Vertex Vertices[1024 * 4];
-	int Indices[1024 * 6];
+	std::vector<SDL_Vertex> Vertices;
+	std::vector<int> Indices;
+	int faces = 0, iIndex = 0, vIndex = 0;
+
 } Mesh;
 typedef struct  {
 	short Amount;
@@ -25,20 +27,13 @@ typedef struct {
 	bool Top;
 	bool Water;
 } Block;
-enum FaceDirection {
-	FACE_FRONT,
-	FACE_BACK,
-	FACE_LEFT,
-	FACE_RIGHT,
-	FACE_BOTTOM,
-	FACE_TOP
-};
 
 extern Block BlockDef[BlockNum];
 extern int BlockSize;
+
 namespace ChunckManager {
 	void ChunkGenerator(Vector3 Chunk);
-	void DrawFace(Mesh& mesh, int quadIndex, Vector3 Pos, float fov, int blockID, FaceDirection dir, float pitch);
+	void Face(Mesh& mesh, int FOV, Vector3 cameraPos, Vector3 blockPos,Vector3 verts[4] = {}, int color = 0, Vector3 ScreenSize = {});
 	void RenderChunk(Vector3 cameraPos, Mesh& mesh, int& faces);
 	void PrintChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange);
 	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
