@@ -124,17 +124,16 @@ namespace ChunckManager {
 			mesh.Vertices.push_back({ screenX, screenY });
 			mesh.Vertices.back().color = BlockDef[color].Color;
 		}
+		int vIndex = mesh.faces;
 
-		mesh.Indices.push_back(mesh.vIndex + 0);
-		mesh.Indices.push_back(mesh.vIndex + 1);
-		mesh.Indices.push_back(mesh.vIndex + 2);
+		mesh.Indices.push_back(vIndex + 0);
+		mesh.Indices.push_back(vIndex + 1);
+		mesh.Indices.push_back(vIndex + 2);
 
-		mesh.Indices.push_back(mesh.vIndex + 2);
-		mesh.Indices.push_back(mesh.vIndex + 1);
-		mesh.Indices.push_back(mesh.vIndex + 3);
+		mesh.Indices.push_back(vIndex + 2);
+		mesh.Indices.push_back(vIndex + 1);
+		mesh.Indices.push_back(vIndex + 3);
 
-		mesh.iIndex += 6;
-		mesh.vIndex += 4;
 	}
 	void RenderChunk(Vector3 cameraPos, Vector3 screenSize, Mesh& mesh, int& faces) {
 		int chunkX = (int)cameraPos.x;
@@ -142,7 +141,6 @@ namespace ChunckManager {
 
 		ChunckPrefab& chunk = Chunks[chunkX][chunkZ];
 		const float fov = (float)tanf((45.0f / 2.0f / 180.0f) * 3.14159f);
-		int quadIndex = 0;
 
 		for (int y = 0; y < Chunks[chunkX][chunkZ].ySize - cameraPos.y; y++) {
 			for (int x = 0; x < Chunks[chunkX][chunkZ].xSize - cameraPos.x; x++) {
@@ -161,15 +159,12 @@ namespace ChunckManager {
 						chunkZ = (int)SDL_clamp(cameraPos.z + i, 0, INFINITY) / chunk.xSize;
 						if (isTransparent(Chunks[chunkX][chunkZ].Blocks[(x + i) % chunk.xSize][y][z])) {
 							Face(std::ref(mesh), fov, cameraPos, blockPos,Verts[3 - (int)((i + 1) / 2)], blockID, screenSize);
-							quadIndex++;
 							faces++;
 						} if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][(z + i) % chunk.ySize][z])) {
 							Face(std::ref(mesh), fov, cameraPos, blockPos, Verts[5 - (int)((i + 1) / 2)], blockID, screenSize);
-							quadIndex++;
 							faces++;
 						} if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][y][(z + i) % chunk.xSize])) {
 							Face(std::ref(mesh), fov, cameraPos, blockPos, Verts[1 - (int)((i + 1) / 2)], blockID, screenSize);
-							quadIndex++;
 							faces++;
 						}
 					}

@@ -12,7 +12,7 @@ typedef struct
 {
 	std::vector<SDL_Vertex> Vertices;
 	std::vector<int> Indices;
-	int faces = 0, iIndex = 0, vIndex = 0;
+	int faces = 0;
 
 } Mesh;
 typedef struct  {

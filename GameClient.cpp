@@ -324,8 +324,8 @@ namespace BitMiner {
 			SDL_RenderGeometry(renderer, nullptr, mesh.Vertices, 4, mesh.Indices, 6);
 			*/
 
-			//DrawBG(renderer, players[0].Position, Range, texture);
-			//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
+			DrawBG(renderer, players[0].Position, texture);
+			ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 			
 			//DrawPlayer(renderer, Range, std::ref(players));
 			SDL_RenderPresent(renderer);
