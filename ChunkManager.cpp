@@ -7,52 +7,90 @@
 #include <queue>
 #include <utility>
 #include <vector>
+#include <algorithm>
+#include <tuple>
+#include <unordered_map>
 
 #pragma comment(lib, "SDL3_ttf.lib")
+#define PI 3.1415926535
+#define AngleToRadians(angle) ((angle * 36) * (PI / 180.0f))
+#define ADDVECTOR(V1, V2) {V1.x + V2.x, V1.y + V2.y, V1.z + V2.z} 
+#define SUBSVECTOR(V1, V2) {V1.x - V2.x, V1.y - V2.y, V1.z - V2.z} 
+#define BLOCKPOS(V1, V2) {fmodf(V1.x + V2.x, 32.0f), V1.y + V2.y, fmodf(V1.z + V2.z, 32.0f)}
+#define ADDCOLOR(C1, C2) {SDL_clamp(C1.r + C2.r, 0, 1), SDL_clamp(C1.r + C2.r, 0, 1), SDL_clamp(C1.r + C2.r, 0, 1), SDL_clamp(C1.r + C2.r, 0, 1)}
 
-ChunckPrefab Chunks[10][10]{};
+struct FaceToDraw {
+	int index;
+	float avgZ;
+};
+
+namespace std {
+	template<>
+	struct hash<std::tuple<int, int>> {
+		size_t operator()(const std::tuple<int, int>& t) const noexcept {
+			int x = std::get<0>(t);
+			int y = std::get<1>(t);
+			return (std::hash<int>()(x) << 1) ^ std::hash<int>()(y);
+		}
+	};
+}
+
+constexpr float FOV = 0.025f;//(float)tanf((45.0f / 2.0f) / (180.0f * 3.14159f));
+constexpr Vector3 Verts[6][4] = {
+	{//Front
+		{ 0, 0, 0 },
+		{1, 0, 0},
+		{0, 1, 0},
+		{1, 1, 0} },
+	{//Back
+		{ 1, 0, 1 },
+		{0, 0, 1},
+		{1, 1, 1},
+		{0, 1, 1} },
+	{//Right
+		{1, 0, 0},
+		{1, 0, 1},
+		{1, 1, 0},
+		{1, 1, 1} },
+	{//Left
+		{0, 0, 1},
+		{0, 0, 0},
+		{0, 1, 1},
+		{0, 1, 0} },
+	{//Top
+		{0, 1, 0},
+		{1, 1, 0},
+		{0, 1, 1},
+		{1, 1, 1} },
+	{//Bottom
+		{0, 0, 0},
+		{1, 0, 0},
+		{0, 0, 1},
+		{1, 0, 1} 
+	}
+};
+constexpr Vector3 Direction[6] = {
+	{ 0, 0, -1 }, // Front
+	{ 0, 0, 1 },  // Back
+	{ 1, 0, 0 },  // Right
+	{ -1, 0, 0 }, // Left
+	{ 0, 1, 0 },  // Top
+	{ 0, -1, 0 }   // Bottom
+};
+constexpr SDL_FColor Colors[3] = {
+	{0,0,0,1}, // Front / Back
+	{0.05f,0.05f,0.05f,1}, // Right / Left
+	{0.1f,0.1f,0.1f,1}, // Top / Bottom
+};
+
+std::unordered_map<std::tuple<int, int>, ChunkPrefab> Chunks;
 Block BlockDef[BlockNum] = {
-	{"Air", 0, { 0, 0.7f, 1, 1 }, NULL, NULL},
+	{"Air", 0, { 1, 0.7f, 1, 1 }, NULL, NULL},
 	{"Grass", 1, { 0, 0.65f, 0, 1 }, {0,0}, true, false},
 	{"Dirt", 2, { 0.6f, 0.3f, 0.1f, 255 }, {1,3}, true, false},
 	{"Stone", 3, { 0.5f, 0.5f, 0.5f, 1 }, {4, 64}, false, false},
 	{"Bedrock", 4, { 0.2f, 0.2f, 0.2f, 1 }, {0, 3}, false, false},
 	{"Water", 5, { 0, 0.4f, 0.8f, 1 }, NULL, false, true}
-};
-
-Mesh mesh {};
-Vector3 Verts[6][4] = {
-	{//Front
-		{ 0, 0, 0 },
-		{BlockSize, 0, 0},
-		{0, BlockSize, 0},
-		{BlockSize, BlockSize, 0} },
-	{//Back
-		{BlockSize, 0, BlockSize},
-		{0, 0, BlockSize},
-		{BlockSize, BlockSize, BlockSize},
-		{0, BlockSize, BlockSize} },
-	{//Right
-		{BlockSize, 0, 0},
-		{BlockSize, 0, BlockSize},
-		{BlockSize, BlockSize, 0},
-		{BlockSize, BlockSize, BlockSize} },
-	{//Left
-		{0, 0, BlockSize},
-		{0, 0, 0},
-		{0, BlockSize, BlockSize},
-		{0, BlockSize, 0} },
-	{//Top
-		{0, BlockSize, 0},
-		{BlockSize, BlockSize, 0},
-		{0, BlockSize, BlockSize},
-		{BlockSize, BlockSize, BlockSize} },
-	{//Bottom
-		{0, 0, 0},
-		{BlockSize, 0, 0},
-		{0, 0, BlockSize},
-		{BlockSize, 0, BlockSize}
-	}
 };
 
 int BlockSize = 50;
@@ -98,33 +136,69 @@ namespace ChunckManager {
 
 		return { u, v };
 	}
-	void Face(Mesh& mesh, int FOV, Vector3 cameraPos, Vector3 blockPos, Vector3 verts[4] = {}, int color = 0, Vector3 ScreenSize = {})
+	Vector3 rotate(Vector3 point, Vector3 rotation) {
+		float cx = cosf(AngleToRadians(rotation.x)), sx = sinf(AngleToRadians(rotation.x));
+		float cy = cosf(AngleToRadians(rotation.y)), sy = sinf(AngleToRadians(rotation.y));
+		float cz = cosf(AngleToRadians(rotation.z)), sz = sinf(AngleToRadians(rotation.z));
+
+		// Combined rotation matrix R = Ry * Rx * Rz
+		float R[3][3] = {
+			{
+				cy * cz,
+				-cy * sz,
+				sy
+			},
+			{
+				sx * sy * cz + cx * sz,
+				-sx * sy * sz + cx * cz,
+				-sx * cy
+			},
+			{
+				-cx * sy * cz + sx * sz,
+				cx * sy * sz + sx * cz,
+				cx * cy
+			}
+		};
+
+		// Apply rotation: result = R * point
+		Vector3 result;
+		
+		result.x = R[0][0] * point.x + R[0][1] * point.y + R[0][2] * point.z;
+		result.y = R[1][0] * point.x + R[1][1] * point.y + R[1][2] * point.z;
+		result.z = R[2][0] * point.x + R[2][1] * point.y + R[2][2] * point.z;
+
+		return result;
+	}
+	void Face(Mesh& mesh, Vector3 position, Vector3 rotation, Vector3 blocks, int color, Vector3 ScreenSize, int Side)
 	{
+		const Vector3* verts = Verts[Side];
+		
 		//std::cout << "\n \n";
 		for (int i = 0; i < 4; i++) {
-			float Px = verts[i].x - cameraPos.x;
-			float Py = verts[i].y - cameraPos.y;
-			float Pz = verts[i].z - cameraPos.z;
+			float Px = ((verts[i].x + blocks.x) - position.x) * BlockSize;
+			float Py = ((verts[i].y + blocks.y) - position.y) * BlockSize;
+			float Pz = ((verts[i].z + blocks.z) - position.z) * BlockSize;
+
+			Vector3 localPos = rotate({ Px, Py, Pz }, rotation);
 
 			//std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
 
-			float screenX = Px;
-			float screenY = Py;
+			float screenX = localPos.x;
+			float screenY = localPos.y;
 
-			if (Pz != 0.0f) {
-				screenX = (Px / (Pz * FOV)) + (ScreenSize.x / 2.0f);
-				screenY = (Py / (Pz * FOV)) + (ScreenSize.y / 2.0f);
+			if (localPos.z >= 0.01f) {
+				screenX = (localPos.x / (localPos.z * FOV));
+				screenY = (localPos.y / (localPos.z * FOV));
 			}
-			else {
-				screenX += ScreenSize.x / 2.0f;
-				screenY += ScreenSize.y / 2.0f;
-			}
+			screenX += ScreenSize.x / 2.0f;
+			screenY += ScreenSize.y / 2.0f;
+			screenY = ScreenSize.y - screenY;
+
 			//std::cout << " 2D:\t Px: " << screenX << " Py: " << screenY << std::endl;
 
-			mesh.Vertices.push_back({ screenX, screenY });
-			mesh.Vertices.back().color = BlockDef[color].Color;
+			mesh.Vertices.push_back({ { screenX, screenY }, ADDCOLOR(BlockDef[color].Color, Colors[(int)(Side / 2)]) });
 		}
-		int vIndex = mesh.faces;
+		int vIndex = mesh.faces * 4;
 
 		mesh.Indices.push_back(vIndex + 0);
 		mesh.Indices.push_back(vIndex + 1);
@@ -134,45 +208,66 @@ namespace ChunckManager {
 		mesh.Indices.push_back(vIndex + 1);
 		mesh.Indices.push_back(vIndex + 3);
 
+		mesh.faces++;
 	}
-	void RenderChunk(Vector3 cameraPos, Vector3 screenSize, Mesh& mesh, int& faces) {
-		int chunkX = (int)cameraPos.x;
-		int chunkZ = (int)cameraPos.z;
+	void DrawOrdre(Mesh& mesh, Vector3 blockPos, Vector3 cameraPos, Vector3 cameraRot, Vector3 screenSize, int Side, int BlockID)
+	{
+		std::vector<FaceToDraw> facesToDraw;
 
-		ChunckPrefab& chunk = Chunks[chunkX][chunkZ];
-		const float fov = (float)tanf((45.0f / 2.0f / 180.0f) * 3.14159f);
+		float avgZ = 0;
+		for (int j = 0; j < 4; j++) {
+			Vector3 worldVert = ADDVECTOR(blockPos , Verts[Side][j]);
+			Vector3 local = rotate(SUBSVECTOR(worldVert, cameraPos), cameraRot);
+			avgZ += local.z;
+		}
+		avgZ /= 4.0f;
+		facesToDraw.push_back({ Side, avgZ });
 
-		for (int y = 0; y < Chunks[chunkX][chunkZ].ySize - cameraPos.y; y++) {
-			for (int x = 0; x < Chunks[chunkX][chunkZ].xSize - cameraPos.x; x++) {
-				for (int z = 1; z < 2; z++) {
-					int blockID = Chunks[chunkX][chunkZ].Blocks[x][y][z];
+		std::sort(facesToDraw.begin(), facesToDraw.end(), [](const FaceToDraw& a, const FaceToDraw& b) {
+			return a.avgZ > b.avgZ;
+			});
+
+		for (const auto& face : facesToDraw) {
+			//Face(mesh, cameraPos, cameraRot, blockPos, Verts[face.index], BlockID, screenSize, Side);
+		}
+	}
+	void RenderChunk(Vector3 cameraPos, Vector3 cameraRot, Vector3 screenSize, Mesh& mesh) {
+		int chunkX = static_cast<int>(cameraPos.x) / 32;
+		int chunkZ = static_cast<int>(cameraPos.z) / 32;
+
+		ChunkPrefab& chunk = Chunks.find({ chunkX, chunkZ })->second;
+
+		for (int y = 0; y < chunk.ySize; y++) {
+			for (int x = 0; x < chunk.xSize; x++) {
+				for (int z = 0; z < chunk.zSize; z++) {
+
+					int blockID = chunk.Blocks[{x,y,z}];
 					if (blockID == 0) continue;
 
-					float FlipX = (x + chunk.xPos - cameraPos.x) * BlockSize;
-					float FlipY = (chunk.ySize - y - 1 - cameraPos.y) * BlockSize;
-					float FlipZ = (z + chunk.zPos - cameraPos.z) * BlockSize;
+					Vector3 blockPos = { x, y, z };
+					int RelChunkX = (int)(cameraPos.x - 1) / 32;
+					int RelChunkX1 = (int)(cameraPos.x + 1) / 32;
 
-					Vector3 blockPos = { FlipX, FlipY, FlipZ };
-					for (int i = -1; i < 2; i += 2)
+					int RelChunkZ = (int)(cameraPos.z - 1) / 32;
+					int RelChunkZ1 = (int)(cameraPos.z + 1) / 32;
+
+					for (int i = 0; i < 6; i++)
 					{
-						chunkX = (int)SDL_clamp(cameraPos.x + i, 0, INFINITY) / chunk.xSize;
-						chunkZ = (int)SDL_clamp(cameraPos.z + i, 0, INFINITY) / chunk.xSize;
-						if (isTransparent(Chunks[chunkX][chunkZ].Blocks[(x + i) % chunk.xSize][y][z])) {
-							Face(std::ref(mesh), fov, cameraPos, blockPos,Verts[3 - (int)((i + 1) / 2)], blockID, screenSize);
-							faces++;
-						} if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][(z + i) % chunk.ySize][z])) {
-							Face(std::ref(mesh), fov, cameraPos, blockPos, Verts[5 - (int)((i + 1) / 2)], blockID, screenSize);
-							faces++;
-						} if (isTransparent(Chunks[chunkX][chunkZ].Blocks[x][y][(z + i) % chunk.xSize])) {
-							Face(std::ref(mesh), fov, cameraPos, blockPos, Verts[1 - (int)((i + 1) / 2)], blockID, screenSize);
-							faces++;
+						Vector3 RelBlockPos = BLOCKPOS(blockPos, Direction[i]);
+						auto RelChunk = Chunks.find({ RelChunkX, RelChunkZ });
+						if (RelChunk != Chunks.end()) {
+							int bx = static_cast<int>(RelBlockPos.x);
+							int by = static_cast<int>(RelBlockPos.y);
+							int bz = static_cast<int>(RelBlockPos.z);
+							if (isTransparent(RelChunk->second.Blocks[{bx, by, bz}])) {
+								Face(mesh, cameraPos, cameraRot, blockPos, blockID, screenSize, i);
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-
 	bool Collition(Vector3& PlayerPos, int FullRange, int yRange, bool Swim, bool Block)
 	{
 
@@ -186,10 +281,10 @@ namespace ChunckManager {
 
 		//std::cout << "Chunk: " << chunk << ", LocalX: " << localX << ", FootY: " << footY << ", HeadY: " << headY << ", Block Info: " << Chunks[chunk].Blocks[localX][footY] << std::endl;
 
-		bool blockHead = !isTransparent(Chunks[(int)chunk.x][(int)chunk.z].Blocks[localX][newY][localZ]);
+		bool blockHead = !isTransparent(Chunks[{(int)chunk.x, (int)chunk.z}].Blocks[{localX, newY, localZ}]);
 
 		if (Swim && !blockHead) {
-			blockHead = canSwim(Chunks[(int)chunk.x][(int)chunk.z].Blocks[localX][newY][newZ]);
+			blockHead = canSwim(Chunks[{(int)chunk.x, (int)chunk.z}].Blocks[{localX, newY, newZ}]);
 		}
 
 		if (Block) {
@@ -200,6 +295,7 @@ namespace ChunckManager {
 	}
 	bool PlaceBlock(int BlockType, Vector3 Position, int yRange, Vector3 PlayerPosition, short& Type)
 	{
+		/*
 		Position.x = (int)(Position.x / BlockSize) + PlayerPosition.x;
 		Position.y = (yRange - (int)(Position.y / BlockSize) - 1) + PlayerPosition.y;
 
@@ -222,6 +318,8 @@ namespace ChunckManager {
 			//Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y] = BlockType;
 			return true;
 		}
+		return false;
+		*/
 		return false;
 	}
 	void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange)
@@ -329,12 +427,12 @@ namespace ChunckManager {
 
 	void ChunkGenerator(Vector3 Chunk)
 	{
-		if (Chunks[(int)Chunk.x][(int)Chunk.z].xPos == -1 ) {
-			Chunks[(int)Chunk.x][(int)Chunk.z].xPos = Chunk.x * Chunks[(int)Chunk.x][(int)Chunk.z].xSize;
-			Chunks[(int)Chunk.x][(int)Chunk.z].zPos = Chunk.z * Chunks[(int)Chunk.x][(int)Chunk.z].xSize;
-			Chunks[(int)Chunk.x][(int)Chunk.z].GenerateChunk();
-			//SimulateWater(Chunk);
-			return;
-		}
+		if (Chunks.count({ Chunk.x, Chunk.y })) return;
+		
+		ChunkPrefab newChunk;
+		newChunk.xPos = Chunk.x * newChunk.xSize;
+		newChunk.zPos = Chunk.z * newChunk.zSize;
+		newChunk.GenerateChunk();
+		Chunks.emplace(std::make_tuple((int)Chunk.x, (int)Chunk.z), newChunk);
 	}
 }

@@ -3,11 +3,11 @@
 #include "BiomeBuilder.h"
 #include "ChunkManager.h"
 
-void ChunckPrefab::ShowChunk()
+void ChunkPrefab::ShowChunk()
 {
 	for (int y = ySize - 1; y > 0; y--) {
 		for (int x = 0; x < xSize; x++) {
-			if (Blocks[x][y][0] == 1) {
+			if (this->Blocks[{x, y, 0}] == 1) {
 				std::cout << "O";
 			}
 			else {
@@ -17,46 +17,65 @@ void ChunckPrefab::ShowChunk()
 		std::cout << std::endl;
 	}
 }
-void ChunckPrefab::GenerateChunk()
+
+void ChunkPrefab::GenerateChunk()
 {
-	GenerateChunkSurface();
-	GenerateChunkCaves();
+	this->GenerateChunkSurface();
+	//this->GenerateChunkCaves();
 }
-void ChunckPrefab::GenerateChunkSurface()
+
+void ChunkPrefab::GenerateChunkSurface()
 {
+	//std::cout << "here" << std::endl;
+
+	for (int x = 0;x < this->xSize; x++) {
+		for (int y = 0; y < this->ySize; y++) {
+			for (int z = 0; z < this->zSize; z++) {
+				Blocks[{x, y, z}] = 3;
+			}
+		}
+	}
+	/*
 	for (int x = 0; x < this->xSize; x++) {
-		for (int z = 0; z < this->xSize; z++) {
+		for (int z = 0; z < this->zSize; z++) {
 			int Height = (int)(35 + (PerlinNoise({ (float)xPos + x, 0, (float)zPos + z }, 4, 0.1f) * 25));
 			int ActualHeight = Height;
+			std::cout << "Height: " << Height << std::endl;
 
-			if (Height < 33) {
-				Height = 33;
+			if (Height < 35) {
+				Height = 35;
 			}
 
-			for (int y = Height; y > -1; y--) {
-				if (y <= ActualHeight)
+			for (int y = this->ySize; y > -1; y--) {
+				if (y <= ActualHeight + 100)
 				{
+					Blocks[{x,y,z}] = 3;
+					
 					for (int i = 0; i < BlockNum; i++)
 					{
 						if (BlockDef[i].Top && Height - y >= BlockDef[i].SpawningLayer[0] && Height - y <= BlockDef[i].SpawningLayer[1]) {
-							Blocks[x][y][z] = BlockDef[i].BlockId;
+							Blocks[{x, y, z}] = BlockDef[i].BlockId;
 							break;
 						}
 						else if (!BlockDef[i].Top && y >= BlockDef[i].SpawningLayer[0] && y <= BlockDef[i].SpawningLayer[1])
 						{
-							Blocks[x][y][z] = BlockDef[i].BlockId;
+							Blocks[{x, y, z}] = BlockDef[i].BlockId;
 							break;
 						}
 					}
+					
 				}
 				else {
-					Blocks[x][y][z] = 5;
+					Blocks[{x, y, z}] = 5;
 				}
 			}
 		}
 	}
+	*/
+
+	return;
 }
-void ChunckPrefab::GenerateChunkCaves()
+void ChunkPrefab::GenerateChunkCaves()
 {
 	for (int x = 0; x < this->xSize; x++) {
 		for (int z = 0; z < this->xSize; z++) {
@@ -67,8 +86,8 @@ void ChunckPrefab::GenerateChunkCaves()
 				bool CheeseCave = Hole <= -0.9f || Hole >= 0.9f;
 				bool NodleCave = (0.04f > Hole && Hole > -0.04f);
 
-				if ((CheeseCave || NodleCave) && (Blocks[x][y][z] != 4 && Blocks[x][y][z] != 5)) {
-					Blocks[x][y][z] = 0;
+				if ((CheeseCave || NodleCave) && (this->Blocks[{x,y,z}] != 4 && this->Blocks[{x, y, z}] != 5)) {
+					this->Blocks[{x, y, z}] = 0;
 				}
 			}
 		}

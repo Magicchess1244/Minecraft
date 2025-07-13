@@ -6,13 +6,12 @@
 #include <SDL3/SDL.h>
 #include "PerlinNoise.h"
 #include <vector>
-#define BlockNum 6 
 
 typedef struct
 {
 	std::vector<SDL_Vertex> Vertices;
 	std::vector<int> Indices;
-	int faces = 0;
+	int faces;
 
 } Mesh;
 typedef struct  {
@@ -28,13 +27,14 @@ typedef struct {
 	bool Water;
 } Block;
 
+constexpr int BlockNum = 6;
 extern Block BlockDef[BlockNum];
 extern int BlockSize;
 
 namespace ChunckManager {
 	void ChunkGenerator(Vector3 Chunk);
-	void Face(Mesh& mesh, int FOV, Vector3 cameraPos, Vector3 blockPos,Vector3 verts[4] = {}, int color = 0, Vector3 ScreenSize = {});
-	void RenderChunk(Vector3 cameraPos, Mesh& mesh, int& faces);
+	void Face(Mesh& mesh, Vector3 position, Vector3 rotation, Vector3 blocks, int color, Vector3 ScreenSize, int Side);
+	void RenderChunk(Vector3 cameraPos, Vector3 cameraRot, Vector3 screenSize, Mesh& mesh);
 	void PrintChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange);
 	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
 	bool Collition(Vector3& PlayerPos, int FullRange, int yRange, bool Swim, bool Block);

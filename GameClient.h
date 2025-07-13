@@ -22,6 +22,7 @@ enum Commands
 
 typedef struct {
 	Vector3 Position;
+	Vector3 Rotation;
 	Color color;
 } Player;
 
@@ -63,7 +64,11 @@ public:
 
 	void set_color();
 	Color get_color() const {
-		return {255,0,0};
+		if (players.size() > 0) {
+			return players[0].color;
+		}
+
+		return {0,0,0}; // NIGGAS
 	}
 
 	void MakeClient() {
@@ -100,11 +105,11 @@ public:
 
 namespace BitMiner {
 	int FindSlot(std::vector<Slot>& Inventory, short Type);
-	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos, Vector3 Range);
-	void DrawBG(SDL_Renderer* Renderer, Vector3& PlayerPos, SDL_Texture* texture);
+	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos);
+	void DrawBG(SDL_Renderer* Renderer, Player& PlayerPos, Vector3 screenSize, SDL_Texture* texture);
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos);
 	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer);
-	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture, Vector3 ScreenSize);
-	void PlayerMovement(Vector3& playerDirection, Vector3& range, Player& player, int& inventorySlot);
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture, Vector3& PlayerDirection);
+	void PlayerMovement(Vector3& playerDirection, Player& player, int& inventorySlot, SDL_Renderer* renderer, Vector3 screenSize, SDL_Texture* texture);
 	void GameLoop(bool& running, GameClient& game);
 }

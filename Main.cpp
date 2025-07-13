@@ -9,7 +9,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-int main(int Argc, char* Argv[])
+void main()
 {
 	srand(static_cast<unsigned int>(time(0)));
 
@@ -43,5 +43,5 @@ int main(int Argc, char* Argv[])
 
 	std::cout << "Exiting game..." << std::endl;
 
-	return 0;
+	return;
 }

@@ -10,7 +10,8 @@
 #pragma comment(lib, "SDL3.lib")
 #pragma comment(lib, "SDL3_ttf.lib")
 #pragma comment(lib, "SDL3_image.lib")
-const float FOV = (float)tanf((45.0f / 2.0f / 180.0f) * 3.14159f);
+
+const float FOV = (float)tanf((45.0f / 2.0f) / (180.0f * 3.14159f));
 
 std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
 	std::vector<std::string> tokens;
@@ -24,7 +25,6 @@ std::vector<std::string> split(const std::string& s, const std::string& delimite
 	tokens.push_back(s.substr(start));
 	return tokens;
 }
-
 void GameClient::set_seed() {
 	int res;
 	char buf[16];
@@ -62,7 +62,7 @@ void GameClient::set_color() {
 		server_color[i++] = std::stoi(w);
 	}
 
-	std::cout << "New client color: " << server_color[0] << "," << server_color[1] <<"," << server_color[2] << std::endl;
+	std::cout << "New client color: " << server_color[0] << "," << server_color[BlockSize] <<"," << server_color[2] << std::endl;
 
 	std::cout << "niggas online: " << this->players.size() << std::endl;
 	if (this->players.size() > 0) {
@@ -83,11 +83,12 @@ namespace BitMiner {
 		}
 		std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
 	}
-	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos, Vector3 Range) {
+	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos) {
 		const bool* KeyboardState = SDL_GetKeyboardState(NULL);
-		const bool move_up = (KeyboardState[SDL_SCANCODE_W] ||
-			KeyboardState[SDL_SCANCODE_UP] ||
-			KeyboardState[SDL_SCANCODE_SPACE]);
+		const bool move_foward = (KeyboardState[SDL_SCANCODE_W] || KeyboardState[SDL_SCANCODE_UP]);
+		const bool move_backward = (KeyboardState[SDL_SCANCODE_S] || KeyboardState[SDL_SCANCODE_DOWN]);
+		const bool move_up = KeyboardState[SDL_SCANCODE_SPACE];
+		const bool move_down = KeyboardState[SDL_SCANCODE_LSHIFT];
 		const bool move_left = KeyboardState[SDL_SCANCODE_A] || KeyboardState[SDL_SCANCODE_LEFT];
 		const bool move_right = KeyboardState[SDL_SCANCODE_D] || KeyboardState[SDL_SCANCODE_RIGHT];
 
@@ -96,12 +97,12 @@ namespace BitMiner {
 		if (move_left || move_right) {
 			PlayerDirection.x = move_left ? -1 : 1;
 		}
-
-		Vector3 pos = { (float)PlayerPos.x, (float)PlayerPos.y - 1, (float)PlayerPos.z };
-		if (move_up && ChunckManager::Collition(pos, Range.x, Range.y, true, false)) {
-			PlayerDirection.y = 1;
+		if (move_down|| move_up) {
+			PlayerDirection.y = move_down ? -1 : 1;
 		}
-
+		if (move_backward || move_foward) {
+			PlayerDirection.z = move_backward ? -1 : 1;
+		}
 		for (int i = 0; i < 8; ++i) {
 			if (KeyboardState[SDL_SCANCODE_1 + i]) {
 				InventorySlots = i;
@@ -110,19 +111,21 @@ namespace BitMiner {
 			}
 		}
 	}
-	void DrawBG(SDL_Renderer* Renderer, Vector3& PlayerPos, SDL_Texture* texture) {
+	void DrawBG(SDL_Renderer* Renderer, Player& PlayerPos, Vector3 screenSize,SDL_Texture* texture) {
 		Vector3 CurrentChunk = {
-			floorf(PlayerPos.x / 32),
-			floorf(PlayerPos.y),
-			floorf(PlayerPos.z / 32)
+			floorf(PlayerPos.Position.x / 32),
+			floorf(PlayerPos.Position.y),
+			floorf(PlayerPos.Position.z / 32)
 		};
 
-		Mesh mesh;
+		Mesh mesh{};
+		mesh.faces = 0;
 
 		ChunckManager::ChunkGenerator(CurrentChunk);
-		ChunckManager::RenderChunk(PlayerPos, mesh, mesh.faces);
+		ChunckManager::RenderChunk(PlayerPos.Position, PlayerPos.Rotation, screenSize, mesh);
 
-		SDL_RenderGeometry(Renderer, texture, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
+		std::cout << mesh.faces << " faces" << std::endl;
+		SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
 	}
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 	{
@@ -203,32 +206,44 @@ namespace BitMiner {
 	   }
 	   return 0; // Ensure function returns success
 	}
-	void Face(Mesh& mesh, int iIndex = 0, int vIndex = 0, Player players = {}, Vector3 verts[4] = {}, SDL_FColor color = {}, Vector3 ScreenSize = {})
+	void Face(Mesh& mesh, Player players, Vector3 blocks, Vector3 verts[4], SDL_FColor color, Vector3 ScreenSize)
 	{
-		//std::cout << "\n \n";
+		std::cout << "\n \n";
 		for (int i = 0; i < 4; i++) {
-			float Px = verts[i].x - players.Position.x;
-			float Py = verts[i].y - players.Position.y;
-			float Pz = verts[i].z - players.Position.z;
+			float Px = (verts[i].x + blocks.x) - players.Position.x;
+			float Py = (verts[i].y + blocks.y) - players.Position.y;
+			float Pz = (verts[i].z + blocks.z) - players.Position.z;
 
-			//std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
+			float cosYaw = cos(-players.Rotation.y * (3.14159f / 180));
+			float sinYaw = sin(-players.Rotation.y * (3.14159f / 180));
 
-			float screenX = Px;
-			float screenY = Py;
+			float cosPitch = cos(-players.Rotation.x * (3.14159f / 180));
+			float sinPitch = sin(-players.Rotation.x * (3.14159f / 180));
 
-			if (Pz != 0.0f) {
-				screenX = (Px / (Pz * FOV)) + (ScreenSize.x / 2.0f);
-				screenY = (Py / (Pz * FOV)) + (ScreenSize.y / 2.0f);
+			float xRel = Px * cosYaw - Pz * sinYaw;
+			float zRel = Px * sinYaw + Pz * cosYaw;
+			float yRel = Py * cosPitch - zRel * sinPitch;
+			zRel = Py * sinPitch + zRel * cosPitch;
+
+			std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
+
+			float screenX = xRel;
+			float screenY = yRel;
+
+			if (zRel >= 0.01f) {
+				screenX = (xRel / (zRel * FOV));
+				screenY = (yRel / (zRel * FOV));
 			}
-			else {
-				screenX += ScreenSize.x / 2.0f;
-				screenY += ScreenSize.y / 2.0f;
-			}
-			//std::cout << " 2D:\t Px: " << screenX << " Py: " << screenY << std::endl;
+			screenX += ScreenSize.x / 2.0f;
+			screenY += ScreenSize.y / 2.0f;
+			screenY = ScreenSize.y - screenY;
 
-			mesh.Vertices.push_back({ screenX, screenY });
+			std::cout << " 2D:\t Px: " << screenX << " Py: " << screenY << std::endl;
+
+			mesh.Vertices.push_back({ screenX, screenY});
 			mesh.Vertices.back().color = color;
 		}
+		int vIndex = mesh.faces * 4;
 
 		mesh.Indices.push_back(vIndex + 0);
 		mesh.Indices.push_back(vIndex + 1);
@@ -238,8 +253,9 @@ namespace BitMiner {
 		mesh.Indices.push_back(vIndex + 1);
 		mesh.Indices.push_back(vIndex + 3);
 
+		mesh.faces++;
 	}
-	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture, Vector3 ScreenSize)
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture, Vector3& PlayerDirection)
 	{
 			while (SDL_PollEvent(&event)) {
 				if (event.type == SDL_EVENT_QUIT) {
@@ -298,42 +314,33 @@ namespace BitMiner {
 			}
 			SDL_SetRenderDrawColor(renderer, 0, 178, 255, 255);
 			SDL_RenderClear(renderer);
+
 			/*
-						Mesh mesh = {};	
-			Vector3 Front[4] = {
-				{0, 0, 0},
-				{BlockSize, 0, 0},
-				{0, BlockSize, 0},
-				{BlockSize, BlockSize, 0}
-			};
-			Vector3 Right[4] = {
-				{BlockSize, 0, 0},               // v0 - Bottom Front
-				{BlockSize, 0, BlockSize},       // v1 - Top Front
-				{BlockSize, BlockSize, 0},       // v2 - Bottom Back
-				{BlockSize, BlockSize, BlockSize} // v3 - Top Back
-			};
+			Mesh mesh{};
+			mesh.faces = 0;
 
-			int iIndex = 0, vIndex = 0;
+			ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0 }, Verts[1], 1, { (float)width, (float)height });
+			ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0 }, Verts[3], 2, { (float)width, (float)height });
+			ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0}, Verts[0], 3, {(float)width, (float)height});
 
-			//Face(std::ref(mesh), iIndex, vIndex, players[0], Front, {1, 0, 0, 1}, ScreenSize);
-			//iIndex += 6;
-			//vIndex += 4;
-			
-			Face(std::ref(mesh), iIndex, vIndex, players[0], Right, { 0, 1, 0, 1 }, ScreenSize);
-
-			SDL_RenderGeometry(renderer, nullptr, mesh.Vertices, 4, mesh.Indices, 6);
+			SDL_RenderGeometry(renderer, nullptr, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
 			*/
-
-			DrawBG(renderer, players[0].Position, texture);
-			ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
+			Vector3 screenSize = { (float)width, (float)height, 0 };
+			PlayerMovement(PlayerDirection, players[0], inventorySlot, renderer, screenSize, texture);
+			DrawBG(renderer, players[0],{ (float)width, (float)height, 0}, texture);
+			//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 			
 			//DrawPlayer(renderer, Range, std::ref(players));
 			SDL_RenderPresent(renderer);
-			SDL_Delay(1000 / 10);
+			//SDL_Delay(1000 / 10);
 	}
-	void PlayerMovement(Vector3& playerDirection, Vector3& range, Player& player, int& inventorySlot)  { 
+	void PlayerMovement(Vector3& playerDirection, Player& player, int& inventorySlot, SDL_Renderer* renderer, Vector3 screenSize, SDL_Texture* texture)  {
 		
-		playerDirection.x = 0;  
+		playerDirection.x = 0;
+		playerDirection.y = 0;
+		playerDirection.z = 0;
+
+		/*
 		Vector3 pos = { player.Position.x, player.Position.y - 1, player.Position.z };
 		bool OnGround = ChunckManager::Collition(pos, range.x, range.y, false, false);
 
@@ -349,7 +356,7 @@ namespace BitMiner {
 		playerDirection.y = SDL_clamp(playerDirection.y, -1, 1);  
 
 		Vector3 pos1 = { player.Position.x + playerDirection.x, player.Position.y, player.Position.z };
-        if (playerDirection.x != 0 && !ChunckManager::Collition(pos, range.x, range.y, false, false)) {
+		if (playerDirection.x != 0 && !ChunckManager::Collition(pos, range.x, range.y, false, false)) {
 			player.Position.x += playerDirection.x;  
 		}  
 
@@ -360,12 +367,22 @@ namespace BitMiner {
 
 		player.Position.x = SDL_clamp(player.Position.x, 9, 1600 - (int)(range.x / 2));  
 		player.Position.y = SDL_clamp(player.Position.y, -4, 64 - range.y);  
+		*/
+		Input(playerDirection, true, inventorySlot, player.Position);
+		if (playerDirection.x == 0 && playerDirection.y == 0 && playerDirection.z == 0) return;
+			
+		player.Position.x += playerDirection.x;
+		player.Position.y += playerDirection.y;
+		player.Position.z += playerDirection.z;
+
+		//DrawBG(renderer, player, screenSize, texture);
 	}
 
 	void GameLoop(bool& running, GameClient& game)
 	{
-		game.add_player({ {2.0f, 0.0f, -1.0f}, {255, 0, 0} });
-
+		game.add_player({ {20, 66, 0}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}  });
+		auto p = game.get_players();
+		ChunckManager::ChunkGenerator(p[0].Position);
 		//game.MakeClient();
 		//game.set_seed();
 		//game.set_color();
@@ -424,19 +441,16 @@ namespace BitMiner {
 		}
 
 		ChunckManager::Size(width, height, Range.y, Range.x);
-		
-		auto p = game.get_players();
+		DrawBG(renderer, p[0], { (float)width, (float)height, 0 }, texture);
 
 		while (running) {
-			//PlayerMovement(std::ref(playerDirection), std::ref(Range), std::ref(p[0]), std::ref(inventorySlot));
-			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font, texture, { (float)width, (float)height});
+			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font, texture, std::ref(playerDirection));
 		}
 
 		SDL_DestroyRenderer(renderer);
 		SDL_DestroyWindow(window);
 		SDL_Quit();
 		TTF_Quit();
-
 
 		return;
 	}

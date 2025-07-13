@@ -67,7 +67,7 @@ void GameServer::AcceptClients(bool& Running, Vector3 Range)
 			continue;
 		}
 
-		this->add_socket(clientSocket, Player{ Vector3{ 800, 64 }, PlayerColors[player_count] });
+		this->add_socket(clientSocket, Player{ Vector3{ 0, 24, 0 }, Vector3{ 0, 0, 0 }, PlayerColors[player_count] });
 
 		//std::cout << player_count << " clients connected." << std::endl;
 		//std::cout << "Client connected! Socket: " << clientSocket << std::endl;
