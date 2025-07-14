@@ -27,7 +27,7 @@ void ChunkPrefab::GenerateChunk()
 void ChunkPrefab::GenerateChunkSurface()
 {
 	//std::cout << "here" << std::endl;
-
+	/*
 	for (int x = 0;x < this->xSize; x++) {
 		for (int y = 0; y < this->ySize; y++) {
 			for (int z = 0; z < this->zSize; z++) {
@@ -35,10 +35,10 @@ void ChunkPrefab::GenerateChunkSurface()
 			}
 		}
 	}
-	/*
+	*/
 	for (int x = 0; x < this->xSize; x++) {
 		for (int z = 0; z < this->zSize; z++) {
-			int Height = (int)(35 + (PerlinNoise({ (float)xPos + x, 0, (float)zPos + z }, 4, 0.1f) * 25));
+			int Height = (int)(35 + ((float)PerlinNoise({ (float)xPos + x, 0, (float)zPos + z }, 4, 0.1f) * 25));
 			int ActualHeight = Height;
 			std::cout << "Height: " << Height << std::endl;
 
@@ -47,8 +47,10 @@ void ChunkPrefab::GenerateChunkSurface()
 			}
 
 			for (int y = this->ySize; y > -1; y--) {
-				if (y <= ActualHeight + 100)
-				{
+				if (y > Height) {
+					Blocks[{x, y, z}] = 0;
+				}
+				else if (y <= ActualHeight) {
 					Blocks[{x,y,z}] = 3;
 					
 					for (int i = 0; i < BlockNum; i++)
@@ -71,7 +73,6 @@ void ChunkPrefab::GenerateChunkSurface()
 			}
 		}
 	}
-	*/
 
 	return;
 }

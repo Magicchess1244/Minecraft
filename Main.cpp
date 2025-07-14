@@ -29,8 +29,10 @@ void main()
 		} else if (choice == 2) {
 			
 			GameClient client;
-			std::thread(BitMiner::GameLoop, std::ref(is_running), std::ref(client)).detach();
-			while (is_running) {}
+			BitMiner::GameLoop(is_running, client);
+			//std::thread(BitMiner::GameLoop, std::ref(is_running), std::ref(client)).detach();
+			while (is_running) {
+			}
 		}
 		else {
 			std::cout << "Invalid choice.\n";

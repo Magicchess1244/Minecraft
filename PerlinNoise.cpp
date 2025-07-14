@@ -2,16 +2,17 @@
 #include <iostream>
 #include <cmath>
 #include <vector>
+#include <cstdlib>
 
-#define PI 3.1415926535
-#define AngleToRadians(angle) ((angle * 36) * (PI / 180.0f))
+#define PI 3.1415926535f
+#define AngleToRadians(angle) ((angle) * (PI / 180.0f))
 
 short xGradients[100][10][100];
 short zGradients[100][10][100];
 
 float DotProduct(Vector3 a, Vector3 b)
 {
-	return a.x * b.x + a.y * b.y;
+	return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 float Lerp(float a, float b, float t)
 {
@@ -19,104 +20,94 @@ float Lerp(float a, float b, float t)
 }
 float Fade(float t)
 {
-	return 6 * pow(t, 5) - 15 * pow(t, 4) + 10 * pow(t, 3);
+	return t * t * t * (t * (t * 6 - 15) + 10); // Classic Perlin fade function
 }
-float Clamp(float t, float Min, float Max) {
+float Clamp(float t, float Min, float Max)
+{
 	if (t > Max) return Max;
 	else if (t < Min) return Min;
 	else return t;
 }
+Vector3 GradientFromAngles(short xAngle, short zAngle)
+{
+	float theta = AngleToRadians(zAngle); // inclination
+	float phi = AngleToRadians(xAngle);  // azimuth
+
+	return {
+		sinf(theta) * cosf(phi),
+		sinf(theta) * sinf(phi),
+		cosf(theta)
+	};
+}
 float BasicPerlinNoise(float xPos, float yPos, float zPos)
 {
-	const int xMinG = ((int)(xPos / 8));
-	const int yMinG = ((int)(yPos / 8));
-	const int zMinG = ((int)(zPos / 8));
-	const int xMin = xMinG * 8;
-	const int yMin = yMinG * 8;
-	const int zMin = zMinG * 8;
-	const int xMax = xMin + 8;
-	const int yMax = yMin + 8;
-	const int zMax = zMin + 8;
+	int x0 = static_cast<int>(xPos) / 8;
+	int y0 = static_cast<int>(yPos) / 8;
+	int z0 = static_cast<int>(zPos) / 8;
 
-	Vector3 Gra[8] = {};
-	int index = 0;
+	float localX = (xPos - x0 * 8) / 8.0f;
+	float localY = (yPos - y0 * 8) / 8.0f;
+	float localZ = (zPos - z0 * 8) / 8.0f;
 
+	// Collect gradients
+	Vector3 gradients[8];
 	for (int i = 0; i < 2; ++i)
 	{
-		int y0 = yMinG + i;
-		int y1 = yMinG + i + 1;
-		int z0 = zMinG + i;
-
-		// First point
-		float theta = AngleToRadians(zGradients[xMinG][y0][z0]); // inclination
-		float phi = AngleToRadians(xGradients[xMinG][y0][z0]); // azimuth
-		Gra[index] = {
-			sinf(theta) * cosf(phi),
-			sinf(theta) * sinf(phi),
-			cosf(theta)
-		};
-
-		// Second point
-		theta = AngleToRadians(zGradients[xMinG + 1][y0][z0]);
-		phi = AngleToRadians(xGradients[xMinG + 1][y0][z0]);
-		Gra[index + 1] = {
-			sinf(theta) * cosf(phi),
-			sinf(theta) * sinf(phi),
-			cosf(theta)
-		};
-
-		// Third point
-		theta = AngleToRadians(zGradients[xMinG][y1][z0]);
-		phi = AngleToRadians(xGradients[xMinG][y1][z0]);
-		Gra[index + 2] = {
-			sinf(theta) * cosf(phi),
-			sinf(theta) * sinf(phi),
-			cosf(theta)
-		};
-
-		// Fourth point
-		theta = AngleToRadians(zGradients[xMinG + 1][y1][z0]);
-		phi = AngleToRadians(xGradients[xMinG + 1][y1][z0]);
-		Gra[index + 3] = {
-			sinf(theta) * cosf(phi),
-			sinf(theta) * sinf(phi),
-			cosf(theta)
-		};
-
-		index += 4;
+		for (int j = 0; j < 2; ++j)
+		{
+			for (int k = 0; k < 2; ++k)
+			{
+				int index = i * 4 + j * 2 + k;
+				gradients[index] = GradientFromAngles(
+					xGradients[x0 + i][y0 + j][z0 + k],
+					zGradients[x0 + i][y0 + j][z0 + k]
+				);
+			}
+		}
 	}
 
+	// Relative positions
+	Vector3 rel[8] = {
+		{localX,     localY,     localZ},
+		{localX - 1, localY,     localZ},
+		{localX,     localY - 1, localZ},
+		{localX - 1, localY - 1, localZ},
+		{localX,     localY,     localZ - 1},
+		{localX - 1, localY,     localZ - 1},
+		{localX,     localY - 1, localZ - 1},
+		{localX - 1, localY - 1, localZ - 1}
+	};
 
-	Vector3 D0 = { xPos - xMin, yPos - yMin, zPos - zMin };
-	Vector3 D1 = { xPos - xMax, yPos - yMin, zPos - zMin };
-	Vector3 D2 = { xPos - xMin, yPos - yMax, zPos - zMin };
-	Vector3 D3 = { xPos - xMax, yPos - yMax, zPos - zMin };
-	Vector3 D4 = { xPos - xMin, yPos - yMin, zPos - zMax };
-	Vector3 D5 = { xPos - xMax, yPos - yMin, zPos - zMax };
-	Vector3 D6 = { xPos - xMin, yPos - yMax, zPos - zMax };
-	Vector3 D7 = { xPos - xMax, yPos - yMax, zPos - zMax };
+	float dots[8];
+	for (int i = 0; i < 8; ++i)
+		dots[i] = DotProduct(gradients[i], rel[i]);
 
-	std::vector<int> FinalLerp;
+	// Interpolation
+	float u = Fade(localX);
+	float v = Fade(localY);
+	float w = Fade(localZ);
 
-	for (int i = 0; i < 5; i += 4)
-	{
-		float Lerp1 = Lerp(DotProduct(Gra[i], D0), DotProduct(Gra[i + 1], D1), Fade((float)(xPos - xMin) / 8));
-		float Lerp2 = Lerp(DotProduct(Gra[i + 2], D2), DotProduct(Gra[i + 3], D3), Fade((float)(xPos - xMin) / 8));
-		FinalLerp.push_back(Lerp(Lerp1, Lerp2, Fade((float)(yPos - yMin) / 8)));
-	}
-	
-	return Lerp(FinalLerp[0], FinalLerp[1], Fade((float)(zPos - zMin) / 8));
+	// Lerp between 8 corners
+	float x00 = Lerp(dots[0], dots[1], u);
+	float x01 = Lerp(dots[4], dots[5], u);
+	float x10 = Lerp(dots[2], dots[3], u);
+	float x11 = Lerp(dots[6], dots[7], u);
+
+	float Lerp0 = Lerp(x00, x10, v);
+	float Lerp1 = Lerp(x01, x11, v);
+
+	return Lerp(Lerp0, Lerp1, w);
 }
 float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency)
 {
 	float Frequency = ConstFrequency;
-	float Amplitud = ConstFrequency;
+	float Amplitude = ConstFrequency;
 	float FinalNoise = 0.0f;
 
-	for (int i = 0; i <= Octaves; i++){
-		FinalNoise += BasicPerlinNoise(Pos.x * Frequency, Pos.y * Frequency, Pos.z * Frequency) * Amplitud;
-		Frequency *= 2;
-		Amplitud /= 2;
+	for (int i = 0; i <= Octaves; i++) {
+		FinalNoise += BasicPerlinNoise(Pos.x * Frequency, Pos.y * Frequency, Pos.z * Frequency) * Amplitude;
+		Frequency *= 2.0f;
+		Amplitude /= 2.0f;
 	}
 
 	FinalNoise *= 1.2f;
@@ -127,8 +118,8 @@ void SetGradients()
 	for (int x = 0; x < 100; x++) {
 		for (int y = 0; y < 10; y++) {
 			for (int z = 0; z < 100; z++) {
-				xGradients[x][y][z] = rand() % 10;
-				zGradients[x][y][z] = rand() % 10;
+				xGradients[x][y][z] = rand() % 360;
+				zGradients[x][y][z] = rand() % 180;
 			}
 		}
 	}

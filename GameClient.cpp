@@ -8,7 +8,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "SDL3.lib")
-#pragma comment(lib, "SDL3_ttf.lib")
+#pragma comment(lib, "libSDL3_ttf.dll.a")
 #pragma comment(lib, "SDL3_image.lib")
 
 const float FOV = (float)tanf((45.0f / 2.0f) / (180.0f * 3.14159f));
@@ -40,7 +40,6 @@ void GameClient::set_seed() {
 	std::cout << "New client seed: " << server_seed << std::endl;
 	srand(server_seed);
 	this->seed = server_seed;
-	SetGradients();
 }
 void GameClient::set_color() {
 	int res;
@@ -121,11 +120,13 @@ namespace BitMiner {
 		Mesh mesh{};
 		mesh.faces = 0;
 
+		std::cout << "nigga1" << std::endl;
 		ChunckManager::ChunkGenerator(CurrentChunk);
+		std::cout << "nigga2" << std::endl;
 		ChunckManager::RenderChunk(PlayerPos.Position, PlayerPos.Rotation, screenSize, mesh);
-
+		std::cout << "nigga3" << std::endl;
 		std::cout << mesh.faces << " faces" << std::endl;
-		SDL_RenderGeometry(Renderer, nullptr, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
+		SDL_RenderGeometry(Renderer, texture, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
 	}
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 	{
@@ -332,7 +333,7 @@ namespace BitMiner {
 			
 			//DrawPlayer(renderer, Range, std::ref(players));
 			SDL_RenderPresent(renderer);
-			//SDL_Delay(1000 / 10);
+			SDL_Delay(1000 / 10);
 	}
 	void PlayerMovement(Vector3& playerDirection, Player& player, int& inventorySlot, SDL_Renderer* renderer, Vector3 screenSize, SDL_Texture* texture)  {
 		
@@ -382,10 +383,14 @@ namespace BitMiner {
 	{
 		game.add_player({ {20, 66, 0}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}  });
 		auto p = game.get_players();
+		std::cout << "Lol1" << std::endl;
 		ChunckManager::ChunkGenerator(p[0].Position);
+		std::cout << "Lol" << std::endl;
+
 		//game.MakeClient();
 		//game.set_seed();
 		//game.set_color();
+		SetGradients();
 
 		Vector3 Range = { 16, 10 , 16};
 		int width = 600;
@@ -429,7 +434,8 @@ namespace BitMiner {
 
 		SDL_RenderPresent(renderer);
 		*/
-		SDL_Surface* surface = SDL_LoadBMP("Textures.bmp");
+		
+		SDL_Surface* surface = SDL_LoadBMP("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Textures.bmp");
 		if (!surface) {
 			std::cerr << "SDL_LoadBMP failed: " << SDL_GetError() << std::endl;
 		}
@@ -440,17 +446,22 @@ namespace BitMiner {
 			std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
 		}
 
+		std::cout << "Lol2" << std::endl;
 		ChunckManager::Size(width, height, Range.y, Range.x);
-		DrawBG(renderer, p[0], { (float)width, (float)height, 0 }, texture);
+		std::cout << "Lol5" << std::endl;
+		std::cout << "Lol3" << std::endl;
 
 		while (running) {
+			std::cout << "Lol4" << std::endl;
 			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font, texture, std::ref(playerDirection));
 		}
 
+		std::cout << "Exiting game..." << std::endl;
+
 		SDL_DestroyRenderer(renderer);
 		SDL_DestroyWindow(window);
-		SDL_Quit();
 		TTF_Quit();
+		SDL_Quit();
 
 		return;
 	}
