@@ -7,9 +7,9 @@
 #include <string>
 
 #pragma comment(lib, "ws2_32.lib")
-#pragma comment(lib, "SDL3.lib")
-#pragma comment(lib, "libSDL3_ttf.dll.a")
-#pragma comment(lib, "SDL3_image.lib")
+//#pragma comment(lib, "SDL3.lib")
+//#pragma comment(lib, "SDL3_ttf.lib")
+//#pragma comment(lib, "SDL3_image.lib")
 
 const float FOV = (float)tanf((45.0f / 2.0f) / (180.0f * 3.14159f));
 
@@ -120,11 +120,8 @@ namespace BitMiner {
 		Mesh mesh{};
 		mesh.faces = 0;
 
-		std::cout << "nigga1" << std::endl;
 		ChunckManager::ChunkGenerator(CurrentChunk);
-		std::cout << "nigga2" << std::endl;
 		ChunckManager::RenderChunk(PlayerPos.Position, PlayerPos.Rotation, screenSize, mesh);
-		std::cout << "nigga3" << std::endl;
 		std::cout << mesh.faces << " faces" << std::endl;
 		SDL_RenderGeometry(Renderer, texture, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
 	}
@@ -256,7 +253,7 @@ namespace BitMiner {
 
 		mesh.faces++;
 	}
-	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture, Vector3& PlayerDirection)
+	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture, Vector3& PlayerDirection)
 	{
 			while (SDL_PollEvent(&event)) {
 				if (event.type == SDL_EVENT_QUIT) {
@@ -267,7 +264,7 @@ namespace BitMiner {
 					width = event.window.data1;
 					height = event.window.data2;
 
-					ChunckManager::Size(width, height, Range.y, Range.x);
+					//ChunckManager::Size(width, height, Range.y, Range.x);
 				}
 
 				if (event.type == SDL_EVENT_KEY_DOWN)
@@ -286,7 +283,7 @@ namespace BitMiner {
 				else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
 					if (event.button.button == SDL_BUTTON_LEFT) {
 						short Type = 0;
-						if (ChunckManager::PlaceBlock(0, { event.button.x, event.button.y }, Range.y, players[0].Position, std::ref(Type)))
+						if (false)//ChunckManager::PlaceBlock(0, { event.button.x, event.button.y }, Range.y, players[0].Position, std::ref(Type)))
 						{
 							short Slot = FindSlot(inventory, Type);
 							inventory[Slot].Amount++;
@@ -298,7 +295,7 @@ namespace BitMiner {
 					}
 					else if (event.button.button == SDL_BUTTON_RIGHT && inventory[inventorySlot].Amount > 0) {
 						short Type = NULL;
-						if (ChunckManager::PlaceBlock(inventory[inventorySlot].Type, { event.button.x, event.button.y }, Range.y, players[0].Position, Type))
+						if (false)//ChunckManager::PlaceBlock(inventory[inventorySlot].Type, { event.button.x, event.button.y }, Range.y, players[0].Position, Type))
 						{
 							//std::cout << Type << std::endl;
 							//UpdateBlock(Inventory[InventorySlot].Type, (int)Event.button.x, (int)Event.button.y, serverSocket);
@@ -383,16 +380,13 @@ namespace BitMiner {
 	{
 		game.add_player({ {20, 66, 0}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}  });
 		auto p = game.get_players();
-		std::cout << "Lol1" << std::endl;
-		ChunckManager::ChunkGenerator(p[0].Position);
-		std::cout << "Lol" << std::endl;
+		//ChunckManager::ChunkGenerator(p[0].Position);
 
 		//game.MakeClient();
 		//game.set_seed();
 		//game.set_color();
 		SetGradients();
 
-		Vector3 Range = { 16, 10 , 16};
 		int width = 600;
 		int height = 400;
 
@@ -446,14 +440,10 @@ namespace BitMiner {
 			std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
 		}
 
-		std::cout << "Lol2" << std::endl;
-		ChunckManager::Size(width, height, Range.y, Range.x);
-		std::cout << "Lol5" << std::endl;
-		std::cout << "Lol3" << std::endl;
+		//ChunckManager::Size(width, height, Range.y, Range.x);
 
 		while (running) {
-			std::cout << "Lol4" << std::endl;
-			Render(event, renderer, window, Range, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font, texture, std::ref(playerDirection));
+			Render(event, renderer, window, std::ref(width), std::ref(height), std::ref(inventory), std::ref(inventorySlot), std::ref(p), std::ref(running), std::ref(fullScreen), font, texture, std::ref(playerDirection));
 		}
 
 		std::cout << "Exiting game..." << std::endl;

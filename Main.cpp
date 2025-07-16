@@ -9,7 +9,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-void main()
+int main()
 {
 	srand(static_cast<unsigned int>(time(0)));
 
@@ -24,7 +24,8 @@ void main()
 		if (choice == 1) {
 			GameServer server;
 			server.set_seed(rand());
-			std::thread(&GameServer::AcceptClients, &server, std::ref(is_running), Range).detach();
+			server.AcceptClients(std::ref(is_running), Range);
+			//std::thread(&GameServer::AcceptClients, &server, std::ref(is_running), Range).detach();
 			while (is_running) {}
 		} else if (choice == 2) {
 			
@@ -45,5 +46,5 @@ void main()
 
 	std::cout << "Exiting game..." << std::endl;
 
-	return;
+	return 0;
 }

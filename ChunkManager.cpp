@@ -12,13 +12,17 @@
 #include <tuple>
 #include <unordered_map>
 
-#pragma comment(lib, "SDL3_ttf.lib")
+//#pragma comment(lib, "SDL3_ttf.lib")
 
-#define PI 3.1415926535
+constexpr float PI = 3.1415926535;
 #define AngleToRadians(angle) ((angle) * (PI / 180.0f))
 #define ADDVECTOR(V1, V2) {V1.x + V2.x, V1.y + V2.y, V1.z + V2.z} 
 #define SUBSVECTOR(V1, V2) {V1.x - V2.x, V1.y - V2.y, V1.z - V2.z} 
-#define BLOCKPOS(V1, V2) {fmodf(V1.x + V2.x, 32.0f), V1.y + V2.y, fmodf(V1.z + V2.z, 32.0f)}
+#define BLOCKPOS(V1, V2) { \
+    fmodf(fmodf(V1.x + V2.x, 32.0f) + 32.0f, 32.0f), \
+    V1.y + V2.y, \
+    fmodf(fmodf(V1.z + V2.z, 32.0f) + 32.0f, 32.0f) \
+}
 #define ADDCOLOR(C1, C2) {SDL_clamp(C1.r + C2.r, 0, 1), SDL_clamp(C1.g + C2.g, 0, 1), SDL_clamp(C1.b + C2.b, 0, 1), SDL_clamp(C1.a + C2.a, 0, 1)}
 
 struct FaceToDraw {
@@ -43,7 +47,7 @@ namespace std {
 	};
 }
 
-constexpr float FOV = 0.025f;//(float)tanf((45.0f / 2.0f) / (180.0f * 3.14159f));
+constexpr float FOV = 0.8f;//(float)tanf((45.0f / 2.0f) / (180.0f * 3.14159f));
 constexpr Vector3 Verts[6][4] = {
 	{//Front
 		{ 0, 0, 0 },
@@ -145,10 +149,10 @@ namespace ChunckManager {
 		return { u, v };
 	}
 	Vector3 rotate(Vector3 p, Vector3 r) {
-		float cx = cosf(AngleToRadians(r.x)), sx = sinf(AngleToRadians(r.x)); // pitch
-		float cy = cosf(AngleToRadians(r.y)), sy = sinf(AngleToRadians(r.y)); // yaw
-		float cz = cosf(AngleToRadians(r.z)), sz = sinf(AngleToRadians(r.z)); // roll
-
+		float cx = cosf((float)AngleToRadians(r.x)), sx = sinf((float)AngleToRadians(r.x)); // pitch
+		float cy = cosf((float)AngleToRadians(r.y)), sy = sinf((float)AngleToRadians(r.y)); // yaw
+		float cz = cosf((float)AngleToRadians(r.z)), sz = sinf((float)AngleToRadians(r.z)); // roll
+		/*
 		// First rotate around Z (roll)
 		Vector3 p1 = {
 			p.x * cz - p.y * sz,
@@ -165,11 +169,16 @@ namespace ChunckManager {
 
 		// Then Y (yaw)
 		Vector3 result = {
-			p2.x * cy + p2.z * sy,
+		  	p2.x * cy + p2.z * sy,
 			p2.y,
 			-p2.x * sy + p2.z * cy
 		};
-
+		*/
+		Vector3 result = { 
+			p.x * (cy * cx) + p.y * (sy * cx) - p.z * sx,
+			p.x * (cy * sx * sz - sy * cz) + p.y * (sy * sx * sz + cy * cz) + p.z * (cx * cz),
+			p.x * (cy * sx * cz + sy * sz) + p.y * (sy * sx * cz - cy * sz) + p.z * (cx * cz)
+		};
 		return result;
 	}
 	void Face(Mesh& mesh, Vector3 position, Vector3 rotation, Vector3 blocks, int color, Vector3 ScreenSize, int Side)
@@ -224,8 +233,8 @@ namespace ChunckManager {
 		mesh.faces++;
 	}
 	void RenderChunk(Vector3 cameraPos, Vector3 cameraRot, Vector3 screenSize, Mesh& mesh) {
-		int chunkX = floorf(cameraPos.x) / 32;
-		int chunkZ = floorf(cameraPos.z) / 32;
+		int chunkX = (int)floorf((cameraPos.x) / 32);
+		int chunkZ = (int)floorf((cameraPos.z) / 32);
 
 		auto chunkIt = Chunks.find({ chunkX, chunkZ });
 		if (chunkIt == Chunks.end()) return;
@@ -241,55 +250,51 @@ namespace ChunckManager {
 					int blockID = it->second;
 
 					if (blockID == 0) continue;
-					std::cout << "nigga3" << std::endl;
 
-					Vector3 blockPos = { x, y, z };
-					int RelChunkX = floorf(cameraPos.x - 1) / 32;
-					int RelChunkX1 = floorf(cameraPos.x + 1) / 32;
+					Vector3 blockPos = { (float)x, (float)y, (float)z };
+					int RelChunkX = (int)floorf(cameraPos.x - 1) / 32;
+					int RelChunkX1 = (int)floorf(cameraPos.x + 1) / 32;
 
-					int RelChunkZ = floorf(cameraPos.z - 1) / 32;
-					int RelChunkZ1 = floorf(cameraPos.z + 1) / 32;
+					int RelChunkZ = (int)floorf(cameraPos.z - 1) / 32;
+					int RelChunkZ1 = (int)floorf(cameraPos.z + 1) / 32;
 					
-					Vector3 RelChunkPos;
+					Vector3 RelChunkPos = {0, 0, 0};
 
 					for (int i = 0; i < 6; i++)
 					{
-						std::cout << "nigga4" << std::endl;
 						if (blockPos.x == 0) {
-							RelChunkPos.x = RelChunkX;
+							RelChunkPos.x = (float)RelChunkX;
 						} else if (blockPos.x == 31) {
-							RelChunkPos.x = RelChunkX1;
+							RelChunkPos.x = (float)RelChunkX1;
 						} else {
-							RelChunkPos.x = chunkX;
+							RelChunkPos.x = (float)chunkX;
 						}
 
 						if (blockPos.z == 0) {
-							RelChunkPos.z = RelChunkZ;
+							RelChunkPos.z = (float)RelChunkZ;
 						} else if (blockPos.z == 31) {
-							RelChunkPos.z = RelChunkZ1;
+							RelChunkPos.z = (float)RelChunkZ1;
 						} else {
-							RelChunkPos.z = chunkZ;
+							RelChunkPos.z = (float)chunkZ;
 						}
 
 						Vector3 RelBlockPos = BLOCKPOS(blockPos, Direction[i]);
 						auto RelChunkPtr = Chunks.find({ RelChunkPos.x, RelChunkPos.z });
 						if (RelChunkPtr == Chunks.end()) continue;
 						ChunkPrefab RelChunk = RelChunkPtr->second;
-						std::cout << "nigga7" << std::endl;
 
-						int bx = floorf(RelBlockPos.x);
-						int by = floorf(RelBlockPos.y);
-						int bz = floorf(RelBlockPos.z);
+						int bx = (int)floorf(RelBlockPos.x);
+						int by = (int)floorf(RelBlockPos.y);
+						int bz = (int)floorf(RelBlockPos.z);
 
-						if (isTransparent(RelChunk.Blocks.at({bx, by, bz}))) {
+						auto blockIt = RelChunk.Blocks.find({ bx, by, bz });
+						if (blockIt != RelChunk.Blocks.end() && isTransparent(blockIt->second)) {
 							float avgZ = 0;
-							std::cout << "nigga8" << std::endl;
 							for (int j = 0; j < 4; j++) {
 								Vector3 world = ADDVECTOR(blockPos, Verts[i][j]);
 								Vector3 local = rotate(SUBSVECTOR(world, cameraPos), cameraRot);
 								avgZ += local.z;
 							}
-							std::cout << "nigga5" << std::endl;
 							avgZ /= 4.0f;
 							allFaces.push_back({ blockPos, i, blockID, avgZ });
 						}
@@ -298,7 +303,6 @@ namespace ChunckManager {
 				}
 			}
 		}
-		std::cout << "nigga6" << std::endl;
 		std::sort(allFaces.begin(), allFaces.end(), [](const DrawnFace& a, const DrawnFace& b) {
 			return a.avgZ > b.avgZ;
 			});
@@ -313,7 +317,7 @@ namespace ChunckManager {
 		int newY = (int)(PlayerPos.y + (int)(yRange / 2.0f));
 		int newZ = (int)(PlayerPos.z + (int)(FullRange / 2.0f - 1));
 
-		Vector3 chunk = { (int)(newX) / 32, (int)(newZ) / 32 };
+		Vector3 chunk = { floorf((float)(newX) / 32), floorf((float)(newZ) / 32) };
 		int localX = (int)(newX % 32);
 		int localZ = (int)(newZ % 32);
 
@@ -474,8 +478,8 @@ namespace ChunckManager {
 		if (Chunks.find(key) != Chunks.end()) return;
 
 		ChunkPrefab newChunk;
-		newChunk.xPos = ChunkPos.x * newChunk.xSize;
-		newChunk.zPos = ChunkPos.z * newChunk.zSize;
+		newChunk.xPos = (int)ChunkPos.x * newChunk.xSize;
+		newChunk.zPos = (int)ChunkPos.z * newChunk.zSize;
 		newChunk.GenerateChunk();
 		Chunks[key] = newChunk;
 
