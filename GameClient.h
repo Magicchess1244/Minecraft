@@ -110,9 +110,11 @@ namespace std {
 }
 
 namespace BitMiner {
-	std::unordered_map<std::tuple<int, int>, ChunkPrefab> Chunks;
+//	FATAL
+ 	std::unordered_map<std::tuple<int, int>, ChunkPrefab> Chunks;
 
-	ChunkPrefab& get_chunk(int x, int z) {
+	ChunkPrefab& get_chunk(int x, int z)
+	{
 		auto key = std::make_tuple(x, z);
 		if (Chunks.find(key) != Chunks.end()) {
 			return Chunks[key];
@@ -126,6 +128,7 @@ namespace BitMiner {
 			newChunk.zPos = (int)z * newChunk.zSize;
 			newChunk.GenerateChunk();
 			Chunks[key] = newChunk;
+			return Chunks[key];
 		}
 	}
 
