@@ -1,28 +1,23 @@
 #include "PerlinNoise.h"
-#include <iostream>
-#include <cmath>
-#include <vector>
-#include <cstdlib>
-
-#define PI 3.1415926535f
-#define AngleToRadians(angle) ((angle) * (PI / 180.0f))
 
 short xGradients[100][10][100];
 short zGradients[100][10][100];
 
-float DotProduct(Vector3 a, Vector3 b)
+double DotProduct(Vector3 a, Vector3 b)
 {
 	return a.x * b.x + a.y * b.y + a.z * b.z;
 }
-float Lerp(float a, float b, float t)
+
+double Lerp(double a, double b, double t)
 {
 	return a + t * (b - a);
 }
-float Fade(float t)
+double Fade(double t)
 {
 	return t * t * t * (t * (t * 6 - 15) + 10); // Classic Perlin fade function
 }
-float Clamp(float t, float Min, float Max)
+
+double Clamp(double t, double Min, double Max)
 {
 	if (t > Max) return Max;
 	else if (t < Min) return Min;
@@ -30,8 +25,8 @@ float Clamp(float t, float Min, float Max)
 }
 Vector3 GradientFromAngles(short xAngle, short zAngle)
 {
-	float theta = AngleToRadians(zAngle); // inclination
-	float phi = AngleToRadians(xAngle);  // azimuth
+	double theta = AngleToRadians(zAngle); // inclination
+	double phi = AngleToRadians(xAngle);  // azimuth
 
 	return {
 		sinf(theta) * cosf(phi),
@@ -39,18 +34,18 @@ Vector3 GradientFromAngles(short xAngle, short zAngle)
 		cosf(theta)
 	};
 }
-float BasicPerlinNoise(float xPos, float yPos, float zPos)
+double BasicPerlinNoise(double xPos, double yPos, double zPos)
 {
 	int x0 = static_cast<int>(xPos) / 8;
 	int y0 = static_cast<int>(yPos) / 8;
 	int z0 = static_cast<int>(zPos) / 8;
 
-	float localX = (xPos - x0 * 8) / 8.0f;
-	float localY = (yPos - y0 * 8) / 8.0f;
-	float localZ = (zPos - z0 * 8) / 8.0f;
+	double localX = (xPos - x0 * 8) / 8.0f;
+	double localY = (yPos - y0 * 8) / 8.0f;
+	double localZ = (zPos - z0 * 8) / 8.0f;
 
 	// Collect gradients
-	Vector3 gradients[8];
+	Vector3 gradients[8] = { 0 };
 	for (int i = 0; i < 2; ++i)
 	{
 		for (int j = 0; j < 2; ++j)
@@ -78,31 +73,31 @@ float BasicPerlinNoise(float xPos, float yPos, float zPos)
 		{localX - 1, localY - 1, localZ - 1}
 	};
 
-	float dots[8];
+	int dots[8] = { 0 };
 	for (int i = 0; i < 8; ++i)
 		dots[i] = DotProduct(gradients[i], rel[i]);
 
 	// Interpolation
-	float u = Fade(localX);
-	float v = Fade(localY);
-	float w = Fade(localZ);
+	double u = Fade(localX);
+	double v = Fade(localY);
+	double w = Fade(localZ);
 
 	// Lerp between 8 corners
-	float x00 = Lerp(dots[0], dots[1], u);
-	float x01 = Lerp(dots[4], dots[5], u);
-	float x10 = Lerp(dots[2], dots[3], u);
-	float x11 = Lerp(dots[6], dots[7], u);
+	double x00 = Lerp(dots[0], dots[1], u);
+	double x01 = Lerp(dots[4], dots[5], u);
+	double x10 = Lerp(dots[2], dots[3], u);
+	double x11 = Lerp(dots[6], dots[7], u);
 
-	float Lerp0 = Lerp(x00, x10, v);
-	float Lerp1 = Lerp(x01, x11, v);
+	double Lerp0 = Lerp(x00, x10, v);
+	double Lerp1 = Lerp(x01, x11, v);
 
 	return Lerp(Lerp0, Lerp1, w);
 }
-float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency)
+double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency)
 {
-	float Frequency = ConstFrequency;
-	float Amplitude = ConstFrequency;
-	float FinalNoise = 0.0f;
+	double Frequency = ConstFrequency;
+	double Amplitude = ConstFrequency;
+	double FinalNoise = 0.0f;
 
 	for (int i = 0; i <= Octaves; i++) {
 		FinalNoise += BasicPerlinNoise(Pos.x * Frequency, Pos.y * Frequency, Pos.z * Frequency) * Amplitude;

@@ -1,13 +1,11 @@
 #ifndef __PERLINNOISE_HPP__
 #define __PERLINNOISE_HPP__
 
-typedef struct
-{
-	float x, y, z;
-} Vector3;
+#include "common.hpp"
 
-float Lerp(float a, float b, float t);
-float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency);
+double DotProduct(Vector3 a, Vector3 b);
+double Lerp(double a, double b, double t);
+double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency);
 void SetGradients();
 
 #endif

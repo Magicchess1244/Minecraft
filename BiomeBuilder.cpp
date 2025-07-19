@@ -1,8 +1,6 @@
 #include "BiomeBuilder.h"
-#include "PerlinNoise.h"
-#include <iostream>
 
-float BaseHeight(float ValueNoise, int Length, const HeightsDif* Heights)
+int BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights)
 {
 	for (int i = 0; i < Length - 1; i++) {
 		if (ValueNoise > ContinentelnessHeight[i].x) {
@@ -13,7 +11,7 @@ float BaseHeight(float ValueNoise, int Length, const HeightsDif* Heights)
 	return Heights[Length - 1].y;
 }
 
-Biome GetBiome(float Humudity, float Temperature)
+Biome GetBiome(double Humudity, double Temperature)
 {
 	Biome TheBiome;
 
@@ -28,7 +26,7 @@ Biome GetBiome(float Humudity, float Temperature)
 	return TheBiome;
 }
 
-int GetHeight(float Continentalness, float Errotion, float PeakAndValleys) {
+int GetHeight(double Continentalness, double Errotion, double PeakAndValleys) {
 	return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight));
 }
 

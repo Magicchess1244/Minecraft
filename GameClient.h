@@ -1,30 +1,26 @@
-#pragma once
-#include <iostream>
-#include <string>
-#include <vector>
-#include <map>
-#include <WinSock2.h>
-#include <SDL3/SDL.h>
-#include "PerlinNoise.h"
-#include "ChunkManager.h"
-#include <WS2tcpip.h>
+#ifndef __GAME_CLIENT_H
+#define __GAME_CLIENT_H
+
+#include "common.hpp"
 
 static constexpr unsigned int MAX_PLAYERS = 8;
 
-typedef struct {
-	unsigned int r, g, b;
-} Color;
-enum Commands
+typedef enum
 {
 	GetSeed,
 	GetColor
-};
+} Commands;
 
 typedef struct {
-	Vector3 Position;
-	Vector3 Rotation;
-	Color color;
-} Player;
+	SDL_Event event;
+	SDL_Window* window;
+	SDL_Renderer* renderer;
+	TTF_Font* font;
+	SDL_Texture* texture;
+	Renderer rendererObj;
+	Vector3& screenSize;
+	bool& Running, FullScreen;
+} RendererParameters;
 
 class GameClient
 {
@@ -47,7 +43,7 @@ public:
 		return seed;
 	}
 
-	SOCKET get_socket(){
+	SOCKET get_socket() const {
 		return server;
 	}
 
@@ -87,7 +83,7 @@ public:
 		int PORT = 8080;
 		const char* SERVER_IP = "127.0.0.1";
 
-		sockaddr_in server;
+		sockaddr_in server = { 0 };
 		server.sin_family = AF_INET;
 		server.sin_port = htons(PORT);
 		inet_pton(AF_INET, SERVER_IP, &server.sin_addr);
@@ -102,14 +98,44 @@ public:
 		this->server = serverSocket;
 	}
 };
+namespace std {
+	template<>
+	struct hash<std::tuple<int, int>> {
+		size_t operator()(const std::tuple<int, int>& t) const noexcept {
+			auto h1 = std::hash<int>{}(std::get<0>(t));
+			auto h2 = std::hash<int>{}(std::get<1>(t));
+			return h1 ^ (h2 << 1); // simple and safer
+		}
+	};
+}
 
 namespace BitMiner {
+	std::unordered_map<std::tuple<int, int>, ChunkPrefab> Chunks;
+
+	ChunkPrefab& get_chunk(int x, int z) {
+		auto key = std::make_tuple(x, z);
+		if (Chunks.find(key) != Chunks.end()) {
+			return Chunks[key];
+		}
+		else
+		{
+			std::cout << "Generating chunk at: " << x << ", " << z << std::endl;
+
+			ChunkPrefab newChunk;
+			newChunk.xPos = (int)x * newChunk.xSize;
+			newChunk.zPos = (int)z * newChunk.zSize;
+			newChunk.GenerateChunk();
+			Chunks[key] = newChunk;
+		}
+	}
+
 	int FindSlot(std::vector<Slot>& Inventory, short Type);
 	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos);
-	void DrawBG(SDL_Renderer* Renderer, Player& PlayerPos, Vector3 screenSize, SDL_Texture* texture);
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos);
 	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer);
-	void Render(SDL_Event event, SDL_Renderer* renderer, SDL_Window* window, Vector3 Range, int& width, int& height, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players, bool& Running, bool& FullScreen, TTF_Font* font, SDL_Texture* texture, Vector3& PlayerDirection);
-	void PlayerMovement(Vector3& playerDirection, Player& player, int& inventorySlot, SDL_Renderer* renderer, Vector3 screenSize, SDL_Texture* texture);
+	void Render( RendererParameters Params, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players);
+	void PlayerMovement(Player& player, int& inventorySlot);
 	void GameLoop(bool& running, GameClient& game);
 }
+
+#endif

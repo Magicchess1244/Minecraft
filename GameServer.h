@@ -1,7 +1,6 @@
 #pragma once
-#include <vector>
-#include <iostream>
-#include "GameClient.h"
+
+#include "common.h"
 
 class GameServer
 {

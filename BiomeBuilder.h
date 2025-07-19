@@ -1,6 +1,8 @@
 #ifndef __BIOMEBUILDER_HPP__
 #define __BIOMEBUILDER_HPP__
 
+#include "common.hpp"
+
 typedef struct {
 	int MaxHumidity;
 	int MaxTemperature;
@@ -10,11 +12,11 @@ typedef struct {
 	int ChangeAmount;
 } Biome;
 typedef struct {
-	float x;
-	float y;
+	double x;
+	double y;
 } HeightsDif;
 
-const float ySize = 64;
+const double ySize = 64;
 
 const Biome Biomes[11] = {
 	{ 20, 20 , 0, 0, 20, 6}, // Ice
@@ -60,7 +62,7 @@ const HeightsDif PeaksAndValiesHeight[6] = {
 	{-0.9f, ySize * 0.1f},
 };
 
-Biome GetBiome(float Humudity, float Temperature);
-int GetHeight(float Continentalness, float Errotion, float PeakAndVallies);
+Biome GetBiome(double Humudity, double Temperature);
+int GetHeight(double Continentalness, double Errotion, double PeakAndVallies);
 
 #endif

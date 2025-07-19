@@ -1,11 +1,7 @@
 #ifndef __CHUNK__
 #define __CHUNK__
 
-#include "BiomeBuilder.h"
-#include <iostream>
-#include <vector>
-#include <unordered_map>
-#include <tuple>
+#include "common.hpp"
 
 namespace std {
     template<>
@@ -18,6 +14,12 @@ namespace std {
         }
     };
 }
+struct DrawnFace {
+    Vector3 blockPos;
+    int side;
+    int blockID;
+    double maxZ;
+};
 
 class ChunkPrefab {
 public:
@@ -31,6 +33,7 @@ public:
     Biome biome;
 
     std::unordered_map<std::tuple<int, int, int>, int> Blocks;
+    std::vector<DrawnFace> allFaces;
 
     ChunkPrefab() = default;
     void ShowChunk();
@@ -39,6 +42,7 @@ public:
 private:
     void GenerateChunkSurface();
     void GenerateChunkCaves();
+    void VisableFaces();
 };
 
 #endif
