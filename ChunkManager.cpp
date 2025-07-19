@@ -28,6 +28,7 @@ namespace ChunckManager {
 	{
 		return blockID == 5;
 	}
+
 	bool Collition(Vector3& PlayerPos, int FullRange, int yRange, bool Swim, bool Block)
 	{
 		/*
@@ -56,6 +57,7 @@ namespace ChunckManager {
 	}
 	bool PlaceBlock(int BlockType, Vector3 Position, int yRange, Vector3 PlayerPosition, short& Type)
 	{
+	
 		/*
 		Position.x = (int)(Position.x / BlockSize) + PlayerPosition.x;
 		Position.y = (yRange - (int)(Position.y / BlockSize) - 1) + PlayerPosition.y;

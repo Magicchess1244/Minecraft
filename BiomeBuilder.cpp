@@ -11,18 +11,22 @@ int BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights)
 	return Heights[Length - 1].y;
 }
 
+// TODO:
+// BIG FATATA O NOTATION OF A NIGGA IS O(INFINITY) = O(1 / MIQUELS IQ)
 Biome GetBiome(double Humudity, double Temperature)
 {
 	Biome TheBiome;
 
 	for (int i = 0; i < 11; i++)
 	{
-		bool a = (Humudity < Biomes[i].MaxHumidity && Humudity > Biomes[i].MinHumidity);
-		bool b = (Temperature < Biomes[i].MaxTemperature && Temperature > Biomes[i].MinTemperature);
-		if (a && b) {
+		bool allowed_humidity = (Humudity < Biomes[i].MaxHumidity && Humudity > Biomes[i].MinHumidity);
+		bool allowed_temperature = (Temperature < Biomes[i].MaxTemperature && Temperature > Biomes[i].MinTemperature);
+		
+		if (allowed_humidity && allowed_temperature) {
 			TheBiome = Biomes[i];
 		}
 	}
+
 	return TheBiome;
 }
 

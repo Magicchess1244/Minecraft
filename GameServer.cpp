@@ -1,9 +1,4 @@
 #include "GameServer.h"
-#include <iostream>
-#include <thread>
-#include <WinSock2.h>
-
-#pragma comment(lib, "ws2_32.lib")
 
 void GameServer::handlePlayers(SOCKET player, bool Running, int Id)
 {
@@ -72,6 +67,9 @@ void GameServer::AcceptClients(bool& Running, Vector3 Range)
 		//std::cout << player_count << " clients connected." << std::endl;
 		//std::cout << "Client connected! Socket: " << clientSocket << std::endl;
 
-		std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count - 1).detach();
+		// TODO: no et preocupis nigga
+
+		handlePlayers(clientSocket, Running, player_count - 1);
+		//std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count - 1).detach();
 	}
 }

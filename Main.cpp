@@ -1,13 +1,4 @@
-#include "GameClient.h"
-#include "GameServer.h"
-
-#include <iostream>
-#include <thread>
-#include <vector>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-#pragma comment(lib, "ws2_32.lib")
+#include "common.hpp"
 
 int main()
 {
@@ -41,7 +32,8 @@ int main()
 	} while (choice > 2 || choice < 1);
 
 	while (is_running) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+//		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		continue;
 	}
 
 	std::cout << "Exiting game..." << std::endl;

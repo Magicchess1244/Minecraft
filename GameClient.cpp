@@ -3,18 +3,6 @@
 constexpr double mouseSensitivity = 0.1f;
 constexpr double playerSpeed = 1.0f;
 
-static std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
-	std::vector<std::string> tokens;
-	size_t start = 0;
-	size_t end;
-
-	while ((end = s.find(delimiter, start)) != std::string::npos) {
-		tokens.push_back(s.substr(start, end - start));
-		start = end + delimiter.length();
-	}
-	tokens.push_back(s.substr(start));
-	return tokens;
-}
 void GameClient::set_seed() {
 	int res;
 	char buf[16];
@@ -31,6 +19,7 @@ void GameClient::set_seed() {
 	srand(server_seed);
 	this->seed = server_seed;
 }
+
 void GameClient::set_color() {
 	int res;
 	char buf[11];
@@ -72,6 +61,7 @@ namespace BitMiner {
 		}
 		std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
 	}
+
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 	{
 		//Other player
@@ -115,42 +105,7 @@ namespace BitMiner {
 		};
 		SDL_RenderFillRect(Renderer, &InsidePlayerRect);
 	}
-	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer)
-	{
-	   if (SDL_Init(SDL_INIT_VIDEO)) { // Fixing SDL_Init condition
-		   std::cout << "Error initializing SDL: " << SDL_GetError();
-		   return 1;
-	   } else {
-		   std::cout << "SDL initialized successfully." << std::endl;
-	   }
 
-	   *Window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-	   if (*Window == nullptr) { // Fixing pointer dereference
-		   std::cout << "Error creating window: " << SDL_GetError();
-		   SDL_Quit();
-		   return 1;
-	   }
-
-	   *Renderer = SDL_CreateRenderer(*Window, NULL);
-	   if (*Renderer == nullptr) { // Fixing pointer dereference
-		   std::cout << "Error creating renderer: " << SDL_GetError();
-		   SDL_DestroyWindow(*Window);
-		   SDL_Quit();
-		   return 1;
-	   }
-	   if (!SDL_Init(SDL_INIT_VIDEO)) {
-		   std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
-		   return -1;
-	   }
-
-	   // Initialize SDL_ttf
-	   if (!TTF_Init()) {
-		   std::cerr << "TTF_Init failed: " << SDL_GetError() << std::endl;
-		   SDL_Quit();
-		   return -1;
-	   }
-	   return 0; // Ensure function returns success
-	}
 	void Render(RendererParameters Params, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players)
 	{
 			while (SDL_PollEvent(&Params.event)) {
@@ -234,6 +189,7 @@ namespace BitMiner {
 			SDL_RenderPresent(Params.renderer);
 			SDL_Delay(1000 / 10);
 	}
+	
 	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerRot) {
 		const bool* KeyboardState = SDL_GetKeyboardState(NULL);
 		const bool move_foward = (KeyboardState[SDL_SCANCODE_W] || KeyboardState[SDL_SCANCODE_UP]);
@@ -275,6 +231,7 @@ namespace BitMiner {
 			}
 		}
 	}
+
 	void PlayerMovement(Player& player, int& inventorySlot) {
 		Vector3 playerDirection = { 0, 0, 0 };
 		Vector3 RotationDir = { 0, 0, 0 };
@@ -349,9 +306,6 @@ namespace BitMiner {
 		inventory[1] = { 5, 5 };
 
 		int inventorySlot = 0;
-
-		SetUpRender(&window, &renderer);
-
 		SDL_SetWindowRelativeMouseMode(window, true);
 
 		TTF_Font* font = TTF_OpenFont("Quantico-Bold.ttf", 24);
@@ -386,7 +340,6 @@ namespace BitMiner {
 		//ChunckManager::Size(width, height, Range.y, Range.x);
 		Vector3 ScreenSize = { (double)width, (double)height, 0 };
 		Renderer RendererObject;
-		RendererObject.Setup(window, renderer, font, texture, ScreenSize);
 		RendererParameters Params = {
 			event,
 			window,
@@ -394,13 +347,13 @@ namespace BitMiner {
 			font,
 			texture,
 			RendererObject,
-			std::ref(ScreenSize),
-			std::ref(running),
-			std::ref(fullScreen)
+			ScreenSize,
+			running,
+			fullScreen
 		};
 
 		while (running) {
-			Render( Params, std::ref(inventory), std::ref(inventorySlot), std::ref(p));
+			Render( Params, inventory, inventorySlot, p);
 		}
 
 		std::cout << "Exiting game..." << std::endl;

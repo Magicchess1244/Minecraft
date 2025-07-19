@@ -3,14 +3,11 @@
 
 #include "common.hpp"
 
-static constexpr unsigned int MAX_PLAYERS = 8;
-
 typedef enum
 {
 	GetSeed,
 	GetColor
 } Commands;
-
 typedef struct {
 	SDL_Event event;
 	SDL_Window* window;
@@ -22,6 +19,7 @@ typedef struct {
 	bool& Running, FullScreen;
 } RendererParameters;
 
+
 class GameClient
 {
 private:
@@ -29,6 +27,7 @@ private:
 	unsigned int player_count = 0;
 	std::vector<Player> players;
 	SOCKET server;
+	std::unordered_map<std::tuple<int, int>, ChunkPrefab> Chunks;
 
 public:
 	GameClient() : seed(0), player_count(0), server(INVALID_SOCKET) {}
@@ -97,21 +96,6 @@ public:
 		std::cout << "Connected to the server.\n";
 		this->server = serverSocket;
 	}
-};
-namespace std {
-	template<>
-	struct hash<std::tuple<int, int>> {
-		size_t operator()(const std::tuple<int, int>& t) const noexcept {
-			auto h1 = std::hash<int>{}(std::get<0>(t));
-			auto h2 = std::hash<int>{}(std::get<1>(t));
-			return h1 ^ (h2 << 1); // simple and safer
-		}
-	};
-}
-
-namespace BitMiner {
-//	FATAL
- 	std::unordered_map<std::tuple<int, int>, ChunkPrefab> Chunks;
 
 	ChunkPrefab& get_chunk(int x, int z)
 	{
@@ -132,13 +116,14 @@ namespace BitMiner {
 		}
 	}
 
+};
+
+namespace BitMiner {
 	int FindSlot(std::vector<Slot>& Inventory, short Type);
-	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerPos);
+	void Input(Vector3& PlayerDirection, bool OnGround, int InventorySlots, Vector3& PlayerPos);
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos);
-	int SetUpRender(SDL_Window** Window, SDL_Renderer** Renderer);
 	void Render( RendererParameters Params, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players);
-	void PlayerMovement(Player& player, int& inventorySlot);
-	void GameLoop(bool& running, GameClient& game);
+	void PlayerMovement(Player& player, int inventorySlot);
 }
 
 #endif

@@ -1,7 +1,5 @@
 #include "Chunck.h"
 
-#define ADDVECTORS(V1, V2) {V1.x + V2.x, V1.y + V2.y, V1.z + V2.z} 
-
 constexpr Vector3 Direction[6] = {
 	{ 0, 0, -1 }, // Front
 	{ 0, 0, 1 },  // Back
@@ -17,20 +15,7 @@ void ChunkPrefab::GenerateChunk()
 	//this->GenerateChunkCaves();
 	this->VisableFaces();
 }
-void ChunkPrefab::ShowChunk()
-{
-	for (int y = ySize - 1; y > 0; y--) {
-		for (int x = 0; x < xSize; x++) {
-			if (this->Blocks[{x, y, 0}] == 1) {
-				std::cout << "O";
-			}
-			else {
-				std::cout << " ";
-			}
-		}
-		std::cout << std::endl;
-	}
-}
+
 void ChunkPrefab::GenerateChunkSurface()
 {
 	std::cout << "GenerateChunkSurface()" << std::endl;
@@ -81,6 +66,7 @@ void ChunkPrefab::GenerateChunkSurface()
 
 	return;
 }
+
 void ChunkPrefab::GenerateChunkCaves()
 {
 

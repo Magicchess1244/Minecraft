@@ -3,10 +3,6 @@
 
 #include "common.hpp"
 
-typedef struct  {
-	short Amount;
-	short Type;
-} Slot;
 typedef struct {
 	char Name[20];
 	short BlockId;

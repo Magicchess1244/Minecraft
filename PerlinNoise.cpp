@@ -12,6 +12,7 @@ double Lerp(double a, double b, double t)
 {
 	return a + t * (b - a);
 }
+
 double Fade(double t)
 {
 	return t * t * t * (t * (t * 6 - 15) + 10); // Classic Perlin fade function
@@ -23,17 +24,19 @@ double Clamp(double t, double Min, double Max)
 	else if (t < Min) return Min;
 	else return t;
 }
+
 Vector3 GradientFromAngles(short xAngle, short zAngle)
 {
 	double theta = AngleToRadians(zAngle); // inclination
-	double phi = AngleToRadians(xAngle);  // azimuth
+	double phi = AngleToRadians(xAngle);  // azimuth 
 
 	return {
-		sinf(theta) * cosf(phi),
-		sinf(theta) * sinf(phi),
-		cosf(theta)
+		sin(theta) * cos(phi),
+		sin(theta) * sin(phi),
+		cos(theta)
 	};
 }
+
 double BasicPerlinNoise(double xPos, double yPos, double zPos)
 {
 	int x0 = static_cast<int>(xPos) / 8;
@@ -108,6 +111,7 @@ double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency)
 	FinalNoise *= 1.2f;
 	return Clamp(FinalNoise, -1.0f, 1.0f);
 }
+
 void SetGradients()
 {
 	for (int x = 0; x < 100; x++) {

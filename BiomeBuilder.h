@@ -11,7 +11,6 @@ typedef struct {
 	int BaseHeight;
 	int ChangeAmount;
 } Biome;
-
 typedef struct {
 	double x;
 	double y;

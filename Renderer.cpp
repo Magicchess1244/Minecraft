@@ -63,11 +63,12 @@ SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
 	SDL_FPoint point = { (float)u, (float)v };
 	return point;
 }
+
 Vector3 Renderer::rotate(const Vector3 pos, Vector3 Angle)
 {
-	double cx = cosf(AngleToRadians(Angle.x)), sx = sinf(AngleToRadians(Angle.x));
-	double cy = cosf(AngleToRadians(Angle.y)), sy = sinf(AngleToRadians(Angle.y));
-	double cz = cosf(AngleToRadians(Angle.z)), sz = sinf(AngleToRadians(Angle.z));
+	double cx = cos(AngleToRadians(Angle.x)), sx = sin(AngleToRadians(Angle.x));
+	double cy = cos(AngleToRadians(Angle.y)), sy = sin(AngleToRadians(Angle.y));
+	double cz = cos(AngleToRadians(Angle.z)), sz = sin(AngleToRadians(Angle.z));
 
 	Vector3 result = { 0 };
 
@@ -95,7 +96,7 @@ void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, i
 		Vector3 Relative = SUBSVECTORS(World, player.Position);
 		Vector3 relToScreen = MULTIPLYVECTOR(Relative, BlockSize);
 
-		Vector3 localPos = rotate(relToScreen, player.Rotation);
+		Vector3 localPos = this->rotate(relToScreen, player.Rotation);
 
 		//std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
 
@@ -116,6 +117,7 @@ void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, i
 
 		mesh.Vertices.push_back(vertex);
 	}
+
 	int vIndex = mesh.faces * 4;
 
 	mesh.Indices.push_back(vIndex + 0);
@@ -128,6 +130,7 @@ void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, i
 
 	mesh.faces++;
 }
+
 void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
 	mesh.Vertices.clear();
 	mesh.Indices.clear();
@@ -209,3 +212,42 @@ void Renderer::DrawTerrain(Player& player) {
 	std::cout << mesh.faces << " faces" << std::endl;
 	SDL_RenderGeometry(renderer, texture, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
 	*/
+
+
+
+Renderer::Renderer()
+{
+	if (SDL_Init(SDL_INIT_VIDEO)) { // Fixing SDL_Init condition
+		std::cout << "Error initializing SDL: " << SDL_GetError();
+		assert(false);
+	}
+	else {
+		std::cout << "SDL initialized successfully." << std::endl;
+	}
+
+	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	if (this->window == nullptr) { // Fixing pointer dereference
+		std::cout << "Error creating window: " << SDL_GetError();
+		SDL_Quit();
+		assert(false);
+	}
+
+	this->renderer = SDL_CreateRenderer(this->window, NULL);
+	if (this->renderer == nullptr) { // Fixing pointer dereference
+		std::cout << "Error creating renderer: " << SDL_GetError();
+		SDL_DestroyWindow(this->window);
+		SDL_Quit();
+		assert(false);
+	}
+	if (!SDL_Init(SDL_INIT_VIDEO)) {
+		std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
+		assert(false);
+	}
+
+	// Initialize SDL_ttf
+	if (!TTF_Init()) {
+		std::cerr << "TTF_Init failed: " << SDL_GetError() << std::endl;
+		SDL_Quit();
+		assert(false);
+	}
+}
