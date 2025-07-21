@@ -19,7 +19,6 @@ void GameClient::set_seed() {
 	srand(server_seed);
 	this->seed = server_seed;
 }
-
 void GameClient::set_color() {
 	int res;
 	char buf[11];
@@ -40,7 +39,7 @@ void GameClient::set_color() {
 		server_color[i++] = std::stoi(w);
 	}
 
-	std::cout << "New client color: " << server_color[0] << "," << server_color[BlockSize] <<"," << server_color[2] << std::endl;
+	std::cout << "New client color: " << server_color[0] << "," << server_color[1] <<"," << server_color[2] << std::endl;
 
 	std::cout << "niggas online: " << this->players.size() << std::endl;
 	if (this->players.size() > 0) {
@@ -61,136 +60,7 @@ namespace BitMiner {
 		}
 		std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
 	}
-
-	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
-	{
-		//Other player
-		for (const Player &Position : PlayerPos)
-		{
-			int dx = (int)(Position.Position.x - PlayerPos[0].Position.x);
-			int dy = (int)(Position.Position.y - PlayerPos[0].Position.y);
-
-			bool InsideX = std::abs(dx) <= (Range.x / 2);
-			if (InsideX) {
-				int RelativeX = (int)((Range.x / 2 - 1 + dx) * BlockSize);
-				int RelativeY = (int)((Range.y / 2 - 2 - dy) * BlockSize);
-
-				SDL_FRect OtherPlayerRect = {
-					(double)RelativeX,
-					(double)RelativeY,
-					(double)BlockSize,
-					(double)BlockSize * 2
-				};
-				SDL_SetRenderDrawColor(Renderer, (Uint8)SDL_clamp(PlayerPos[0].color.r, 0, 255), (Uint8)SDL_clamp(PlayerPos[0].color.g, 0, 255), (Uint8)SDL_clamp(PlayerPos[0].color.b, 0, 255), 255);
-				SDL_RenderFillRect(Renderer, &OtherPlayerRect);
-			}
-		}
-
-		// Your player
-		SDL_SetRenderDrawColor(Renderer, SDL_clamp(PlayerPos[0].color.r, 0, 255), SDL_clamp(PlayerPos[0].color.g, 0, 255), SDL_clamp(PlayerPos[0].color.b, 0, 255), 255);
-		SDL_FRect PlayerRect = {
-			(double)(Range.x / 2 - 1) * BlockSize,
-			(double)(Range.y / 2 - 2) * BlockSize,
-			(double)BlockSize,
-			(double)BlockSize * 2
-		};
-		SDL_RenderFillRect(Renderer, &PlayerRect);
-
-		SDL_SetRenderDrawColor(Renderer, SDL_clamp(PlayerPos[0].color.r + 90, 0, 255), SDL_clamp(PlayerPos[0].color.g + 90, 0, 255), SDL_clamp(PlayerPos[0].color.b + 90, 0, 255), 255);
-		SDL_FRect InsidePlayerRect = {
-			(double)(Range.x / 2 - 1) * BlockSize + (BlockSize * 0.1f),
-			(double)(Range.y / 2 - 2) * BlockSize + (BlockSize * 0.1f),
-			(double)(BlockSize * 0.8f),
-			(double)(BlockSize * 0.9f) * 2
-		};
-		SDL_RenderFillRect(Renderer, &InsidePlayerRect);
-	}
-
-	void Render(RendererParameters Params, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players)
-	{
-			while (SDL_PollEvent(&Params.event)) {
-				if (Params.event.type == SDL_EVENT_QUIT) {
-					Params.Running = false;
-					break;
-				}
-				else if (Params.event.type == SDL_EVENT_WINDOW_RESIZED) {
-					Params.screenSize.x = Params.event.window.data1;
-					Params.screenSize.y = Params.event.window.data2;
-
-					//ChunckManager::Size(width, height, Range.y, Range.x);
-				}
-
-				if (Params.event.type == SDL_EVENT_KEY_DOWN)
-				{
-					SDL_Keycode KeyPressed = Params.event.key.scancode;
-
-					if (KeyPressed == SDL_SCANCODE_ESCAPE) {
-						Params.Running = false;
-						break;
-					}
-					else if (KeyPressed == SDL_SCANCODE_F11) {
-						Params.FullScreen = !Params.FullScreen;
-						SDL_SetWindowFullscreen(Params.window, Params.FullScreen);
-					}
-				}
-				else if (Params.event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-					if (Params.event.button.button == SDL_BUTTON_LEFT) {
-						short Type = 0;
-						if (false)//ChunckManager::PlaceBlock(0, { event.button.x, event.button.y }, Range.y, players[0].Position, std::ref(Type)))
-						{
-							short Slot = FindSlot(inventory, Type);
-							inventory[Slot].Amount++;
-							inventory[Slot].Type = Type;
-							//std::cout << "Block broken: " << Type << " Slot: " << Slot << " Amount: " << inventory[Slot].Amount << " Slot type: " << inventory[Slot].Type << std::endl;
-							ChunckManager::SimulateWater((int)((Params.event.button.x / BlockSize) + players[0].Position.x) / 16);
-
-						}
-					}
-					else if (Params.event.button.button == SDL_BUTTON_RIGHT && inventory[inventorySlot].Amount > 0) {
-						short Type = NULL;
-						if (false)//ChunckManager::PlaceBlock(inventory[inventorySlot].Type, { event.button.x, event.button.y }, Range.y, players[0].Position, Type))
-						{
-							//std::cout << Type << std::endl;
-							//UpdateBlock(Inventory[InventorySlot].Type, (int)Event.button.x, (int)Event.button.y, serverSocket);
-							inventory[inventorySlot].Amount--;
-							ChunckManager::SimulateWater((int)((Params.event.button.x / BlockSize) + players[0].Position.x) / 16);
-
-							if (inventory[inventorySlot].Amount == 0)
-							{
-								inventory[inventorySlot].Type = 0;
-							}
-						}
-					}
-				}
-			}
-			SDL_SetRenderDrawColor(Params.renderer, 0, 178, 255, 255);
-			SDL_RenderClear(Params.renderer);
-
-
-			PlayerMovement(players[0], inventorySlot);
-
-			/*
-			Mesh mesh{};
-			mesh.faces = 0;
-
-			ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0 }, Verts[1], 1, { (double)width, (double)height });
-			ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0 }, Verts[3], 2, { (double)width, (double)height });
-			ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0}, Verts[0], 3, {(double)width, (double)height});
-
-			SDL_RenderGeometry(renderer, nullptr, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
-			*/
-			Player player = players[0];
-			Params.rendererObj.DrawTerrain(player);
-			
-			//DrawBG(renderer, players[0],{ (double)width, (double)height, 0}, texture);
-			//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
-			
-			//DrawPlayer(renderer, Range, std::ref(players));
-			SDL_RenderPresent(Params.renderer);
-			SDL_Delay(1000 / 10);
-	}
-	
-	void Input(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerRot) {
+	void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerRot) {
 		const bool* KeyboardState = SDL_GetKeyboardState(NULL);
 		const bool move_foward = (KeyboardState[SDL_SCANCODE_W] || KeyboardState[SDL_SCANCODE_UP]);
 		const bool move_backward = (KeyboardState[SDL_SCANCODE_S] || KeyboardState[SDL_SCANCODE_DOWN]);
@@ -231,12 +101,11 @@ namespace BitMiner {
 			}
 		}
 	}
-
 	void PlayerMovement(Player& player, int& inventorySlot) {
 		Vector3 playerDirection = { 0, 0, 0 };
 		Vector3 RotationDir = { 0, 0, 0 };
 
-		Input(playerDirection, true, inventorySlot, RotationDir);
+		PlayerInput(playerDirection, true, inventorySlot, RotationDir);
 
 
 		if (RotationDir.x != 0 || RotationDir.y != 0) {
@@ -255,10 +124,11 @@ namespace BitMiner {
 			player.Position.y += playerDirection.y;
 			playerDirection.y = 0;
 
-			ChunckManager::Normalize(std::ref(playerDirection));
+			playerDirection = playerDirection.Normalized();
 			// Rotate the horizontal movement by player rotation (Y-axis)
-			double cosY = cosf(AngleToRadians(player.Rotation.y));
-			double sinY = sinf(AngleToRadians(player.Rotation.y));
+			Vector3 Radiants = player.Rotation.AngleToRadians();
+			double cosY = cosf(Radiants.y);
+			double sinY = sinf(Radiants.y);
 
 			Vector3 rotatedDirection = {
 				playerDirection.x * cosY - playerDirection.z * sinY,
@@ -273,12 +143,10 @@ namespace BitMiner {
 
 
 	}
-
-	void GameLoop(bool& running, GameClient& game)
+	void GameLoop(GameClient& game)
 	{
 		game.add_player({ {100, 66, 100}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}  });
 		auto p = game.get_players();
-		//ChunckManager::ChunkGenerator(p[0].Position);
 
 		//game.MakeClient();
 		//game.set_seed();
@@ -294,7 +162,6 @@ namespace BitMiner {
 		bool fullScreen = false;
 		Vector3 playerDirection = { 0, 0 };
 
-		SDL_Event event{};
 		std::vector<Slot> inventory;
 		
 		for (int i = 0; i < 8; i++)
@@ -339,30 +206,12 @@ namespace BitMiner {
 
 		//ChunckManager::Size(width, height, Range.y, Range.x);
 		Vector3 ScreenSize = { (double)width, (double)height, 0 };
-		Renderer RendererObject;
-		RendererParameters Params = {
-			event,
-			window,
-			renderer,
-			font,
-			texture,
-			RendererObject,
-			ScreenSize,
-			running,
-			fullScreen
-		};
-
-		while (running) {
-			Render( Params, inventory, inventorySlot, p);
+		Renderer RendererObject(game);
+		while (game.GetRunning()) {
+			PlayerMovement(p[0], inventorySlot);
+			RendererObject.MainRenderLoop(inventory, inventorySlot, p);
 		}
 
 		std::cout << "Exiting game..." << std::endl;
-
-		SDL_DestroyRenderer(renderer);
-		SDL_DestroyWindow(window);
-		TTF_Quit();
-		SDL_Quit();
-
-		return;
 	}
 }

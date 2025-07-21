@@ -141,7 +141,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="BiomeBuilder.cpp" />
     <ClCompile Include="Chunk.cpp" />
     <ClCompile Include="ChunkManager.cpp" />
     <ClCompile Include="GameClient.cpp" />
@@ -151,7 +150,6 @@
     <ClCompile Include="Renderer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="BiomeBuilder.h" />
     <ClInclude Include="Chunck.h" />
     <ClInclude Include="ChunkManager.h" />
     <ClInclude Include="common.hpp" />

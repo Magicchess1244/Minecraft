@@ -1,6 +1,6 @@
 #include "Chunck.h"
 
-constexpr Vector3 Direction[6] = {
+const Vector3 Direction[6] = {
 	{ 0, 0, -1 }, // Front
 	{ 0, 0, 1 },  // Back
 	{ 1, 0, 0 },  // Right
@@ -40,8 +40,9 @@ void ChunkPrefab::GenerateChunkSurface()
 			}
 
 			for (int y = Height; y > -1; y--) {
+				Vector3 BlockPos = { (double)x, (double)y, (double)z };
 				if (y <= ActualHeight) {
-					Blocks[{x,y,z}] = 3;
+					Blocks[BlockPos] = 3;
 					/*
 					for (int i = 0; i < BlockNum; i++)
 					{
@@ -58,7 +59,7 @@ void ChunkPrefab::GenerateChunkSurface()
 					*/
 				}
 				else {
-					Blocks[{x, y, z}] = 5;
+					Blocks[BlockPos] = 5;
 				}
 			}
 		}
@@ -74,7 +75,8 @@ void ChunkPrefab::GenerateChunkCaves()
 		for (int z = 0; z < this->xSize; z++) {
 			for (int y = 2; y < this->ySize; y++)
 			{
-				auto it = Blocks.find({ x, y, z });
+				Vector3 BlockPos = { (double)x, (double)y, (double)z };
+				auto it = Blocks.find(BlockPos);
 				if (it == Blocks.end()) continue;
 				int blockID = it->second;
 
@@ -84,7 +86,7 @@ void ChunkPrefab::GenerateChunkCaves()
 				bool NodleCave = (0.04f > Hole && Hole > -0.04f);
 
 				if ((CheeseCave || NodleCave) && (blockID != 4 && blockID != 5)) {
-					this->Blocks.erase({ x, y, z });
+					this->Blocks.erase(BlockPos);
 				}
 			}
 		}
@@ -95,19 +97,20 @@ void ChunkPrefab::VisableFaces() {
 	for (int y = 0; y < ySize; y++) {
 		for (int x = 0; x < xSize; x++) {
 			for (int z = 0; z < zSize; z++) {
-				auto it = Blocks.find({ x, y, z });
+				Vector3 blockPos = { (double)x, (double)y, (double)z };
+
+				auto it = Blocks.find(blockPos);
 				if (it == Blocks.end()) continue;
 				int blockID = it->second;
 
-				Vector3 blockPos = { (double)x, (double)y, (double)z };
 
 				for (int i = 0; i < 6; i++)
 				{
-					Vector3 NextBlockPos = ADDVECTORS(blockPos, Direction[i]);
-					auto blockIt = Blocks.find({ (int)NextBlockPos.x, (int)NextBlockPos.y, (int)NextBlockPos.z });
+					Vector3 NextBlockPos = blockPos + Direction[i];
+					auto blockIt = Blocks.find({NextBlockPos.x, NextBlockPos.y, NextBlockPos.z });
 					if ((blockIt == Blocks.end() || (blockID == 5 && blockIt->second != 5))) {
 						Vector3 ChunkPos = { (double)xPos, 0, (double)zPos };
-						Vector3 world = ADDVECTORS(blockPos, ChunkPos);
+						Vector3 world = blockPos + ChunkPos;
 						allFaces.push_back({ world, i, blockID, 0 });
 					}
 				}

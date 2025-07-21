@@ -2,23 +2,13 @@
 #define __GAME_CLIENT_H
 
 #include "common.hpp"
+#include "Renderer.h"
 
 typedef enum
 {
 	GetSeed,
 	GetColor
 } Commands;
-typedef struct {
-	SDL_Event event;
-	SDL_Window* window;
-	SDL_Renderer* renderer;
-	TTF_Font* font;
-	SDL_Texture* texture;
-	Renderer rendererObj;
-	Vector3& screenSize;
-	bool& Running, FullScreen;
-} RendererParameters;
-
 
 class GameClient
 {
@@ -27,7 +17,7 @@ private:
 	unsigned int player_count = 0;
 	std::vector<Player> players;
 	SOCKET server;
-	std::unordered_map<std::tuple<int, int>, ChunkPrefab> Chunks;
+	bool running = true;
 
 public:
 	GameClient() : seed(0), player_count(0), server(INVALID_SOCKET) {}
@@ -97,33 +87,16 @@ public:
 		this->server = serverSocket;
 	}
 
-	ChunkPrefab& get_chunk(int x, int z)
-	{
-		auto key = std::make_tuple(x, z);
-		if (Chunks.find(key) != Chunks.end()) {
-			return Chunks[key];
-		}
-		else
-		{
-			std::cout << "Generating chunk at: " << x << ", " << z << std::endl;
-
-			ChunkPrefab newChunk;
-			newChunk.xPos = (int)x * newChunk.xSize;
-			newChunk.zPos = (int)z * newChunk.zSize;
-			newChunk.GenerateChunk();
-			Chunks[key] = newChunk;
-			return Chunks[key];
-		}
+	bool GetRunning() {
+		return running;
 	}
-
 };
 
 namespace BitMiner {
 	int FindSlot(std::vector<Slot>& Inventory, short Type);
-	void Input(Vector3& PlayerDirection, bool OnGround, int InventorySlots, Vector3& PlayerPos);
-	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos);
-	void Render( RendererParameters Params, std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players);
-	void PlayerMovement(Player& player, int inventorySlot);
+	void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerRot);
+	void PlayerMovement(Player& player, int& inventorySlot);
+	void GameLoop(GameClient& game);
 }
 
 #endif

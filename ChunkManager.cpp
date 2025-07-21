@@ -1,25 +1,104 @@
 #include "ChunkManager.h"
 
-Block BlockDef[BlockNum] = {
-	{"Air", 0, { 1, 0.7f, 1, 1 }, NULL, NULL},
-	{"Grass", 1, { 0, 0.65f, 0, 1 }, {0,0}, true, false},
-	{"Dirt", 2, { 0.6f, 0.3f, 0.1f, 255 }, {1,3}, true, false},
-	{"Stone", 3, { 0.5f, 0.5f, 0.5f, 1 }, {4, 64}, false, false},
-	{"Bedrock", 4, { 0.2f, 0.2f, 0.2f, 1 }, {0, 3}, false, false},
-	{"Water", 5, { 0, 0.4f, 0.8f, 1 }, NULL, false, true}
+constexpr int ySize = 64;
+constexpr Biome Biomes[11] = {
+	{ 20, 20 , 0, 0, 20, 6}, // Ice
+	{ 40, 20 , 20, 0, 20, 6}, // Tundra
+	{ 100, 20 , 40, 0, 20, 7}, // Taiga
+	{ 100, 40 , 60, 20, 20, 4}, // Big Taiga
+	{ 60, 60 , 20, 20, 20, 3 }, // Plains
+	{ 80, 60 , 20, 40, 20, 6 }, // Forest
+	{ 80, 60 , 20, 60, 20, 5 }, // Birch
+	{ 100, 60 , 20, 80, 20, 5 }, // Dark Forest
+	{ 100, 100 , 60, 60, 20, 7 }, // Jungle
+	{ 60, 100 , 0, 80, 20, 4 }, // Desert
+	{ 40, 80 , 20, 0, 20, 5 }, // Savanna
 };
+constexpr HeightsDif ContinentelnessHeight[8] = {
+	{1, ySize},
+	{0.4f, ySize * 0.9f},
+	{0.15f, ySize * 0.8f},
+	{-0.15f, ySize * 0.45f},
+	{-0.35f, ySize * 0.45f},
+	{-0.65f, ySize * 0.1f},
+	{-0.9f, ySize * 0.09f},
+	{-1.0f, ySize}
+};
+constexpr HeightsDif ErrotionHeight[10] = {
+	{1, ySize * 0.05f},
+	{0.8f, ySize * 0.1f},
+	{0.7f, ySize * 0.35f},
+	{0.4f, ySize * 0.35f},
+	{0.3f, ySize * 0.11f},
+	{-0.2f, ySize * 0.2f},
+	{-0.4f, ySize * 0.6f},
+	{-0.5f, ySize * 0.5f},
+	{0.8f, ySize * 0.9f},
+	{0, ySize},
+};
+constexpr HeightsDif PeaksAndValiesHeight[6] = {
+	{1, ySize},
+	{0.8f, ySize * 0.9f},
+	{0.5f, ySize * 0.95f},
+	{0.05f, ySize * 0.35f},
+	{-0.4f, ySize * 0.3f},
+	{-0.9f, ySize * 0.1f},
+};
+
+
 
 int BlockSize = 50;
 
-namespace ChunckManager {
-	void Normalize(Vector3& vector) {
-		double length = sqrtf((vector.x * vector.x) + (vector.y * vector.y) + (vector.z * vector.z));
-		if (length > 0) {
-			vector.x /= length;
-			vector.y /= length;
-			vector.z /= length;
+ChunkPrefab& ChunkManager::get_chunk(Vector3 key)
+{
+	if (this->Chunks.find(key) != this->Chunks.end()) {
+		return std::ref(Chunks[key]);
+	}
+	else
+	{
+		std::cout << "Generating chunk at: " << key.x << ", " << key.z << std::endl;
+
+		ChunkPrefab newChunk;
+		newChunk.xPos = (int)key.x * newChunk.xSize;
+		newChunk.zPos = (int)key.z * newChunk.zSize;
+		newChunk.GenerateChunk();
+		this->Chunks[key] = newChunk;
+		return std::ref(Chunks[key]);
+	}
+}
+
+int ChunkManager::BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights)
+{
+	for (int i = 0; i < Length - 1; i++) {
+		if (ValueNoise > ContinentelnessHeight[i].x) {
+			std::cout << "Continentalness: " << Lerp(Heights[i].y, Heights[i + 1].y, (ValueNoise + 1 / (Heights[i + 1].x + 1))) << std::endl;
+			return Lerp(Heights[i + 1].y, Heights[i].y, (ValueNoise + 1 / (Heights[i + 1].x + 1)));
 		}
 	}
+	return Heights[Length - 1].y;
+}
+Biome ChunkManager::GetBiome(double Humudity, double Temperature)
+{
+	Biome TheBiome;
+
+	for (int i = 0; i < 11; i++)
+	{
+		bool allowed_humidity = (Humudity < Biomes[i].MaxHumidity && Humudity > Biomes[i].MinHumidity);
+		bool allowed_temperature = (Temperature < Biomes[i].MaxTemperature && Temperature > Biomes[i].MinTemperature);
+
+		if (allowed_humidity && allowed_temperature) {
+			TheBiome = Biomes[i];
+		}
+	}
+
+	return TheBiome;
+}
+int ChunkManager::GetHeight(double Continentalness, double Errotion, double PeakAndValleys) {
+	return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight));
+}
+
+/*
+namespace ChunckManager {
 	static bool isTransparent(int blockID)
 	{
 		return blockID == 0 || blockID == 5;
@@ -28,10 +107,8 @@ namespace ChunckManager {
 	{
 		return blockID == 5;
 	}
-
 	bool Collition(Vector3& PlayerPos, int FullRange, int yRange, bool Swim, bool Block)
 	{
-		/*
 		int newX = (int)(PlayerPos.x + (int)(FullRange / 2.0f - 1));
 		int newY = (int)(PlayerPos.y + (int)(yRange / 2.0f));
 		int newZ = (int)(PlayerPos.z + (int)(FullRange / 2.0f - 1));
@@ -53,12 +130,10 @@ namespace ChunckManager {
 		}
 
 		return blockHead;
-		*/
 	}
 	bool PlaceBlock(int BlockType, Vector3 Position, int yRange, Vector3 PlayerPosition, short& Type)
 	{
 	
-		/*
 		Position.x = (int)(Position.x / BlockSize) + PlayerPosition.x;
 		Position.y = (yRange - (int)(Position.y / BlockSize) - 1) + PlayerPosition.y;
 
@@ -81,8 +156,6 @@ namespace ChunckManager {
 			//Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y] = BlockType;
 			return true;
 		}
-		return false;
-		*/
 		return false;
 	}
 	void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange)
@@ -117,7 +190,7 @@ namespace ChunckManager {
 
 			if (Inventory[i].Type != 0)
 			{
-				SDL_SetRenderDrawColor(Renderer, (Uint8)(BlockDef[Inventory[i].Type].Color.r * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.g * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.b * 255), (Uint8)(BlockDef[Inventory[i].Type].Color.a * 255));
+				SDL_SetRenderDrawColor(Renderer, BlockDef[Inventory[i].Type].Color.r, BlockDef[Inventory[i].Type].Color.g, BlockDef[Inventory[i].Type].Color.b, 1);
 				SDL_FRect BlockRect = { ((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.3f), (height - (BlockSize * 1.3f)) + (BlockSize * 0.3f), BlockSize * 0.6f, BlockSize * 0.6f };
 				SDL_RenderFillRect(Renderer, &BlockRect);
 				//Add be a number
@@ -137,7 +210,6 @@ namespace ChunckManager {
 		}
 	}
 	void SimulateWater(int chunkIndex) {
-		/*
 		std::queue<std::pair<int, int> > q;
 
 		for (int x = 0; x < 16; x++) {
@@ -185,7 +257,6 @@ namespace ChunckManager {
 				}
 			}
 		}
-		*/
 	}
-
 }
+*/

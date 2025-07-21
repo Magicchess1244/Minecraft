@@ -2,6 +2,7 @@
 #define __CHUNK__
 
 #include "common.hpp"
+#include "PerlinNoise.h"
 
 struct DrawnFace {
     Vector3 blockPos;
@@ -19,13 +20,12 @@ public:
     int xPos = -1;
     int zPos = -1;
 
-    Biome biome;
+    //Biome biome;
 
-    std::unordered_map<std::tuple<int, int, int>, int> Blocks;
+    std::unordered_map<Vector3, int> Blocks;
     std::vector<DrawnFace> allFaces;
 
     ChunkPrefab() = default;
-    void ShowChunk();
     void GenerateChunk();
 
 private:

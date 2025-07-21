@@ -1,12 +1,12 @@
 #include "GameServer.h"
 
-void GameServer::handlePlayers(SOCKET player, bool Running, int Id)
+void GameServer::handlePlayers(SOCKET player, int Id)
 {
 	char buf[16] = {};
 	int res = 0;
 	//std::cout << player << std::endl;
 
-	while (Running) {
+	while (true) {
 
 		res = recv(player, buf, sizeof(buf), 0);
 
@@ -39,9 +39,9 @@ void GameServer::handlePlayers(SOCKET player, bool Running, int Id)
 	}
 }
 
-void GameServer::AcceptClients(bool& Running, Vector3 Range)
+void GameServer::AcceptClients()
 {
-	std::map<int, Color> PlayerColors = {
+	std::unordered_map<int, Color> PlayerColors = {
 		{0, {255, 0, 0} },
 		{1, {0, 255, 0} },
 		{2, {0, 0, 255} },
@@ -54,7 +54,7 @@ void GameServer::AcceptClients(bool& Running, Vector3 Range)
 	this->MakeServer();
 	std::cout << "Listener: " << listener << "\n";
 
-	while (player_count < MAX_PLAYERS && Running) {
+	while (player_count < MAX_PLAYERS) {
 		SOCKET clientSocket = accept(this->listener, NULL, NULL);
 
 		if (clientSocket == INVALID_SOCKET) {
@@ -69,7 +69,7 @@ void GameServer::AcceptClients(bool& Running, Vector3 Range)
 
 		// TODO: no et preocupis nigga
 
-		handlePlayers(clientSocket, Running, player_count - 1);
+		handlePlayers(clientSocket, player_count - 1);
 		//std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count - 1).detach();
 	}
 }

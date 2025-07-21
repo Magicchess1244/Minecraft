@@ -75,9 +75,9 @@ public:
 		return sockets;
 	}
 
-	void handlePlayers(SOCKET player, bool Running, int Id);
+	void handlePlayers(SOCKET player, int Id);
 
-	void AcceptClients(bool& Running, Vector3 Range);
+	void AcceptClients();
 
 	~GameServer()
 	{
