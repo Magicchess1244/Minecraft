@@ -90,6 +90,9 @@ public:
 	bool GetRunning() {
 		return running;
 	}
+	void Quit() {
+		running = false;
+	}
 };
 
 namespace BitMiner {

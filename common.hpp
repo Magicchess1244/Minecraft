@@ -9,11 +9,13 @@
 #include <algorithm>
 #include <iostream>
 #include <SDL3/SDL.h>
+//#include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <WinSock2.h>
 #include <ws2tcpip.h>
 #include <cmath>
 #include <cassert>
+#include <thread>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -28,6 +30,13 @@ struct Vector3 {
 	Vector3 operator+(const Vector3& other) const {
 		return { x + other.x, y + other.y, z + other.z };
 	}
+	
+	Vector3& operator+=(const Vector3& other) {
+		x += other.x;
+		y += other.y;
+		z += other.z;
+		return *this;
+	}
 
 	Vector3 operator-(const Vector3& other) const {
 		return { x - other.x, y - other.y, z - other.z };
@@ -36,6 +45,16 @@ struct Vector3 {
 	Vector3 operator*(double scalar) const {
 		return { x * scalar, y * scalar, z * scalar };
 	}
+	Vector3 operator*(Vector3 vector) const {
+		return { x * vector.x, y * vector.y, z * vector.z };
+	}
+
+	Vector3& operator*=(const Vector3& other) {
+		x *= other.x;
+		y *= other.y;
+		z *= other.z;
+		return *this;
+	}
 
 	Vector3 operator/(double scalar) const {
 		return { x / scalar, y / scalar, z / scalar };
@@ -43,6 +62,10 @@ struct Vector3 {
 
 	bool operator==(const Vector3& other) const {
 		return x == other.x && y == other.y && z == other.z;
+	}
+	
+	bool operator>(const Vector3 & other) const {
+		return x > other.x && y > other.y && z > other.z;
 	}
 
 	double Dot(const Vector3& other) const {
@@ -57,8 +80,12 @@ struct Vector3 {
 		};
 	}
 
+	double LengthSquared() const {
+		return x * x + y * y + z * z;
+	}
+
 	double Length() const {
-		return std::sqrt(x * x + y * y + z * z);
+		return std::sqrt(LengthSquared());
 	}
 
 	Vector3 Normalized() const {
@@ -68,6 +95,57 @@ struct Vector3 {
 
 	Vector3 AngleToRadians() const {
 		return { x * (PI / 180.0), y * (PI / 180.0), z * (PI / 180.0) };
+	}
+
+	Vector3 Truncate() const {
+		return{ floor(x), floor(y), floor(z) };
+	}
+
+	Vector3 Forward() const {
+		Vector3 rotationRadians = AngleToRadians();
+
+		double pitch = rotationRadians.x;
+		double yaw = rotationRadians.y;
+		double roll = rotationRadians.z;
+
+		Vector3 forward;
+		forward.x = cos(pitch) * sin(yaw);
+		forward.y = -sin(pitch);
+		forward.z = -cos(pitch) * cos(yaw);
+		return forward.Normalized();
+	}
+
+	Vector3 Right() const {
+		Vector3 rotationRadians = AngleToRadians();
+
+		double yaw = rotationRadians.y;
+
+		Vector3 right;
+		right.x = cos(yaw);
+		right.y = 0;
+		right.z = sin(yaw);
+		return right.Normalized();
+	}
+
+	Vector3 Up() const {
+		Vector3 up = Right().Cross(Forward()).Normalized();
+		return up;
+	}
+
+	Vector3 Max(const Vector3& a) const {
+		return {
+			(a.x < x) ? a.x : x,
+			(a.y < y) ? a.y : y,
+			(a.z < z) ? a.z : z
+		};
+	}
+
+	Vector3 Min(const Vector3& a) const{
+		return {
+			(a.x > x) ? a.x : x,
+			(a.y > y) ? a.y : y,
+			(a.z > z) ? a.z : z
+		};
 	}
 };
 
@@ -97,11 +175,13 @@ struct Color {
 	}
 };
 
-typedef struct {
+
+
+struct Player {
 	Vector3 Position;
 	Vector3 Rotation;
 	Color color;
-} Player;
+};
 
 typedef struct {
 	short Amount;

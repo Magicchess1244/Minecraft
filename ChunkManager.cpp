@@ -51,6 +51,7 @@ int BlockSize = 50;
 
 ChunkPrefab& ChunkManager::get_chunk(Vector3 key)
 {
+	key.y = 0;
 	if (this->Chunks.find(key) != this->Chunks.end()) {
 		return std::ref(Chunks[key]);
 	}
@@ -66,7 +67,6 @@ ChunkPrefab& ChunkManager::get_chunk(Vector3 key)
 		return std::ref(Chunks[key]);
 	}
 }
-
 int ChunkManager::BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights)
 {
 	for (int i = 0; i < Length - 1; i++) {

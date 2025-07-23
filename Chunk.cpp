@@ -19,22 +19,10 @@ void ChunkPrefab::GenerateChunk()
 void ChunkPrefab::GenerateChunkSurface()
 {
 	std::cout << "GenerateChunkSurface()" << std::endl;
-	/*
-	for (int x = 0;x < this->xSize; x++) {
-		for (int y = 0; y < this->ySize; y++) {
-			for (int z = 0; z < this->zSize; z++) {
-				Blocks[{x, y, z}] = 3;
-			}
-		}
-	}
-	*/
 	for (int x = 0; x < this->xSize; x++) {
 		for (int z = 0; z < this->zSize; z++) {
-			int Height = (int)(35 + (
-				PerlinNoise({ (double)xPos + x, 0, (double)zPos + z }, 4, 0.1f)
-				* 25));
+			int Height = (int)(35 + ( PerlinNoise({ (double)xPos + x, 0, (double)zPos + z }, 4, 0.1f) * 25));
 			int ActualHeight = Height;
-	
 			if (Height < 35) {
 				Height = 35;
 			}

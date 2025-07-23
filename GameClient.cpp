@@ -127,6 +127,7 @@ namespace BitMiner {
 			playerDirection = playerDirection.Normalized();
 			// Rotate the horizontal movement by player rotation (Y-axis)
 			Vector3 Radiants = player.Rotation.AngleToRadians();
+
 			double cosY = cosf(Radiants.y);
 			double sinY = sinf(Radiants.y);
 
@@ -140,12 +141,10 @@ namespace BitMiner {
 			player.Position.x += rotatedDirection.x * playerSpeed;
 			player.Position.z += rotatedDirection.z * playerSpeed;
 		}
-
-
 	}
 	void GameLoop(GameClient& game)
 	{
-		game.add_player({ {100, 66, 100}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}  });
+		game.add_player({ {100, 66, 100}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}, });
 		auto p = game.get_players();
 
 		//game.MakeClient();
@@ -173,40 +172,10 @@ namespace BitMiner {
 		inventory[1] = { 5, 5 };
 
 		int inventorySlot = 0;
-		SDL_SetWindowRelativeMouseMode(window, true);
-
-		TTF_Font* font = TTF_OpenFont("Quantico-Bold.ttf", 24);
-
-		/*
-		SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-		SDL_FRect rect = { 0,0,100,100 };
-		SDL_RenderFillRect(renderer, &rect);
-
-		SDL_Color White = { 200, 200, 200 };
-		SDL_Surface* surface = TTF_RenderText_Blended(font, "HelloWorld SDL3 TTF",sizeof("HelloWorld SDL3 TTF"), White);
-		SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface); 
-		SDL_DestroySurface(surface);
-		SDL_FRect dstRect{ 100, 100, 200, 80 };
-		SDL_RenderTexture(renderer, texture, NULL, &dstRect);
-		SDL_DestroyTexture(texture);
-
-		SDL_RenderPresent(renderer);
-		*/
-		
-		SDL_Surface* surface = SDL_LoadBMP("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Textures.bmp");
-		if (!surface) {
-			std::cerr << "SDL_LoadBMP failed: " << SDL_GetError() << std::endl;
-		}
-
-		SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-		SDL_DestroySurface(surface);
-		if (!texture) {
-			std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
-		}
 
 		//ChunckManager::Size(width, height, Range.y, Range.x);
-		Vector3 ScreenSize = { (double)width, (double)height, 0 };
 		Renderer RendererObject(game);
+		
 		while (game.GetRunning()) {
 			PlayerMovement(p[0], inventorySlot);
 			RendererObject.MainRenderLoop(inventory, inventorySlot, p);

@@ -1,6 +1,12 @@
 #include "Renderer.h"
+#include "GameClient.h"
 
-const float FOV = 0.01f;//(double)tanf((45.0f / 2.0f) * (PI / 180.0f));
+const float FOV = tan((90 * (PI / 180)) / 2.0f);
+
+//constexpr float FOV = 0.01f;//(double)tanf((45.0f / 2.0f) * (PI / 180.0f));
+constexpr float Znear = 0.001f;
+constexpr float Zfar = 1000.0f;
+constexpr float Aspect = 1.5f;
 const Vector3 Verts[6][4] = {
 	{// Front (-Z)
 		{ -0.5, -0.5, -0.5 },
@@ -92,19 +98,25 @@ void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, i
 
 	//std::cout << "\n \n";
 	for (int i = 0; i < 4; i++) {
-		Vector3 relToScreen = ((verts[i] + blocks) - player.Position) * this->BlockPixelSize;
+		Vector3 relToScreen = ((verts[i] + blocks) - player.Position);
 
-		Vector3 localPos = this->rotate(relToScreen, player.Rotation);
+		Vector3 localPos = this->rotate(relToScreen, player.Rotation) * this->BlockPixelSize;
 
 		//std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
 
 		double screenX = localPos.x;
 		double screenY = localPos.y;
 
-		if (localPos.z <= 0.01f) localPos.z = 0.001f;
+		SDL_clamp(localPos.z, Znear, Zfar);
 
-		screenX = (localPos.x / (localPos.z * FOV)) + ScreenSize.x / 2.0f;
-		screenY = (localPos.y / (localPos.z * FOV)) + ScreenSize.y / 2.0f;
+		float focalLength = 1.0f / FOV;
+
+		screenX = (localPos.x * focalLength / localPos.z) + ScreenSize.x / 2.0f;
+		screenY = (localPos.y * focalLength / localPos.z) + ScreenSize.y / 2.0f;
+
+
+		//screenX = (localPos.x / (localPos.z * FOV)) + ScreenSize.x / 2.0f;
+		//screenY = (localPos.y / (localPos.z * FOV)) + ScreenSize.y / 2.0f;
 		screenY = ScreenSize.y - screenY;
 
 		//std::cout << " 2D:\t Px: " << screenX << " Py: " << screenY << std::endl;
@@ -151,13 +163,19 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
 	for (auto& face : chunk.allFaces) {
 		if (CameraDir.Dot(Direction[face.side]) >= 0.2) continue;
 		double maxZ = 0.0f;
+		Vector3 Max , Min;
+		Vector3 local[4];
 		for (int j = 0; j < 4; j++) {
 			Vector3 worldFacePos = face.blockPos + Verts[face.side][j];
-			Vector3 local = rotate((worldFacePos - player.Position), player.Rotation);
-			if (maxZ < local.z) maxZ = local.z;
+			local[j] = rotate((worldFacePos - player.Position), player.Rotation);
+			maxZ = max(local[j].z, maxZ);
+			Max = Max.Max(local[j]);
+			Min = Min.Min(local[j]);
 		}
-		if (maxZ <= 0.01f) continue;
+		AABB volume(Min, Max);
+		if (!volume.isOnFrustum(this->frustum, local, player.Rotation)) continue;
 		Faces.push_back({ face.blockPos, face.side, face.blockID, maxZ });
+		mesh.maxZ.push_back(maxZ);
 	}
 
 	std::sort(Faces.begin(), Faces.end(), [](const DrawnFace& a, const DrawnFace& b) {
@@ -169,45 +187,54 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
 	}
 }
 void Renderer::DrawTerrain(Player& player) {
-	/*	std::vector<std::thread> threads;
-		std::vector<Mesh> threadMeshes((2 + 1) * (2 + 1));
-		int threadIndex = 0;
+	std::vector<std::thread> threads;
+	std::vector<Mesh> threadMeshes;
 
-		for (int i = -2; i <= 2; i++) {
-			for (int j = -2; j <= 2; j++) {
-				threads.emplace_back([=, &threadMeshes]() {
-					Mesh& localMesh = threadMeshes[threadIndex];
-					RenderChunk( BitMiner::get_chunk(i, j), player, localMesh);
-					});
+	int chunksPerAxis = 5;
+	int totalChunks = chunksPerAxis * chunksPerAxis;
+	threadMeshes.resize(totalChunks);
 
-				threadIndex++;
-			}
+	int threadIndex = 0;
+	Vector3 PlayerChunk = (player.Position / 32).Truncate();
+	for (int i = -2; i <= 2; i++) {
+		for (int j = -2; j <= 2; j++) {
+			Vector3 Chunk = { (double)i, 0, (double)j };
+			Chunk += PlayerChunk;
+
+			// Launch thread calling member function on 'this' instance
+			threads.emplace_back(
+				&Renderer::RenderChunk,
+				this,
+				std::ref(chunkManager.get_chunk(Chunk)),  // assuming returns reference
+				std::ref(player),
+				std::ref(threadMeshes[threadIndex])
+			);
+
+			threadIndex++;
 		}
+	}
 
-		// Wait for threads to finish
-		for (auto& t : threads) t.join();
+	for (auto& t : threads) {
+		if (t.joinable()) t.join();
+	}
 
-		// Merge all meshes
-		Mesh mesh;
-		mesh.Vertices.clear();
-		mesh.Indices.clear();
-		mesh.faces = 0;
+	// Merge all thread meshes
+	terrainMesh.Vertices.clear();
+	terrainMesh.Indices.clear();
+	terrainMesh.faces = 0;
 
-		for (const auto& m : threadMeshes) {
-			int baseIndex = mesh.Vertices.size();
-			mesh.Vertices.insert(mesh.Vertices.end(), m.Vertices.begin(), m.Vertices.end());
+	for (const auto& m : threadMeshes) {
+		int baseIndex = (int)terrainMesh.Vertices.size();
+		terrainMesh.Vertices.insert(terrainMesh.Vertices.end(), m.Vertices.begin(), m.Vertices.end());
 
-			for (int index : m.Indices)
-				mesh.Indices.push_back(index + baseIndex);
+		for (int index : m.Indices)
+			terrainMesh.Indices.push_back(index + baseIndex);
 
-			mesh.faces += m.faces;
-		}
+		terrainMesh.faces += m.faces;
+	}
 
-		std::cout << mesh.faces << " faces" << std::endl;
-		SDL_RenderGeometry(renderer, texture, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
-		*/
-
-	return;
+	std::cout << terrainMesh.faces << " faces" << std::endl;
+	SDL_RenderGeometry(renderer, texture, terrainMesh.Vertices.data(), terrainMesh.faces * 4, terrainMesh.Indices.data(), terrainMesh.faces * 6);
 }
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 {
@@ -254,14 +281,44 @@ void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Pla
 	SDL_RenderFillRect(Renderer, &InsidePlayerRect);
 	*/
 }
+void Renderer::Stats(Player& player)
+{
+	std::string text = std::to_string(player.Position.x) + ", " + std::to_string(player.Position.y) + ", " + std::to_string(player.Position.z);
+	SDL_Color White = { 200, 200, 200 };
+
+	if (!this->font) {
+		std::cerr << "Font not loaded!\n";
+		return;
+	}
+
+	if (text.empty()) return;
+
+	SDL_Surface* surface = TTF_RenderText_Blended(this->font, text.c_str(), text.length(), White);
+	if (!surface) {
+		std::cerr << "TTF_RenderText_Blended failed: \n";
+		return;
+	}
+
+	SDL_Texture* texture = SDL_CreateTextureFromSurface(this->renderer, surface);
+	if (!texture) {
+		std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << "\n";
+		SDL_DestroySurface(surface);
+		return;
+	}
+
+	SDL_FRect dstRect{ 10, 10, (float)surface->w, (float)surface->h };
+	SDL_RenderTexture(this->renderer, texture, NULL, &dstRect);
+
+	SDL_DestroyTexture(texture);
+	SDL_DestroySurface(surface);
+}
 void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players)
 {
 	while (SDL_PollEvent(&this->event)) {
 		switch (this->event.type) {
 		case SDL_EVENT_QUIT:
 			// Handle quitting the game
-			this->gameClient.~GameClient();
-			// this->running = false;
+			this->gameClient.Quit();
 			break;
 
 		case SDL_EVENT_WINDOW_RESIZED:
@@ -277,7 +334,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 			SDL_Keycode key = this->event.key.scancode;
 
 			if (key == SDL_SCANCODE_ESCAPE) {
-				// this->Running = false;
+				this->gameClient.Quit();
 				break;
 			}
 			else if (key == SDL_SCANCODE_F11) {
@@ -320,20 +377,13 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 	SDL_SetRenderDrawColor(this->renderer, 0, 178, 255, 255);
 	SDL_RenderClear(this->renderer);
 
+	Player& player = std::ref(players[0]);
 
+	float aspect = ScreenSize.x / ScreenSize.y;
+	this->frustum = Frustum().createFrustumFromCamera(player, aspect, FOV, Znear, Zfar);
 
-	/*
-	Mesh mesh{};
-	mesh.faces = 0;
-
-	ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0 }, Verts[1], 1, { (double)width, (double)height });
-	ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0 }, Verts[3], 2, { (double)width, (double)height });
-	ChunckManager::Face(std::ref(mesh), players[0].Position, players[0].Rotation, { 0, 0, 0}, Verts[0], 3, {(double)width, (double)height});
-
-	SDL_RenderGeometry(renderer, nullptr, mesh.Vertices.data(), mesh.faces * 4, mesh.Indices.data(), mesh.faces * 6);
-	*/
-	Player player = players[0];
 	DrawTerrain(player);
+	Stats(player);
 
 	//DrawBG(renderer, players[0],{ (double)width, (double)height, 0}, texture);
 	//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
@@ -343,11 +393,11 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 	SDL_Delay(1000 / 10);
 }
 
-Renderer::Renderer(GameClient& client)
+Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager()
 {
-	if (SDL_Init(SDL_INIT_VIDEO)) { // Fixing SDL_Init condition
-		std::cout << "Error initializing SDL: " << SDL_GetError();
-		assert(false);
+	if (!SDL_Init(SDL_INIT_VIDEO)) {
+		std::cout << "Error initializing SDL: " << SDL_GetError() << std::endl;
+		//assert(false);
 	}
 	else {
 		std::cout << "SDL initialized successfully." << std::endl;
@@ -357,7 +407,7 @@ Renderer::Renderer(GameClient& client)
 	if (this->window == nullptr) { // Fixing pointer dereference
 		std::cout << "Error creating window: " << SDL_GetError();
 		SDL_Quit();
-		assert(false);
+		//assert(false);
 	}
 
 	this->renderer = SDL_CreateRenderer(this->window, NULL);
@@ -365,21 +415,49 @@ Renderer::Renderer(GameClient& client)
 		std::cout << "Error creating renderer: " << SDL_GetError();
 		SDL_DestroyWindow(this->window);
 		SDL_Quit();
-		assert(false);
+		//assert(false);
 	}
-	if (!SDL_Init(SDL_INIT_VIDEO)) {
-		std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
-		assert(false);
-	}
-
 	// Initialize SDL_ttf
 	if (!TTF_Init()) {
-		std::cerr << "TTF_Init failed: " << SDL_GetError() << std::endl;
+		std::cerr << "TTF_Init failed: \n";
 		SDL_Quit();
-		assert(false);
+		//assert(false);
 	}
+
+	this->font = TTF_OpenFont("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Quantico-Bold.ttf", 24);
+	if (!this->font) {
+		std::cerr << "Font is null!" << std::endl;
+	}
+
+	/*
+	SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+	SDL_FRect rect = { 0,0,100,100 };
+	SDL_RenderFillRect(renderer, &rect);
+
+	SDL_Color White = { 200, 200, 200 };
+	SDL_Surface* surface = TTF_RenderText_Blended(font, "HelloWorld SDL3 TTF",sizeof("HelloWorld SDL3 TTF"), White);
+	SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+	SDL_DestroySurface(surface);
+	SDL_FRect dstRect{ 100, 100, 200, 80 };
+	SDL_RenderTexture(renderer, texture, NULL, &dstRect);
+	SDL_DestroyTexture(texture);
+
+	SDL_RenderPresent(renderer);
+	*/
+
+	SDL_Surface* surface = SDL_LoadBMP("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Textures.bmp");
+	if (!surface) {
+		std::cerr << "SDL_LoadBMP failed: " << SDL_GetError() << std::endl;
+	}
+
+	this->texture = SDL_CreateTextureFromSurface(this->renderer, surface);
+	SDL_DestroySurface(surface);
+	if (!texture) {
+		std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
+	}
+
 	this->terrainMesh = {};
 	this->event = {};
-	this->chunkManager = ChunkManager();
-	this->gameClient = client;
+	SDL_SetWindowRelativeMouseMode(window, true);
+
 }
