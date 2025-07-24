@@ -1,10 +1,8 @@
 #include "Renderer.h"
 #include "GameClient.h"
 
-const float FOV = tan((90 * (PI / 180)) / 2.0f);
-
-//constexpr float FOV = 0.01f;//(double)tanf((45.0f / 2.0f) * (PI / 180.0f));
-constexpr float Znear = 0.001f;
+const double FOV = tan((45 * (PI / 180)) / 2.0f);
+const double Znear = 0.01;
 constexpr float Zfar = 1000.0f;
 constexpr float Aspect = 1.5f;
 const Vector3 Verts[6][4] = {
@@ -100,23 +98,17 @@ void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, i
 	for (int i = 0; i < 4; i++) {
 		Vector3 relToScreen = ((verts[i] + blocks) - player.Position);
 
-		Vector3 localPos = this->rotate(relToScreen, player.Rotation) * this->BlockPixelSize;
+		Vector3 localPos = this->rotate(relToScreen, player.Rotation);
 
 		//std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
 
 		double screenX = localPos.x;
 		double screenY = localPos.y;
 
-		SDL_clamp(localPos.z, Znear, Zfar);
+		if (localPos.z <= Znear) localPos.z = Znear;
 
-		float focalLength = 1.0f / FOV;
-
-		screenX = (localPos.x * focalLength / localPos.z) + ScreenSize.x / 2.0f;
-		screenY = (localPos.y * focalLength / localPos.z) + ScreenSize.y / 2.0f;
-
-
-		//screenX = (localPos.x / (localPos.z * FOV)) + ScreenSize.x / 2.0f;
-		//screenY = (localPos.y / (localPos.z * FOV)) + ScreenSize.y / 2.0f;
+		screenX = (localPos.x / (localPos.z * FOV)) * BlockPixelSize + ScreenSize.x / 2.0f;
+		screenY = (localPos.y / (localPos.z * FOV)) * BlockPixelSize + ScreenSize.y / 2.0f;
 		screenY = ScreenSize.y - screenY;
 
 		//std::cout << " 2D:\t Px: " << screenX << " Py: " << screenY << std::endl;
@@ -161,25 +153,29 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
 	int index = 0;
 
 	for (auto& face : chunk.allFaces) {
-		if (CameraDir.Dot(Direction[face.side]) >= 0.2) continue;
-		double maxZ = 0.0f;
+		if (CameraDir.Dot(Direction[face.side]) >= 0.5) continue;
 		Vector3 Max , Min;
 		Vector3 local[4];
 		for (int j = 0; j < 4; j++) {
 			Vector3 worldFacePos = face.blockPos + Verts[face.side][j];
 			local[j] = rotate((worldFacePos - player.Position), player.Rotation);
-			maxZ = max(local[j].z, maxZ);
-			Max = Max.Max(local[j]);
-			Min = Min.Min(local[j]);
+			if (j == 0) {
+				Max = Min = local[j];
+			}
+			else {
+				Max = Max.Max(local[j]);
+				Min = Min.Min(local[j]);
+			}
 		}
 		AABB volume(Min, Max);
-		if (!volume.isOnFrustum(this->frustum, local, player.Rotation)) continue;
-		Faces.push_back({ face.blockPos, face.side, face.blockID, maxZ });
-		mesh.maxZ.push_back(maxZ);
+		if (Max.z < Znear) continue;
+		//if (!volume.isOnFrustum(this->frustum, local, player.Rotation)) continue;
+		Faces.push_back({ face.blockPos, face.side, face.blockID, Max.z, face.blockID == 5 });
 	}
-
 	std::sort(Faces.begin(), Faces.end(), [](const DrawnFace& a, const DrawnFace& b) {
-		return a.maxZ > b.maxZ;
+		if (a.maxZ != b.maxZ) return a.maxZ > b.maxZ;
+		if (a.Transparent != b.Transparent) return !a.Transparent && b.Transparent;
+		return false; // consider them equal if both fields match
 		});
 
 	for (const auto& face : Faces) {
@@ -191,21 +187,20 @@ void Renderer::DrawTerrain(Player& player) {
 	std::vector<Mesh> threadMeshes;
 
 	int chunksPerAxis = 5;
-	int totalChunks = chunksPerAxis * chunksPerAxis;
+	int totalChunks = (chunksPerAxis) * (chunksPerAxis);
 	threadMeshes.resize(totalChunks);
 
 	int threadIndex = 0;
 	Vector3 PlayerChunk = (player.Position / 32).Truncate();
-	for (int i = -2; i <= 2; i++) {
-		for (int j = -2; j <= 2; j++) {
+	for (int i = -0; i <= 0; i++) {
+		for (int j = -0; j <= 0; j++) {
 			Vector3 Chunk = { (double)i, 0, (double)j };
 			Chunk += PlayerChunk;
 
-			// Launch thread calling member function on 'this' instance
 			threads.emplace_back(
 				&Renderer::RenderChunk,
 				this,
-				std::ref(chunkManager.get_chunk(Chunk)),  // assuming returns reference
+				std::ref(chunkManager.get_chunk(Chunk)),
 				std::ref(player),
 				std::ref(threadMeshes[threadIndex])
 			);
@@ -222,6 +217,10 @@ void Renderer::DrawTerrain(Player& player) {
 	terrainMesh.Vertices.clear();
 	terrainMesh.Indices.clear();
 	terrainMesh.faces = 0;
+
+	std::sort(threadMeshes.begin(), threadMeshes.end(), [](const Mesh& a, const Mesh& b) {
+			return a.MaxZ > b.MaxZ;
+		});
 
 	for (const auto& m : threadMeshes) {
 		int baseIndex = (int)terrainMesh.Vertices.size();
@@ -403,25 +402,30 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 		std::cout << "SDL initialized successfully." << std::endl;
 	}
 
-	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 	if (this->window == nullptr) { // Fixing pointer dereference
 		std::cout << "Error creating window: " << SDL_GetError();
 		SDL_Quit();
-		//assert(false);
+		assert(false);
 	}
 
 	this->renderer = SDL_CreateRenderer(this->window, NULL);
 	if (this->renderer == nullptr) { // Fixing pointer dereference
-		std::cout << "Error creating renderer: " << SDL_GetError();
+		std::cout << "Error creating renderer: " << SDL_GetError() << std::endl;
 		SDL_DestroyWindow(this->window);
 		SDL_Quit();
-		//assert(false);
+		assert(false);
+	}
+
+	this->GPU = SDL_CreateGPUDevice( NULL, false, NULL);
+	if (SDL_ClaimWindowForGPUDevice(this->GPU, this->window)) {
+		std::cout << "Error claming window for gpu device: " << SDL_GetError() << std::endl;
 	}
 	// Initialize SDL_ttf
 	if (!TTF_Init()) {
 		std::cerr << "TTF_Init failed: \n";
 		SDL_Quit();
-		//assert(false);
+		assert(false);
 	}
 
 	this->font = TTF_OpenFont("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Quantico-Bold.ttf", 24);
@@ -444,7 +448,6 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 
 	SDL_RenderPresent(renderer);
 	*/
-
 	SDL_Surface* surface = SDL_LoadBMP("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Textures.bmp");
 	if (!surface) {
 		std::cerr << "SDL_LoadBMP failed: " << SDL_GetError() << std::endl;

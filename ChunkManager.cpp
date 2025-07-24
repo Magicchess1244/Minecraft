@@ -1,4 +1,5 @@
 #include "ChunkManager.h"
+#include "Chunck.h"
 
 constexpr int ySize = 64;
 constexpr Biome Biomes[11] = {
@@ -45,18 +46,12 @@ constexpr HeightsDif PeaksAndValiesHeight[6] = {
 	{-0.9f, ySize * 0.1f},
 };
 
-
-
 int BlockSize = 50;
 
 ChunkPrefab& ChunkManager::get_chunk(Vector3 key)
 {
 	key.y = 0;
-	if (this->Chunks.find(key) != this->Chunks.end()) {
-		return std::ref(Chunks[key]);
-	}
-	else
-	{
+	if (this->Chunks.find(key) == this->Chunks.end()) {
 		std::cout << "Generating chunk at: " << key.x << ", " << key.z << std::endl;
 
 		ChunkPrefab newChunk;
@@ -64,8 +59,8 @@ ChunkPrefab& ChunkManager::get_chunk(Vector3 key)
 		newChunk.zPos = (int)key.z * newChunk.zSize;
 		newChunk.GenerateChunk();
 		this->Chunks[key] = newChunk;
-		return std::ref(Chunks[key]);
 	}
+	return std::ref(Chunks[key]);
 }
 int ChunkManager::BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights)
 {

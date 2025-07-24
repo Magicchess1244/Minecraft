@@ -2,7 +2,8 @@
 #define __CHUNKMANAGER_HPP__
 
 #include "common.hpp"
-#include "Chunck.h"
+
+class ChunkPrefab;
 
 typedef struct {
 	char Name[20];

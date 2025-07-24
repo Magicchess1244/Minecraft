@@ -9,6 +9,7 @@ struct DrawnFace {
     int side;
     int blockID;
     double maxZ;
+    bool Transparent;
 };
 
 class ChunkPrefab {

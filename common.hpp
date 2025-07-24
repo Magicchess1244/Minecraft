@@ -60,6 +60,14 @@ struct Vector3 {
 		return { x / scalar, y / scalar, z / scalar };
 	}
 
+	Vector3 operator%(Vector3 vector) const {
+		return {
+			std::fmod(x , vector.x),
+			std::fmod(y , vector.y),
+			std::fmod(z , vector.z)
+		};
+	}
+
 	bool operator==(const Vector3& other) const {
 		return x == other.x && y == other.y && z == other.z;
 	}
@@ -134,19 +142,20 @@ struct Vector3 {
 
 	Vector3 Max(const Vector3& a) const {
 		return {
-			(a.x < x) ? a.x : x,
-			(a.y < y) ? a.y : y,
-			(a.z < z) ? a.z : z
+			max(x, a.x),
+			max(y, a.y),
+			max(z, a.z)
 		};
 	}
 
-	Vector3 Min(const Vector3& a) const{
+	Vector3 Min(const Vector3& a) const {
 		return {
-			(a.x > x) ? a.x : x,
-			(a.y > y) ? a.y : y,
-			(a.z > z) ? a.z : z
+			min(x, a.x),
+			min(y, a.y),
+			min(z, a.z)
 		};
 	}
+
 };
 
 struct Color {
@@ -193,9 +202,9 @@ namespace std {
 	template <>
 	struct hash<Vector3> {
 		std::size_t operator()(const Vector3& v) const {
-			std::size_t h1 = std::hash<int>{}(v.x);
-			std::size_t h2 = std::hash<int>{}(v.y);
-			std::size_t h3 = std::hash<int>{}(v.z);
+			std::size_t h1 = std::hash<int>{}((int)v.x);
+			std::size_t h2 = std::hash<int>{}((int)v.y);
+			std::size_t h3 = std::hash<int>{}((int)v.z);
 			return h1 ^ (h2 << 1) ^ (h3 << 2);
 		}
 	};

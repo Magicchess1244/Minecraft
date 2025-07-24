@@ -131,7 +131,7 @@ struct Mesh
 {
 	std::vector<SDL_Vertex> Vertices;
 	std::vector<int> Indices;
-	std::vector<int> maxZ;
+	std::vector<double> MaxZ;
 	int faces;
 };
 
@@ -141,10 +141,11 @@ class Renderer
 {
 private:
 	SDL_Window* window = nullptr;
+	SDL_GPUDevice* GPU = nullptr;
 	SDL_Renderer* renderer = nullptr;
 	SDL_Event event;
 	TTF_Font* font = nullptr;
-	SDL_Texture* texture = nullptr;
+	SDL_GPUTexture* texture = nullptr;
 	Vector3 ScreenSize = { 0,0,0 };
 	ChunkManager chunkManager;
 	GameClient& gameClient;
@@ -162,6 +163,10 @@ public:
 		if (renderer) {
 			SDL_DestroyRenderer(renderer);
 			renderer = nullptr;
+		}
+		if (GPU) {
+			//SDL_DestroyRenderer(renderer);
+			GPU = nullptr;
 		}
 		if (window) {
 			SDL_DestroyWindow(window);

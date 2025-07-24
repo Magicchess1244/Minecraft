@@ -18,7 +18,6 @@ void ChunkPrefab::GenerateChunk()
 
 void ChunkPrefab::GenerateChunkSurface()
 {
-	std::cout << "GenerateChunkSurface()" << std::endl;
 	for (int x = 0; x < this->xSize; x++) {
 		for (int z = 0; z < this->zSize; z++) {
 			int Height = (int)(35 + ( PerlinNoise({ (double)xPos + x, 0, (double)zPos + z }, 4, 0.1f) * 25));
@@ -52,8 +51,6 @@ void ChunkPrefab::GenerateChunkSurface()
 			}
 		}
 	}
-
-	return;
 }
 
 void ChunkPrefab::GenerateChunkCaves()
@@ -80,29 +77,30 @@ void ChunkPrefab::GenerateChunkCaves()
 		}
 	}
 }
-void ChunkPrefab::VisableFaces() {
 
-	for (int y = 0; y < ySize; y++) {
-		for (int x = 0; x < xSize; x++) {
-			for (int z = 0; z < zSize; z++) {
+void ChunkPrefab::VisableFaces() {
+	this->allFaces.reserve(6000);
+
+	for (int y = 0; y < this->ySize; y++) {
+		for (int x = 0; x < this->xSize; x++) {
+			for (int z = 0; z < this->zSize; z++) {
 				Vector3 blockPos = { (double)x, (double)y, (double)z };
 
 				auto it = Blocks.find(blockPos);
 				if (it == Blocks.end()) continue;
+
 				int blockID = it->second;
 
-
-				for (int i = 0; i < 6; i++)
-				{
+				for (int i = 0; i < 6; i++) {
 					Vector3 NextBlockPos = blockPos + Direction[i];
-					auto blockIt = Blocks.find({NextBlockPos.x, NextBlockPos.y, NextBlockPos.z });
-					if ((blockIt == Blocks.end() || (blockID == 5 && blockIt->second != 5))) {
-						Vector3 ChunkPos = { (double)xPos, 0, (double)zPos };
-						Vector3 world = blockPos + ChunkPos;
-						allFaces.push_back({ world, i, blockID, 0 });
+					auto blockIt = Blocks.find(NextBlockPos);
+
+					if (blockIt == Blocks.end() || (blockID != 5 && blockIt->second == 5)) {
+						Vector3 ChunkWorldPos = { (double)this->xPos, 0, (double)this->zPos };
+						Vector3 world = blockPos + ChunkWorldPos;
+						this->allFaces.push_back({ world, i, blockID, 0 });
 					}
 				}
-
 			}
 		}
 	}
