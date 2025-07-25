@@ -92,20 +92,7 @@ void ChunkPrefab::GenerateChunkCaves()
 		}
 	}
 }
-<<<<<<< HEAD
 void ChunkPrefab::VisableFaces() {
-=======
-void ChunckPrefab::GenerateChunk()
-{
-	GenerateChunkSurface();
-	GenerateChunkCaves();
-}
-void ChunckPrefab::GenerateChunkSurface()
-{
-	for (int x = 0; x < this->xSize; x++) {
-		int Height = (int)(35 + (PerlinNoise(xPos + x, 0, 4, 0, 0.1f) * 25));
-		int ActualHeight = Height;
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 
 	for (int y = 0; y < ySize; y++) {
 		for (int x = 0; x < xSize; x++) {
@@ -127,21 +114,6 @@ void ChunckPrefab::GenerateChunkSurface()
 						allFaces.push_back({ world, i, blockID, 0 });
 					}
 				}
-<<<<<<< HEAD
-=======
-			} else {
-				Blocks[x][y] = 5;
-			}
-		}
-	}
-}
-void ChunckPrefab::GenerateChunkCaves()
-{
-	for (int x = 0; x < this->xSize; x++) {
-		for (int y = 2; y < this->ySize; y++)
-		{
-			float Hole = PerlinNoise(xPos + x, y, 3, 3, 0.1f);
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 
 			}
 		}

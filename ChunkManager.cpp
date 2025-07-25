@@ -51,130 +51,8 @@ int BlockSize = 50;
 
 ChunkPrefab& ChunkManager::get_chunk(Vector3 key)
 {
-<<<<<<< HEAD
 	if (this->Chunks.find(key) != this->Chunks.end()) {
 		return std::ref(Chunks[key]);
-=======
-	return blockID == 0 || blockID == 5;
-}
-bool canSwim(int blockID)
-{
-	return blockID == 5;
-}
-void PrintChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange)
-{
-	int xSize = Chunks[i].xSize;
-	int ySize = Chunks[i].ySize;
-	int xPos = Chunks[i].xPos;
-
-	for (int y = 0; y < yRange; y++) {
-		for (int x = 0; x < xRange; x++) {
-			std::cout << Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y];
-		}
-		std::cout << std::endl;
-	}
-	std::cout << std::endl;
-	std::cout << std::endl;
-	std::cout << std::endl;
-}
-void DrawChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange, Mesh* mesh, bool FirstChunck)
-{
-	int xSize = Chunks[i].xSize;
-	int ySize = Chunks[i].ySize;
-	int xPos = Chunks[i].xPos;
-	int quadIndex = 0;
-	int OffSet = ((int)xPlayerPos - xPlayerPos);
-
-	if (!FirstChunck) {
-		OffSet += FullRange - xRange;
-	}
-
-	for (int y = 0; y < yRange; y++) {
-		for (int x = 0; x < xRange; x++) {
-			
-			SDL_FColor Color;
-
-			Color = BlockDef[Chunks[i].Blocks[xPlayerPos + x][yPlayerPos + y]].Color;
-			
-			int vIndex = quadIndex * 4;
-			int iIndex = quadIndex * 6;
-			float FlipX = (x + OffSet) * BlockSize;
-			float FlipY = (yRange - y -1) * BlockSize;
-
-			mesh->Vertices[vIndex + 0] = { {FlipX, FlipY}, Color };
-			mesh->Vertices[vIndex + 1] = { {FlipX + BlockSize, FlipY}, Color};
-			mesh->Vertices[vIndex + 2] = { {FlipX, FlipY + BlockSize}, Color};
-			mesh->Vertices[vIndex + 3] = { {FlipX + BlockSize, FlipY + BlockSize}, Color};
-
-			mesh->Indices[iIndex + 0] = vIndex + 0;
-			mesh->Indices[iIndex + 1] = vIndex + 1;
-			mesh->Indices[iIndex + 2] = vIndex + 2;
-			mesh->Indices[iIndex + 3] = vIndex + 2;
-			mesh->Indices[iIndex + 4] = vIndex + 1;
-			mesh->Indices[iIndex + 5] = vIndex + 3;
-
-			quadIndex++;
-		}
-	}
-}
-bool Collition(Vector2* PlayerPos, Vector2 Direction, int FullRange, int yRange, bool Swim, bool Block)
-{
-
-		int newX = PlayerPos->x + (int)(FullRange / 2.0f - 1) + Direction.x;
-		int newY = PlayerPos->y + (int)(yRange / 2.0f) + Direction.y;
-
-		int chunk = (int)(newX) / 16;
-		int localX = (int)(newX % 16);
-		int footY = (int)(newY);
-		int headY = (int)(newY + 1);
-
-		//std::cout << "Chunk: " << chunk << ", LocalX: " << localX << ", FootY: " << footY << ", HeadY: " << headY << ", Block Info: " << Chunks[chunk].Blocks[localX][footY] << std::endl;
-
-		bool blockFoot = !isTransparent(Chunks[chunk].Blocks[localX][footY]);
-		bool blockHead = !isTransparent(Chunks[chunk].Blocks[localX][headY]);
-
-		if (Swim && !(blockFoot || blockHead)) {
-			blockFoot = canSwim(Chunks[chunk].Blocks[localX][footY]);
-			blockHead = canSwim(Chunks[chunk].Blocks[localX][headY]);
-		}
-
-		if (Block) {
-			blockHead = false;
-		}
-
-		return (blockFoot || blockHead);
-}
-bool PlaceBlock(int BlockType, Vector2 Position, int yRange, Vector2 PlayerPosition, short* Type) 
-{
-	Position.x = (int)(Position.x / BlockSize ) + PlayerPosition.x;
-	Position.y = (yRange - (int)(Position.y / BlockSize) - 1) + PlayerPosition.y;
-
-
-	int CurrrentChunk = (int)floorf((Position.x) / 16);
-	int RelativeX = (int)(Position.x) % 16;
-
-	
-	bool notBedRock = (Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y] != 4);
-	bool water = (Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y] == 5);
-	bool canPlace = (BlockType != 0 && (Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y] == 0 || water));
-	bool canBreak = (BlockType == 0 && (Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y] != 0 && !water));
-
-	//std::cout << canBreak << " " << canPlace << std::endl;
-
-	if (notBedRock && (canPlace || canBreak)) {
-		std::cout << "Placing Block: " << BlockType << ", Position: " << Position.x << ", " << Position.y << "Chunk: " << CurrrentChunk << std::endl;
-		*Type = Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y];
-		Chunks[CurrrentChunk].Blocks[RelativeX][(int)Position.y] = BlockType;
-		return true;
-	}
-	return false;
-}
-void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange)
-{
-	if (PixelSizeX > PixelSizeY)
-	{
-		BlockSize = (int)(PixelSizeY / yRange);
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 	}
 	else
 	{
@@ -188,18 +66,6 @@ void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange)
 		return std::ref(Chunks[key]);
 	}
 }
-<<<<<<< HEAD
-=======
-int GetHeight(int xPos)
-{
-	return Chunks[xPos].Height;
-}
-void ShowInventor(SDL_Renderer* Renderer, int width, int height, Slot* Inventory, int InventorySlot)
-{
-	SDL_SetRenderDrawColor(Renderer, 157, 76, 0, 255);
-	SDL_FRect InventoryRect = { (width / 2) - (BlockSize * 4), (height - (BlockSize * 1.3f)), (BlockSize * 1.1f) * 8 + (BlockSize * .1f), (BlockSize * 1.2f) };
-	SDL_RenderFillRect(Renderer, &InventoryRect);
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 
 int ChunkManager::BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights)
 {
@@ -302,41 +168,18 @@ namespace ChunckManager {
 		{
 			BlockSize = (int)(PixelSizeX / FullRange);
 		}
-<<<<<<< HEAD
 	}
 	void ShowInventor(SDL_Renderer* Renderer, int width, int height, std::vector<Slot>& Inventory, int InventorySlot, TTF_Font* font)
 	{
 		SDL_SetRenderDrawColor(Renderer, 157, 76, 0, 255);
 		SDL_FRect InventoryRect = { (double)(width / 2) - (BlockSize * 4), (height - (BlockSize * 1.3f)), (BlockSize * 1.1f) * 8 + (BlockSize * .1f), (BlockSize * 1.2f) };
-=======
-		SDL_FRect InventoryRect = { ((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.1f), (height - (BlockSize * 1.3f)) + (BlockSize * 0.1f), BlockSize, BlockSize };
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 		SDL_RenderFillRect(Renderer, &InventoryRect);
 
 		for (int i = 0; i < 8; i++)
 		{
-<<<<<<< HEAD
 			if (InventorySlot == i)
 			{
 				SDL_SetRenderDrawColor(Renderer, 255, 153, 56, 255);
-=======
-			SDL_SetRenderDrawColor(Renderer, BlockDef[Inventory[i].Type].Color.r * 255, BlockDef[Inventory[i].Type].Color.g * 255, BlockDef[Inventory[i].Type].Color.b * 255, BlockDef[Inventory[i].Type].Color.a * 255);
-			SDL_FRect BlockRect = { ((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.3f), (height - (BlockSize * 1.3f)) + (BlockSize * 0.3f), BlockSize * 0.6f, BlockSize * 0.6f };
-			SDL_RenderFillRect(Renderer, &BlockRect);
-			//Add be a number
-		}
-
-	}
-}
-void SimulateWater(int chunkIndex) {
-	std::queue<std::pair<int, int> > q; 
-
-	for (int x = 0; x < 16; x++) {
-		for (int y = 0; y < 64; y++) {
-			if (Chunks[chunkIndex].Blocks[x][y] == 5) {
-				int globalX = chunkIndex * 16 + x;
-				q.push(std::make_pair(globalX, y));
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 			}
 			else
 			{

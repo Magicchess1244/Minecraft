@@ -1,15 +1,8 @@
 #ifndef	__CHUNKMANAGER_HPP__
 #define __CHUNKMANAGER_HPP__
 
-<<<<<<< HEAD
 #include "common.hpp"
 #include "Chunck.h"
-=======
-#include <map>
-#include <SDL3/SDL.h>
-#include "PerlinNoise.h"
-#define BlockNum 6 
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 
 typedef struct {
 	char Name[20];
@@ -42,7 +35,6 @@ const Block BlockDef[BlockNum] = {
 		{"Water",    5, {  0, 102, 204},       NULL,             false, true }
 };
 
-<<<<<<< HEAD
 class ChunkManager {
 private:
 	std::unordered_map<Vector3, ChunkPrefab> Chunks;
@@ -71,15 +63,4 @@ namespace ChunckManager {
 	void SimulateWater(int chunkIndex);
 };
 */
-=======
-void ChunkGenerator(int Chunk);
-void DrawChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange, Mesh* mesh, bool FirstChunck);
-void PrintChunk(int i, int xPlayerPos, int yPlayerPos, int xRange, int yRange, int FullRange);
-bool Collition(Vector2* PlayerPos, Vector2 Direction, int FullRange, int yRange, bool Swim, bool Block);
-bool PlaceBlock(int BlockType, Vector2 Position, int yRange, Vector2 PlayerPosition, short* Type);
-void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange);
-int GetHeight(int xPos);
-void ShowInventor(SDL_Renderer* Renderer, int width, int height, Slot* Inventory, int InventorySlot);
-void SimulateWater(int chunkIndex);
->>>>>>> parent of a48f4a5 (Fic¡x tcp but creating one extra client)
 #endif
