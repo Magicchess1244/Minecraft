@@ -9,6 +9,8 @@ struct Plane
 {
 	Vector3 normal = { 0.f, 1.f, 0.f };
 
+	double distance = 0;
+
 	double getSignedDistanceToPlane(const Vector3& point) const
 	{
 		return normal.Dot(point);
@@ -18,38 +20,40 @@ struct Frustum
 {
 	Plane topFace, bottomFace, rightFace, leftFace, farFace, nearFace;
 
-	Frustum createFrustumFromCamera(const Player& cam, float aspect, float fovY, float zNear, float zFar) const {
+	Frustum createFrustumFromCamera(float aspect, float fovY, float zNear, float zFar) const {
 		Frustum frustum;
 
-		float tanHalfFovY = fovY; // assuming fovY is already in tan(fovY / 2) form
+		float tanHalfFovY = fovY;
 		float halfVSide = zFar * tanHalfFovY;
 		float halfHSide = halfVSide * aspect;
 
-		Vector3 camForward = cam.Rotation.AngleToRadians().Forward();
-		Vector3 camRight = cam.Rotation.AngleToRadians().Right();
-		Vector3 camUp = cam.Rotation.AngleToRadians().Up();
+		Vector3 camForward = { 0,0,1 };
+		Vector3 camRight = { 1,0, 0 };
+		Vector3 camUp = { 0,1,0 };
 
-		Vector3 nearCenter = cam.Position + camForward * zNear;
-		Vector3 farCenter = cam.Position + camForward * zFar;
+		Vector3 nearCenter = camForward * zNear;
+		Vector3 farCenter = camForward * zFar;
 
 		// Near and far
 		frustum.nearFace.normal = camForward;
+		frustum.nearFace.distance = Znear;
 
 		frustum.farFace.normal = camForward * -1;
+		frustum.farFace.distance = Zfar;
+
+		Vector3 A = { 0,0,0 };
 
 		// Right
 		{
-			Vector3 A = cam.Position;
 			Vector3 B = farCenter + (camRight * halfHSide);
 			Vector3 C = B + (camUp * halfVSide);
 
-			Vector3 normal = (B - A).Cross(C - A).Normalized();//camUp.Cross(rightEdge).Normalized();
+			Vector3 normal = (C - A).Cross(B - A).Normalized();//camUp.Cross(rightEdge).Normalized();
 			frustum.rightFace.normal = normal;
 		}
 
 		// Left
 		{
-			Vector3 A = cam.Position;
 			Vector3 B = farCenter + (camRight * halfHSide * -1);
 			Vector3 C = B + (camUp * halfVSide);
 
@@ -59,9 +63,8 @@ struct Frustum
 
 		// Top
 		{
-			Vector3 A = cam.Position;
-			Vector3 B = farCenter;
-			Vector3 C = B + (camUp * halfVSide);
+			Vector3 B = farCenter + (camUp * halfVSide);
+			Vector3 C = B + (camRight * halfHSide);
 
 			Vector3 normal = (B - A).Cross(C - A).Normalized();//camUp.Cross(rightEdge).Normalized();
 			frustum.topFace.normal = normal;
@@ -69,11 +72,10 @@ struct Frustum
 
 		// Bottom
 		{
-			Vector3 A = cam.Position;
-			Vector3 B = farCenter;
-			Vector3 C = B + (camUp * halfVSide * -1);
+			Vector3 B = farCenter + (camUp * halfVSide * -1);
+			Vector3 C = B + (camRight * halfHSide);
 
-			Vector3 normal = (B - A).Cross(C - A).Normalized();//camUp.Cross(rightEdge).Normalized();
+			Vector3 normal = (C - A).Cross(B - A).Normalized();//camUp.Cross(rightEdge).Normalized();
 			frustum.bottomFace.normal = normal;
 		}
 
@@ -83,9 +85,7 @@ struct Frustum
 };
 struct Volume
 {
-	virtual bool isOnFrustum(const Frustum& camFrustum, 
-		const Vector3* pointPosition,
-		const Vector3& rotation) const = 0;
+	virtual bool isOnFrustum(const Frustum& camFrustum, Vector3* pointPosition) const = 0;
 };
 struct AABB : public Volume
 {
@@ -98,17 +98,16 @@ struct AABB : public Volume
 		extents{ max.x - center.x, max.y - center.y, max.z - center.z }
 	{
 	}
-
 	AABB(const Vector3& inCenter, double iI, double iJ, double iK)
 		: Volume{}, center{ inCenter }, extents{ iI, iJ, iK }
 	{
 	}
 
-	bool isOnFrustum(const Frustum& camFrustum, const Vector3* pointPosition, const Vector3& rotation) const override
+	bool isOnFrustum(const Frustum& camFrustum, Vector3* pointPosition) const override
 	{
-		Vector3 forward = rotation.AngleToRadians().Forward();
-		Vector3 right = rotation.AngleToRadians().Right();
-		Vector3 up = rotation.AngleToRadians().Up();
+		Vector3 forward = { 0,0,1 };
+		Vector3 right = { 1,0, 0 };
+		Vector3 up = { 0,1,0 };
 
 		for (int i = 0; i < 4; i++) {
 			bool IsOnNearPlane = isOnOrForwardPlane(camFrustum.nearFace, pointPosition[i]);
@@ -124,7 +123,7 @@ struct AABB : public Volume
 	}
 	bool isOnOrForwardPlane(const Plane& plane, Vector3 point) const
 	{
-		return plane.normal.Dot(point);
+		return plane.normal.Dot(point) - plane.distance;
 	}
 };
 struct Mesh
@@ -142,7 +141,6 @@ class Renderer
 private:
 	SDL_Window* window = nullptr;
 	SDL_GPUDevice* GPU = nullptr;
-	SDL_Renderer* renderer = nullptr;
 	SDL_Event event;
 	TTF_Font* font = nullptr;
 	SDL_GPUTexture* texture = nullptr;
@@ -153,6 +151,7 @@ private:
 	Mesh terrainMesh;
 	bool fullScreen = false;
 	Frustum frustum;
+	unsigned int Width, Height;
 
 	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
 	Vector3 rotate(const Vector3 pos, const Vector3 Angle);
@@ -160,12 +159,8 @@ private:
 public:
 	Renderer(GameClient& gameClient);
 	~Renderer() {
-		if (renderer) {
-			SDL_DestroyRenderer(renderer);
-			renderer = nullptr;
-		}
 		if (GPU) {
-			//SDL_DestroyRenderer(renderer);
+			SDL_DestroyGPUDevice(GPU);
 			GPU = nullptr;
 		}
 		if (window) {
@@ -177,7 +172,7 @@ public:
 			font = nullptr;
 		}
 		if (texture) {
-			SDL_DestroyTexture(texture);
+			//SDL_DestroyTexture(texture);
 			texture = nullptr;
 		}
 		event = {};

@@ -169,7 +169,7 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
 		}
 		AABB volume(Min, Max);
 		if (Max.z < Znear) continue;
-		//if (!volume.isOnFrustum(this->frustum, local, player.Rotation)) continue;
+		if (!volume.isOnFrustum(this->frustum, local)) continue;
 		Faces.push_back({ face.blockPos, face.side, face.blockID, Max.z, face.blockID == 5 });
 	}
 	std::sort(Faces.begin(), Faces.end(), [](const DrawnFace& a, const DrawnFace& b) {
@@ -233,7 +233,7 @@ void Renderer::DrawTerrain(Player& player) {
 	}
 
 	std::cout << terrainMesh.faces << " faces" << std::endl;
-	SDL_RenderGeometry(renderer, texture, terrainMesh.Vertices.data(), terrainMesh.faces * 4, terrainMesh.Indices.data(), terrainMesh.faces * 6);
+	//SDL_RenderGeometry(renderer, texture, terrainMesh.Vertices.data(), terrainMesh.faces * 4, terrainMesh.Indices.data(), terrainMesh.faces * 6);
 }
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 {
@@ -298,7 +298,7 @@ void Renderer::Stats(Player& player)
 		return;
 	}
 
-	SDL_Texture* texture = SDL_CreateTextureFromSurface(this->renderer, surface);
+	//SDL_Texture* texture = SDL_CreateTextureFromSurface(this->renderer, surface);
 	if (!texture) {
 		std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << "\n";
 		SDL_DestroySurface(surface);
@@ -306,10 +306,10 @@ void Renderer::Stats(Player& player)
 	}
 
 	SDL_FRect dstRect{ 10, 10, (float)surface->w, (float)surface->h };
-	SDL_RenderTexture(this->renderer, texture, NULL, &dstRect);
+	//SDL_RenderTexture(this->renderer, texture, NULL, &dstRect);
 
-	SDL_DestroyTexture(texture);
-	SDL_DestroySurface(surface);
+	//SDL_DestroyTexture(texture);
+	//SDL_DestroySurface(surface);
 }
 void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players)
 {
@@ -373,23 +373,37 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 		}
 	}
 
-	SDL_SetRenderDrawColor(this->renderer, 0, 178, 255, 255);
-	SDL_RenderClear(this->renderer);
+	SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(this->GPU);
+
+	// 2. Get the current window framebuffer
+	SDL_GPUTexture* swap_texture;
+	SDL_WaitAndAcquireGPUSwapchainTexture(cmd, this->window, &swap_texture, &this->Width, &this->Height);
+
+	SDL_GPUColorTargetInfo colorInfo = { 0 };
+	colorInfo.texture = swap_texture;
+	colorInfo.clear_color = SDL_FColor{ 0.0f, 0.0f, 0.0f, 1.0f };
+	colorInfo.load_op = SDL_GPU_LOADOP_CLEAR;
+	colorInfo.store_op = SDL_GPU_STOREOP_STORE;
+	
+	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &colorInfo, 1, NULL);
+
+	SDL_SetGPUViewport(pass, NULL);
+
 
 	Player& player = std::ref(players[0]);
-
-	float aspect = ScreenSize.x / ScreenSize.y;
-	this->frustum = Frustum().createFrustumFromCamera(player, aspect, FOV, Znear, Zfar);
 
 	DrawTerrain(player);
 	Stats(player);
 
 	//DrawBG(renderer, players[0],{ (double)width, (double)height, 0}, texture);
 	//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
-
 	//DrawPlayer(renderer, Range, std::ref(players));
-	SDL_RenderPresent(this->renderer);
-	SDL_Delay(1000 / 10);
+	//SDL_RenderPresent(this->renderer);
+	//SDL_Delay(1000 / 10);
+
+	SDL_EndGPURenderPass(pass);
+	SDL_SubmitGPUCommandBuffer(cmd);
+	SDL_GL_SwapWindow(this->window);
 }
 
 Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager()
@@ -405,14 +419,6 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 	if (this->window == nullptr) { // Fixing pointer dereference
 		std::cout << "Error creating window: " << SDL_GetError();
-		SDL_Quit();
-		assert(false);
-	}
-
-	this->renderer = SDL_CreateRenderer(this->window, NULL);
-	if (this->renderer == nullptr) { // Fixing pointer dereference
-		std::cout << "Error creating renderer: " << SDL_GetError() << std::endl;
-		SDL_DestroyWindow(this->window);
 		SDL_Quit();
 		assert(false);
 	}
@@ -453,7 +459,7 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 		std::cerr << "SDL_LoadBMP failed: " << SDL_GetError() << std::endl;
 	}
 
-	this->texture = SDL_CreateTextureFromSurface(this->renderer, surface);
+	//this->texture = SDL_CreateTextureFromSurface(this->renderer, surface);
 	SDL_DestroySurface(surface);
 	if (!texture) {
 		std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
@@ -463,4 +469,6 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	this->event = {};
 	SDL_SetWindowRelativeMouseMode(window, true);
 
+	double aspect = this->ScreenSize.x / this->ScreenSize.y;
+	this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
 }
