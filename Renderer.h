@@ -20,19 +20,19 @@ struct Frustum
 {
 	Plane topFace, bottomFace, rightFace, leftFace, farFace, nearFace;
 
-	Frustum createFrustumFromCamera(float aspect, float fovY, float zNear, float zFar) const {
+	Frustum createFrustumFromCamera(float aspect, float fovY, float Znear, float Zfar) const {
 		Frustum frustum;
 
 		float tanHalfFovY = fovY;
-		float halfVSide = zFar * tanHalfFovY;
+		float halfVSide = Zfar * tanHalfFovY;
 		float halfHSide = halfVSide * aspect;
 
 		Vector3 camForward = { 0,0,1 };
 		Vector3 camRight = { 1,0, 0 };
 		Vector3 camUp = { 0,1,0 };
 
-		Vector3 nearCenter = camForward * zNear;
-		Vector3 farCenter = camForward * zFar;
+		Vector3 nearCenter = camForward * Znear;
+		Vector3 farCenter = camForward * Zfar;
 
 		// Near and far
 		frustum.nearFace.normal = camForward;
@@ -141,6 +141,7 @@ class Renderer
 private:
 	SDL_Window* window = nullptr;
 	SDL_GPUDevice* GPU = nullptr;
+	SDL_GPURenderPass* pass = nullptr;
 	SDL_Event event;
 	TTF_Font* font = nullptr;
 	SDL_GPUTexture* texture = nullptr;
@@ -163,6 +164,9 @@ public:
 			SDL_DestroyGPUDevice(GPU);
 			GPU = nullptr;
 		}
+		if (pass) {
+			pass = nullptr;
+		}
 		if (window) {
 			SDL_DestroyWindow(window);
 			window = nullptr;
@@ -180,7 +184,7 @@ public:
 	};
 
 	void Stats(Player& player);
-	void RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh);
+	void RenderChunk(ChunkPrefab& chunk, Player& player);
 	void DrawTerrain(Player& player);
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos);
 	void MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players);

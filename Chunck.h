@@ -2,7 +2,6 @@
 #define __CHUNK__
 
 #include "common.hpp"
-#include "PerlinNoise.h"
 
 struct DrawnFace {
     Vector3 blockPos;

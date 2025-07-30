@@ -4,6 +4,6 @@
 #include "common.hpp"
 
 double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency);
-void SetGradients();
+void SetSeed(int givenSeed);
 
 #endif

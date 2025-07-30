@@ -2,9 +2,8 @@
 #include "GameClient.h"
 
 const double FOV = tan((45 * (PI / 180)) / 2.0f);
-const double Znear = 0.01;
+const double Znear = 1 / FOV;
 constexpr float Zfar = 1000.0f;
-constexpr float Aspect = 1.5f;
 const Vector3 Verts[6][4] = {
 	{// Front (-Z)
 		{ -0.5, -0.5, -0.5 },
@@ -134,13 +133,14 @@ void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, i
 
 	mesh.faces++;
 }
-void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
+void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player) {
+	Mesh mesh = {};
 	mesh.Vertices.clear();
 	mesh.Indices.clear();
 	mesh.faces = 0;
-	
+
 	Vector3 Radiants = player.Rotation.AngleToRadians();
-		
+
 	Vector3 CameraDir = {
 		cos(Radiants.x) * sin(Radiants.y),  // X
 		sin(Radiants.x),				    // Y
@@ -154,7 +154,7 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
 
 	for (auto& face : chunk.allFaces) {
 		if (CameraDir.Dot(Direction[face.side]) >= 0.5) continue;
-		Vector3 Max , Min;
+		Vector3 Max, Min;
 		Vector3 local[4];
 		for (int j = 0; j < 4; j++) {
 			Vector3 worldFacePos = face.blockPos + Verts[face.side][j];
@@ -178,17 +178,57 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, Mesh& mesh) {
 		return false; // consider them equal if both fields match
 		});
 
-	for (const auto& face : Faces) {
-		DrawFace(mesh, player, face.blockPos, face.blockID, face.side);
-	}
+	// Vertex + Index setup
+		Uint32 vertexSize = sizeof(SDL_Vertex) * mesh.Vertices.size();
+		Uint32 indexSize = sizeof(Uint32) * mesh.Indices.size();
+
+		// Create vertex buffer
+		SDL_GPUBufferCreateInfo vertexInfo = {};
+		vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+		vertexInfo.size = vertexSize;
+		SDL_GPUBuffer* Vertex = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
+
+		SDL_GPUTransferBufferCreateInfo vertexTransferInfo = {};
+		vertexTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+		vertexTransferInfo.size = vertexSize;
+		SDL_GPUTransferBuffer* vTransfer = SDL_CreateGPUTransferBuffer(this->GPU, &vertexTransferInfo);
+
+		void* vMapped = SDL_MapGPUTransferBuffer(this->GPU, vTransfer, false);
+		memcpy(vMapped, mesh.Vertices.data(), vertexSize);
+		SDL_UnmapGPUTransferBuffer(this->GPU, vTransfer);
+
+		SDL_GPUBufferBinding vertexBinding = {};
+		vertexBinding.buffer = Vertex;
+		vertexBinding.offset = 0;
+
+		// Create index buffer
+		SDL_GPUBufferCreateInfo indexInfo = {};
+		indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+		indexInfo.size = indexSize;
+		SDL_GPUBuffer* Index = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
+
+		SDL_GPUTransferBufferCreateInfo indexTransferInfo = {};
+		indexTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+		indexTransferInfo.size = indexSize;
+		SDL_GPUTransferBuffer* iTransfer = SDL_CreateGPUTransferBuffer(this->GPU, &indexTransferInfo);
+
+		void* iMapped = SDL_MapGPUTransferBuffer(this->GPU, iTransfer, false);
+		memcpy(iMapped, mesh.Indices.data(), indexSize);
+		SDL_UnmapGPUTransferBuffer(this->GPU, iTransfer);
+
+		SDL_GPUBufferBinding indexBinding = {};
+		indexBinding.buffer = Index;
+		indexBinding.offset = 0;
+
+		// Draw
+		SDL_BindGPUVertexBuffers(this->pass, 0, &vertexBinding, 1);
+		SDL_BindGPUIndexBuffer(this->pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+		SDL_DrawGPUIndexedPrimitives(this->pass, mesh.Indices.size(), 1, 0, 0, 0);
 }
 void Renderer::DrawTerrain(Player& player) {
 	std::vector<std::thread> threads;
-	std::vector<Mesh> threadMeshes;
 
 	int chunksPerAxis = 5;
-	int totalChunks = (chunksPerAxis) * (chunksPerAxis);
-	threadMeshes.resize(totalChunks);
 
 	int threadIndex = 0;
 	Vector3 PlayerChunk = (player.Position / 32).Truncate();
@@ -201,8 +241,7 @@ void Renderer::DrawTerrain(Player& player) {
 				&Renderer::RenderChunk,
 				this,
 				std::ref(chunkManager.get_chunk(Chunk)),
-				std::ref(player),
-				std::ref(threadMeshes[threadIndex])
+				std::ref(player)
 			);
 
 			threadIndex++;
@@ -212,28 +251,6 @@ void Renderer::DrawTerrain(Player& player) {
 	for (auto& t : threads) {
 		if (t.joinable()) t.join();
 	}
-
-	// Merge all thread meshes
-	terrainMesh.Vertices.clear();
-	terrainMesh.Indices.clear();
-	terrainMesh.faces = 0;
-
-	std::sort(threadMeshes.begin(), threadMeshes.end(), [](const Mesh& a, const Mesh& b) {
-			return a.MaxZ > b.MaxZ;
-		});
-
-	for (const auto& m : threadMeshes) {
-		int baseIndex = (int)terrainMesh.Vertices.size();
-		terrainMesh.Vertices.insert(terrainMesh.Vertices.end(), m.Vertices.begin(), m.Vertices.end());
-
-		for (int index : m.Indices)
-			terrainMesh.Indices.push_back(index + baseIndex);
-
-		terrainMesh.faces += m.faces;
-	}
-
-	std::cout << terrainMesh.faces << " faces" << std::endl;
-	//SDL_RenderGeometry(renderer, texture, terrainMesh.Vertices.data(), terrainMesh.faces * 4, terrainMesh.Indices.data(), terrainMesh.faces * 6);
 }
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos)
 {
@@ -385,7 +402,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 	colorInfo.load_op = SDL_GPU_LOADOP_CLEAR;
 	colorInfo.store_op = SDL_GPU_STOREOP_STORE;
 	
-	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &colorInfo, 1, NULL);
+	this->pass = SDL_BeginGPURenderPass(cmd, &colorInfo, 1, NULL);
 
 	SDL_SetGPUViewport(pass, NULL);
 
@@ -393,15 +410,13 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 	Player& player = std::ref(players[0]);
 
 	DrawTerrain(player);
-	Stats(player);
-
+	//Stats(player);
 	//DrawBG(renderer, players[0],{ (double)width, (double)height, 0}, texture);
 	//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 	//DrawPlayer(renderer, Range, std::ref(players));
 	//SDL_RenderPresent(this->renderer);
 	//SDL_Delay(1000 / 10);
-
-	SDL_EndGPURenderPass(pass);
+	SDL_EndGPURenderPass(this->pass);
 	SDL_SubmitGPUCommandBuffer(cmd);
 	SDL_GL_SwapWindow(this->window);
 }
@@ -416,7 +431,7 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 		std::cout << "SDL initialized successfully." << std::endl;
 	}
 
-	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	if (this->window == nullptr) { // Fixing pointer dereference
 		std::cout << "Error creating window: " << SDL_GetError();
 		SDL_Quit();
@@ -434,12 +449,12 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 		assert(false);
 	}
 
-	this->font = TTF_OpenFont("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Quantico-Bold.ttf", 24);
+	/*
+	this->font = TTF_OpenFont("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Quantico-Bold.ttf", 14);
 	if (!this->font) {
 		std::cerr << "Font is null!" << std::endl;
 	}
 
-	/*
 	SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
 	SDL_FRect rect = { 0,0,100,100 };
 	SDL_RenderFillRect(renderer, &rect);
@@ -453,7 +468,7 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	SDL_DestroyTexture(texture);
 
 	SDL_RenderPresent(renderer);
-	*/
+
 	SDL_Surface* surface = SDL_LoadBMP("C:\\Users\\pumu\\source\\repos\\2Dminecraft\\x64\\Release\\Textures.bmp");
 	if (!surface) {
 		std::cerr << "SDL_LoadBMP failed: " << SDL_GetError() << std::endl;
@@ -464,7 +479,7 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	if (!texture) {
 		std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
 	}
-
+	*/
 	this->terrainMesh = {};
 	this->event = {};
 	SDL_SetWindowRelativeMouseMode(window, true);

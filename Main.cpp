@@ -7,24 +7,24 @@ int main(int argc, char* argv[])
 	srand(static_cast<unsigned int>(time(0)));
 
 	int choice = 0;
+	GameServer server;
+	GameClient client;
 
 	do {
 		std::cout << "Choose an option:\n1. Start Server\n2. Start Client\n";
 		std::cin >> choice;
 
-		if (choice == 1) {
-			GameServer server;
+		switch (choice) {
+		case 1:
 			server.set_seed(rand());
 			server.AcceptClients();
-			//std::thread(&GameServer::AcceptClients, &server, std::ref(is_running), Range).detach();
-		} else if (choice == 2) {
-			
-			GameClient client;
+			break;
+		case 2:
 			BitMiner::GameLoop(client);
-			//std::thread(BitMiner::GameLoop, std::ref(is_running), std::ref(client)).detach();
-		}
-		else {
+			break;
+		default:
 			std::cout << "Invalid choice.\n";
+			break;
 		}
 	} while (choice > 2 || choice < 1);
 

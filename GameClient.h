@@ -20,7 +20,7 @@ private:
 	bool running = true;
 
 public:
-	GameClient() : seed(0), player_count(0), server(INVALID_SOCKET) {}
+	GameClient() : seed(0), player_count(0), server(INVALID_SOCKET) {} 
 	~GameClient() {
 		std::cout << "closing conn" << std::endl;
 		closesocket(server);
@@ -87,7 +87,7 @@ public:
 		this->server = serverSocket;
 	}
 
-	bool GetRunning() {
+	bool GetRunning() const {
 		return running;
 	}
 	void Quit() {

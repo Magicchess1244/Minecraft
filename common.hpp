@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <SDL3/SDL.h>
-//#include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <WinSock2.h>
 #include <ws2tcpip.h>
@@ -157,7 +157,6 @@ struct Vector3 {
 	}
 
 };
-
 struct Color {
 	unsigned int r, g, b;
 
@@ -183,20 +182,15 @@ struct Color {
 		};
 	}
 };
-
-
-
 struct Player {
 	Vector3 Position;
 	Vector3 Rotation;
 	Color color;
 };
-
 typedef struct {
 	short Amount;
 	short Type;
 } Slot;
-
 
 namespace std {
 	template <>
@@ -209,6 +203,7 @@ namespace std {
 		}
 	};
 }
+
 static std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
 	std::vector<std::string> tokens;
 	size_t start = 0;

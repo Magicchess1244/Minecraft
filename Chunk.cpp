@@ -1,4 +1,5 @@
 #include "Chunck.h"
+#include "PerlinNoise.h"
 
 const Vector3 Direction[6] = {
 	{ 0, 0, -1 }, // Front

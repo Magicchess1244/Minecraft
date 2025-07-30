@@ -1,13 +1,22 @@
 #include "PerlinNoise.h"
 
-Vector3 Gradients[100][10][100];
+int seed;
 
-// Fade function for Perlin interpolation
+uint32_t SeededHash(const void* data, size_t length, uint32_t seed = 2166136261u) {
+	const uint8_t* bytes = static_cast<const uint8_t*>(data);
+	uint32_t hash = seed; // use seed as initial value
+
+	for (size_t i = 0; i < length; ++i) {
+		hash ^= bytes[i];
+		hash *= 16777619u;
+	}
+
+	return hash;
+}
 double Fade(double t) {
 	return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-// Convert yaw and pitch (in degrees) to a normalized 3D direction vector
 Vector3 GradientFromAngles(const Vector3& Angle) {
 	Vector3 Rad = Angle.AngleToRadians();
 
@@ -21,7 +30,6 @@ Vector3 GradientFromAngles(const Vector3& Angle) {
 	return dir.Normalized();
 }
 
-// Basic Perlin noise at one frequency
 double BasicPerlinNoise(double xPos, double yPos, double zPos) {
 	int x0 = static_cast<int>(xPos) / 8;
 	int y0 = static_cast<int>(yPos) / 8;
@@ -37,7 +45,8 @@ double BasicPerlinNoise(double xPos, double yPos, double zPos) {
 		for (int j = 0; j < 2; ++j) {
 			for (int k = 0; k < 2; ++k) {
 				int index = i * 4 + j * 2 + k;
-				gradients[index] = GradientFromAngles(Gradients[x0 + i][y0 + j][z0 + k]);
+				Vector3 Position = { double(x0 + i), (double)(y0 + j), (double)(z0 + k) };
+				//gradients[index] = GradientFromAngles(SeededHash(&Position, seed));
 			}
 		}
 	}
@@ -77,7 +86,6 @@ double BasicPerlinNoise(double xPos, double yPos, double zPos) {
 	return Lerp(lerp0, lerp1, w);
 }
 
-// Fractal Perlin noise with multiple octaves
 double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency) {
 	double Frequency = ConstFrequency;
 	double Amplitude = ConstFrequency;
@@ -94,18 +102,6 @@ double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency) {
 
 	return SDL_clamp(FinalNoise, -1.0, 1.0);
 }
-
-// Initialize gradient angles (yaw in x, pitch in z)
-void SetGradients() {
-	for (int x = 0; x < 100; ++x) {
-		for (int y = 0; y < 10; ++y) {
-			for (int z = 0; z < 100; ++z) {
-				Gradients[x][y][z] = Vector3{
-					static_cast<double>(rand() % 360),
-					0.0,
-					static_cast<double>(rand() % 180)
-				};
-			}
-		}
-	}
+void SetSeed(int givenSeed) {
+	seed = givenSeed;
 }

@@ -1,4 +1,5 @@
 #include "GameClient.h"
+#include "PerlinNoise.h"
 
 constexpr double mouseSensitivity = 0.1f;
 constexpr double playerSpeed = 1.0f;
@@ -150,7 +151,7 @@ namespace BitMiner {
 		//game.MakeClient();
 		//game.set_seed();
 		//game.set_color();
-		SetGradients();
+		SetSeed(game.get_seed());
 
 		int width = 600;
 		int height = 400;
