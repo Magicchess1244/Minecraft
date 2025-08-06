@@ -227,7 +227,7 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player) {
 }
 void Renderer::DrawTerrain(Player& player) {
 	std::vector<std::thread> threads;
-
+	std::cout << "Nigga" << std::endl;
 	int chunksPerAxis = 5;
 
 	int threadIndex = 0;
@@ -390,6 +390,8 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 		}
 	}
 
+	std::cout << "Nigga2" << std::endl;
+
 	SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(this->GPU);
 
 	// 2. Get the current window framebuffer
@@ -398,31 +400,38 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 
 	SDL_GPUColorTargetInfo colorInfo = { 0 };
 	colorInfo.texture = swap_texture;
-	colorInfo.clear_color = SDL_FColor{ 0.0f, 0.0f, 0.0f, 1.0f };
+	colorInfo.clear_color = SDL_FColor{ 1.0f, 0.0f, 0.0f, 1.0f };
 	colorInfo.load_op = SDL_GPU_LOADOP_CLEAR;
 	colorInfo.store_op = SDL_GPU_STOREOP_STORE;
 	
 	this->pass = SDL_BeginGPURenderPass(cmd, &colorInfo, 1, NULL);
 
-	SDL_SetGPUViewport(pass, NULL);
+	//SDL_SetGPUViewport(pass, NULL);
+	std::cout << "Nigga3\n";
 
 
-	Player& player = std::ref(players[0]);
-
-	DrawTerrain(player);
+	//DrawTerrain(players[0]);
 	//Stats(player);
 	//DrawBG(renderer, players[0],{ (double)width, (double)height, 0}, texture);
 	//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 	//DrawPlayer(renderer, Range, std::ref(players));
 	//SDL_RenderPresent(this->renderer);
 	//SDL_Delay(1000 / 10);
+	std::cout << "Nigga4\n";
+
 	SDL_EndGPURenderPass(this->pass);
-	SDL_SubmitGPUCommandBuffer(cmd);
-	SDL_GL_SwapWindow(this->window);
+	std::cout << "Nigga5\n";
+	if(!SDL_SubmitGPUCommandBuffer(cmd)) {
+		std::cout << "Heil Puigdemont\n";
+	}
+	//SDL_GL_SwapWindow(this->window);
 }
 
 Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager()
 {
+	this->Width = 0;
+	this->Height = 0;
+
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		std::cout << "Error initializing SDL: " << SDL_GetError() << std::endl;
 		//assert(false);
@@ -438,7 +447,7 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 		assert(false);
 	}
 
-	this->GPU = SDL_CreateGPUDevice( NULL, false, NULL);
+	this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_INVALID, false, NULL);
 	if (SDL_ClaimWindowForGPUDevice(this->GPU, this->window)) {
 		std::cout << "Error claming window for gpu device: " << SDL_GetError() << std::endl;
 	}

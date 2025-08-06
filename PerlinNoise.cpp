@@ -2,7 +2,7 @@
 
 int seed;
 
-uint32_t SeededHash(const void* data, size_t length, uint32_t seed = 2166136261u) {
+static uint32_t SeededHash(const void* data, size_t length, uint32_t seed = 2166136261u) {
 	const uint8_t* bytes = static_cast<const uint8_t*>(data);
 	uint32_t hash = seed; // use seed as initial value
 
@@ -17,7 +17,7 @@ double Fade(double t) {
 	return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-Vector3 GradientFromAngles(const Vector3& Angle) {
+static Vector3 GradientFromAngles(const Vector3& Angle) {
 	Vector3 Rad = Angle.AngleToRadians();
 
 	// Using spherical coordinates: yaw (x), pitch (z)
@@ -64,7 +64,7 @@ double BasicPerlinNoise(double xPos, double yPos, double zPos) {
 	};
 
 	// Dot products
-	double dots[8];
+	double dots[8] = { 0 };
 	for (int i = 0; i < 8; ++i) {
 		dots[i] = gradients[i].Dot(rel[i]);
 	}
