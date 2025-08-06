@@ -440,17 +440,22 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 		std::cout << "SDL initialized successfully." << std::endl;
 	}
 
-	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-	if (this->window == nullptr) { // Fixing pointer dereference
+	this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_RESIZABLE);
+	if (this->window == nullptr) {
 		std::cout << "Error creating window: " << SDL_GetError();
 		SDL_Quit();
 		assert(false);
 	}
 
-	this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_INVALID, false, NULL);
+	// Use correct shader format for Direct3D (DXIL)
+	this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL, false, "direct3d12");  // or "d3d11"
+	const char* err = SDL_GetError();
+	printf("SDL GPU creation failed: %s\n", err);
+
 	if (SDL_ClaimWindowForGPUDevice(this->GPU, this->window)) {
-		std::cout << "Error claming window for gpu device: " << SDL_GetError() << std::endl;
+		std::cout << "Error claiming window for GPU device: " << SDL_GetError() << std::endl;
 	}
+
 	// Initialize SDL_ttf
 	if (!TTF_Init()) {
 		std::cerr << "TTF_Init failed: \n";
