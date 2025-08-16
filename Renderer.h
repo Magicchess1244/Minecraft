@@ -128,8 +128,9 @@ struct AABB : public Volume
 };
 struct Mesh
 {
-	std::vector<SDL_Vertex> Vertices;
-	std::vector<int> Indices;
+	SDL_GPUTransferBuffer* transferBuffer = nullptr;
+	SDL_GPUBufferBinding* VertexBuffer;
+	SDL_GPUBufferBinding* IndexBuffer;
 	std::vector<double> MaxZ;
 	int faces;
 };
@@ -149,17 +150,27 @@ private:
 	ChunkManager chunkManager;
 	GameClient& gameClient;
 	int BlockPixelSize = 50;
-	Mesh terrainMesh;
 	bool fullScreen = false;
 	Frustum frustum;
 	unsigned int Width, Height;
+	SDL_GPUCommandBuffer* cmdRender = nullptr;
+	SDL_GPUCommandBuffer* cmdCopy = nullptr;
+	std::vector<Mesh&> Terrain;
+	SDL_GPUGraphicsPipeline* graphicsPipeline = nullptr;
 
 	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
 	Vector3 rotate(const Vector3 pos, const Vector3 Angle);
-	void DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, int Side);
+	void DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh& mesh);
 public:
 	Renderer(GameClient& gameClient);
 	~Renderer() {
+		for (Mesh& mesh : Terrain) {
+			SDL_ReleaseGPUBuffer(this->GPU, mesh.IndexBuffer->buffer);
+			SDL_ReleaseGPUBuffer(this->GPU, mesh.VertexBuffer->buffer);
+			SDL_ReleaseGPUTransferBuffer(this->GPU, mesh.transferBuffer);
+		}
+
+		SDL_ReleaseGPUGraphicsPipeline(this->GPU, graphicsPipeline);
 		if (GPU) {
 			SDL_DestroyGPUDevice(GPU);
 			GPU = nullptr;
@@ -180,11 +191,12 @@ public:
 			texture = nullptr;
 		}
 		event = {};
-		terrainMesh = {};
+		cmdCopy = nullptr;
+		cmdRender = nullptr;
 	};
 
 	void Stats(Player& player);
-	void RenderChunk(ChunkPrefab& chunk, Player& player);
+	void RenderChunk(ChunkPrefab& chunk, Player& player, int NumChunk);
 	void DrawTerrain(Player& player);
 	void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Player>& PlayerPos);
 	void MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, std::vector<Player>& players);

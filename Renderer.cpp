@@ -4,6 +4,7 @@
 const double FOV = tan((45 * (PI / 180)) / 2.0f);
 const double Znear = 1 / FOV;
 constexpr float Zfar = 1000.0f;
+constexpr int RenderDistance = 5;
 const Vector3 Verts[6][4] = {
 	{// Front (-Z)
 		{ -0.5, -0.5, -0.5 },
@@ -89,9 +90,10 @@ Vector3 Renderer::rotate(const Vector3 pos, Vector3 Angle)
 
 	return result;
 }
-void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, int Side)
+void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh& mesh)
 {
 	const Vector3* verts = Verts[Side];
+	const int vIndex = mesh.faces * 4;
 
 	//std::cout << "\n \n";
 	for (int i = 0; i < 4; i++) {
@@ -118,28 +120,26 @@ void Renderer::DrawFace(Mesh& mesh, Player& player, Vector3 blocks, int color, i
 			{ screenX, screenY }, faceColor.ToSDL()
 		};
 
-		mesh.Vertices.push_back(vertex);
+		mesh.transferBuffer[vIndex + i] = vertex;
 	}
 
-	int vIndex = mesh.faces * 4;
-
-	mesh.Indices.push_back(vIndex + 0);
+	/*
+	mesh.IndexBuffer.buffer[vIndex] = vIndex + 0;
 	mesh.Indices.push_back(vIndex + 1);
 	mesh.Indices.push_back(vIndex + 2);
 
 	mesh.Indices.push_back(vIndex + 2);
 	mesh.Indices.push_back(vIndex + 1);
 	mesh.Indices.push_back(vIndex + 3);
-
+	*/
 	mesh.faces++;
 }
-void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player) {
-	Mesh mesh = {};
-	mesh.Vertices.clear();
-	mesh.Indices.clear();
-	mesh.faces = 0;
-
+void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, int NumChunk) 
+{
 	Vector3 Radiants = player.Rotation.AngleToRadians();
+	auto& mesh = this->Terrain[NumChunk];
+	mesh.faces = 0;
+	mesh.MaxZ.clear();
 
 	Vector3 CameraDir = {
 		cos(Radiants.x) * sin(Radiants.y),  // X
@@ -178,52 +178,31 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player) {
 		return false; // consider them equal if both fields match
 		});
 
-	// Vertex + Index setup
-		Uint32 vertexSize = sizeof(SDL_Vertex) * mesh.Vertices.size();
-		Uint32 indexSize = sizeof(Uint32) * mesh.Indices.size();
+	SDL_Vertex* data = (SDL_Vertex*)SDL_MapGPUTransferBuffer(this->GPU, mesh.transferBuffer, false);
 
-		// Create vertex buffer
-		SDL_GPUBufferCreateInfo vertexInfo = {};
-		vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-		vertexInfo.size = vertexSize;
-		SDL_GPUBuffer* Vertex = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
+	for (DrawnFace Face : Faces) {
+		DrawFace(player, Face.blockPos, Face.blockID, Face.side, mesh);
+	}
+	SDL_UnmapGPUTransferBuffer(this->GPU, mesh.transferBuffer);
 
-		SDL_GPUTransferBufferCreateInfo vertexTransferInfo = {};
-		vertexTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-		vertexTransferInfo.size = vertexSize;
-		SDL_GPUTransferBuffer* vTransfer = SDL_CreateGPUTransferBuffer(this->GPU, &vertexTransferInfo);
+	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
 
-		void* vMapped = SDL_MapGPUTransferBuffer(this->GPU, vTransfer, false);
-		memcpy(vMapped, mesh.Vertices.data(), vertexSize);
-		SDL_UnmapGPUTransferBuffer(this->GPU, vTransfer);
+	// where is the data
+	SDL_GPUTransferBufferLocation location{};
+	location.transfer_buffer = mesh.transferBuffer;
+	location.offset = 0; // start from the beginning
 
-		SDL_GPUBufferBinding vertexBinding = {};
-		vertexBinding.buffer = Vertex;
-		vertexBinding.offset = 0;
+	// where to upload the data
+	SDL_GPUBufferRegion region{};
+	region.buffer = mesh.VertexBuffer->buffer;
+	region.size = sizeof(mesh.VertexBuffer->buffer);
+	region.offset = 0;
 
-		// Create index buffer
-		SDL_GPUBufferCreateInfo indexInfo = {};
-		indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-		indexInfo.size = indexSize;
-		SDL_GPUBuffer* Index = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
+	// upload the data
+	SDL_UploadToGPUBuffer(copyPass, &location, &region, true);
 
-		SDL_GPUTransferBufferCreateInfo indexTransferInfo = {};
-		indexTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-		indexTransferInfo.size = indexSize;
-		SDL_GPUTransferBuffer* iTransfer = SDL_CreateGPUTransferBuffer(this->GPU, &indexTransferInfo);
-
-		void* iMapped = SDL_MapGPUTransferBuffer(this->GPU, iTransfer, false);
-		memcpy(iMapped, mesh.Indices.data(), indexSize);
-		SDL_UnmapGPUTransferBuffer(this->GPU, iTransfer);
-
-		SDL_GPUBufferBinding indexBinding = {};
-		indexBinding.buffer = Index;
-		indexBinding.offset = 0;
-
-		// Draw
-		SDL_BindGPUVertexBuffers(this->pass, 0, &vertexBinding, 1);
-		SDL_BindGPUIndexBuffer(this->pass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-		SDL_DrawGPUIndexedPrimitives(this->pass, mesh.Indices.size(), 1, 0, 0, 0);
+	// end the copy pass
+	SDL_EndGPUCopyPass(copyPass);
 }
 void Renderer::DrawTerrain(Player& player) {
 	std::vector<std::thread> threads;
@@ -390,41 +369,47 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 		}
 	}
 
-	std::cout << "Nigga2" << std::endl;
-
-	SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(this->GPU);
+	this->cmdRender = SDL_AcquireGPUCommandBuffer(this->GPU);
+	this->cmdCopy = SDL_AcquireGPUCommandBuffer(this->GPU);
 
 	// 2. Get the current window framebuffer
 	SDL_GPUTexture* swap_texture;
-	SDL_WaitAndAcquireGPUSwapchainTexture(cmd, this->window, &swap_texture, &this->Width, &this->Height);
+	SDL_WaitAndAcquireGPUSwapchainTexture(this->cmdRender, this->window, &swap_texture, &this->Width, &this->Height);
+
+	if (swap_texture == NULL) return;
 
 	SDL_GPUColorTargetInfo colorInfo = { 0 };
-	colorInfo.texture = swap_texture;
-	colorInfo.clear_color = SDL_FColor{ 1.0f, 0.0f, 0.0f, 1.0f };
+	colorInfo.clear_color = SDL_FColor{ 0.0f, 0.69f, 1.0f, 1.0f };
 	colorInfo.load_op = SDL_GPU_LOADOP_CLEAR;
 	colorInfo.store_op = SDL_GPU_STOREOP_STORE;
+	colorInfo.texture = swap_texture;
 	
-	this->pass = SDL_BeginGPURenderPass(cmd, &colorInfo, 1, NULL);
 
 	//SDL_SetGPUViewport(pass, NULL);
-	std::cout << "Nigga3\n";
-
 
 	//DrawTerrain(players[0]);
 	//Stats(player);
 	//DrawBG(renderer, players[0],{ (double)width, (double)height, 0}, texture);
 	//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 	//DrawPlayer(renderer, Range, std::ref(players));
-	//SDL_RenderPresent(this->renderer);
 	//SDL_Delay(1000 / 10);
-	std::cout << "Nigga4\n";
+	
+	this->pass = SDL_BeginGPURenderPass(this->cmdRender, &colorInfo, 1, NULL);
+	
+	for (Mesh mesh : this->Terrain)
+	{
+		SDL_BindGPUVertexBuffers(this->pass, 0, mesh.VertexBuffer, 1);
+		SDL_BindGPUIndexBuffer(this->pass, mesh.IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+		SDL_DrawGPUIndexedPrimitives(this->pass, mesh.MaxZ.size() * 6, 1, 0, 0, 0);
+	}
 
 	SDL_EndGPURenderPass(this->pass);
-	std::cout << "Nigga5\n";
-	if(!SDL_SubmitGPUCommandBuffer(cmd)) {
-		std::cout << "Heil Puigdemont\n";
+	if(!SDL_SubmitGPUCommandBuffer(this->cmdRender)) {
+		std::cout << "Heil el render de Puigdemont\n";
 	}
-	//SDL_GL_SwapWindow(this->window);
+	if (!SDL_SubmitGPUCommandBuffer(this->cmdCopy)) {
+		std::cout << "Heil la memoria de Puigdemont\n";
+	}
 }
 
 Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager()
@@ -494,10 +479,127 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 		std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
 	}
 	*/
-	this->terrainMesh = {};
 	this->event = {};
 	SDL_SetWindowRelativeMouseMode(window, true);
 
 	double aspect = this->ScreenSize.x / this->ScreenSize.y;
 	this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
+
+	constexpr Uint32 vertexSize = sizeof(SDL_Vertex) * 4 * 6000;
+	constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 6000;
+
+	for (int i = 0; i < (RenderDistance + 1) * (RenderDistance + 1); i++) {
+		Mesh mesh{};
+		SDL_GPUBufferCreateInfo vertexInfo = {};
+		vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+		vertexInfo.size = vertexSize;
+		mesh.VertexBuffer->buffer = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
+		mesh.VertexBuffer->offset = 0;
+
+		// Create index buffer
+		SDL_GPUBufferCreateInfo indexInfo = {};
+		indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+		indexInfo.size = indexSize;
+		mesh.IndexBuffer->buffer = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
+		mesh.IndexBuffer->offset = 0;
+
+		SDL_GPUTransferBufferCreateInfo transferInfo{};
+		transferInfo.size = vertexSize;
+		transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+		SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(this->GPU, &transferInfo);
+
+		this->Terrain.push_back(std::ref(mesh));
+	}
+
+	// load the vertex shader code
+	size_t vertexCodeSize;
+	void* vertexCode = SDL_LoadFile("VertexShader.cso", &vertexCodeSize);
+
+	// create the vertex shader
+	SDL_GPUShaderCreateInfo vertexInfo{};
+	vertexInfo.code = (Uint8*)vertexCode; //convert to an array of bytes
+	vertexInfo.code_size = vertexCodeSize;
+	vertexInfo.entrypoint = "VSMain";
+	vertexInfo.format = SDL_GPU_SHADERFORMAT_DXIL; // loading .spv shaders
+	vertexInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX; // vertex shader
+	vertexInfo.num_samplers = 0;
+	vertexInfo.num_storage_buffers = 0;
+	vertexInfo.num_storage_textures = 0;
+	vertexInfo.num_uniform_buffers = 0;
+	SDL_GPUShader* vertexShader = SDL_CreateGPUShader(this->GPU, &vertexInfo);
+
+	SDL_free(vertexCode);
+
+	// create the fragment shader
+	size_t fragmentCodeSize;
+	void* fragmentCode = SDL_LoadFile("PixelShader.cso", &fragmentCodeSize);
+
+	// create the fragment shader
+	SDL_GPUShaderCreateInfo fragmentInfo{};
+	fragmentInfo.code = (Uint8*)fragmentCode;
+	fragmentInfo.code_size = fragmentCodeSize;
+	fragmentInfo.entrypoint = "PSMain";
+	fragmentInfo.format = SDL_GPU_SHADERFORMAT_DXIL;
+	fragmentInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT; // fragment shader
+	fragmentInfo.num_samplers = 0;
+	fragmentInfo.num_storage_buffers = 0;
+	fragmentInfo.num_storage_textures = 0;
+	fragmentInfo.num_uniform_buffers = 0;
+
+	SDL_GPUShader* fragmentShader = SDL_CreateGPUShader(this->GPU, &fragmentInfo);
+
+	// free the file
+	SDL_free(fragmentCode);
+
+	SDL_GPUGraphicsPipelineCreateInfo pipelineInfo{};
+
+	// bind shaders
+	pipelineInfo.vertex_shader = vertexShader;
+	pipelineInfo.fragment_shader = fragmentShader;
+
+	// draw triangles
+	pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+
+	// describe the vertex buffers
+	SDL_GPUVertexBufferDescription vertexBufferDesctiptions[1];
+	vertexBufferDesctiptions[0].slot = 0;
+	vertexBufferDesctiptions[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+	vertexBufferDesctiptions[0].instance_step_rate = 0;
+	vertexBufferDesctiptions[0].pitch = sizeof(SDL_Vertex);
+
+	pipelineInfo.vertex_input_state.num_vertex_buffers = (RenderDistance + 1) * (RenderDistance + 1);
+	pipelineInfo.vertex_input_state.vertex_buffer_descriptions = vertexBufferDesctiptions;
+
+	// describe the vertex attribute
+	SDL_GPUVertexAttribute vertexAttributes[2];
+
+	// a_position
+	vertexAttributes[0].buffer_slot = 0; // fetch data from the buffer at slot 0
+	vertexAttributes[0].location = 0; // layout (location = 0) in shader
+	vertexAttributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3; //vec3
+	vertexAttributes[0].offset = 0; // start from the first byte from current buffer position
+
+	// a_color
+	vertexAttributes[1].buffer_slot = 0; // use buffer at slot 0
+	vertexAttributes[1].location = 1; // layout (location = 1) in shader
+	vertexAttributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4; //vec4
+	vertexAttributes[1].offset = sizeof(float) * 3; // 4th float from current buffer position
+
+	pipelineInfo.vertex_input_state.num_vertex_attributes = 2;
+	pipelineInfo.vertex_input_state.vertex_attributes = vertexAttributes;
+
+	// describe the color target
+	SDL_GPUColorTargetDescription colorTargetDescriptions[1];
+	colorTargetDescriptions[0] = {};
+	colorTargetDescriptions[0].format = SDL_GetGPUSwapchainTextureFormat(this->GPU, window);
+
+	pipelineInfo.target_info.num_color_targets = 1;
+	pipelineInfo.target_info.color_target_descriptions = colorTargetDescriptions;
+
+	// create the pipeline
+	SDL_GPUGraphicsPipeline* graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &pipelineInfo);
+
+	// we don't need to store the shaders after creating the pipeline
+	SDL_ReleaseGPUShader(this->GPU, vertexShader);
+	SDL_ReleaseGPUShader(this->GPU, fragmentShader);
 }
