@@ -1,10 +1,12 @@
 #include "Renderer.h"
 #include "GameClient.h"
 
-const double FOV = tan((45 * (PI / 180)) / 2.0f);
-const double Znear = 1 / FOV;
+constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 7000;
+constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 7000;
+const float FOV = tan((45 * (PI / 180)) / 2.0f);
+const float Znear = 1 / FOV;
 constexpr float Zfar = 1000.0f;
-constexpr int RenderDistance = 5;
+constexpr int RenderDistance = 0;
 const Vector3 Verts[6][4] = {
 	{// Front (-Z)
 		{ -0.5, -0.5, -0.5 },
@@ -55,14 +57,14 @@ const Color Colors[3] = {
 SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
 	const int tileSize = 16;
 	const int atlasSize = 64;
-	const double pixelNudge = 0.25f; // or 0.25f if needed
+	const float pixelNudge = 0.25f; // or 0.25f if needed
 
 	int tilesPerRow = atlasSize / tileSize;
 	int tileX = tileIndex % tilesPerRow;
 	int tileY = tileIndex / tilesPerRow;
 
-	double u = (tileX * tileSize + cornerX * (tileSize - pixelNudge * 2) + pixelNudge) / (double)atlasSize;
-	double v = (tileY * tileSize + cornerY * (tileSize - pixelNudge * 2) + pixelNudge) / (double)atlasSize;
+	float u = (tileX * tileSize + cornerX * (tileSize - pixelNudge * 2) + pixelNudge) / (float)atlasSize;
+	float v = (tileY * tileSize + cornerY * (tileSize - pixelNudge * 2) + pixelNudge) / (float)atlasSize;
 
 	SDL_FPoint point = { (float)u, (float)v };
 	return point;
@@ -70,9 +72,9 @@ SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
 Vector3 Renderer::rotate(const Vector3 pos, Vector3 Angle)
 {
 	Vector3 angleRadians = Angle.AngleToRadians();
-	double cx = cos(angleRadians.x), sx = sin(angleRadians.x);
-	double cy = cos(angleRadians.y), sy = sin(angleRadians.y);
-	double cz = cos(angleRadians.z), sz = sin(angleRadians.z);
+	float cx = cos(angleRadians.x), sx = sin(angleRadians.x);
+	float cy = cos(angleRadians.y), sy = sin(angleRadians.y);
+	float cz = cos(angleRadians.z), sz = sin(angleRadians.z);
 
 	Vector3 result = { 0 };
 
@@ -90,10 +92,11 @@ Vector3 Renderer::rotate(const Vector3 pos, Vector3 Angle)
 
 	return result;
 }
-void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh& mesh)
+void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh* mesh, Vertex* Vertexdata, Uint32* Indexdata)
 {
 	const Vector3* verts = Verts[Side];
-	const int vIndex = mesh.faces * 4;
+	const int baseVertex = mesh->faces * 4;
+	const int baseIndex = mesh->faces * 6;
 
 	//std::cout << "\n \n";
 	for (int i = 0; i < 4; i++) {
@@ -103,8 +106,8 @@ void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mes
 
 		//std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
 
-		double screenX = localPos.x;
-		double screenY = localPos.y;
+		float screenX = localPos.x;
+		float screenY = localPos.y;
 
 		if (localPos.z <= Znear) localPos.z = Znear;
 
@@ -116,30 +119,27 @@ void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mes
 
 		Color faceColor = (this->chunkManager.GetBlock(color).Color + Colors[(int)(Side / 2)]);
 
-		SDL_Vertex vertex = {
-			{ screenX, screenY }, faceColor.ToSDL()
+		Vertex vertex = {
+			{ screenX, screenY }, faceColor.ToFloat()
 		};
-
-		mesh.transferBuffer[vIndex + i] = vertex;
+		Vertexdata[baseVertex + i] = vertex;
 	}
 
-	/*
-	mesh.IndexBuffer.buffer[vIndex] = vIndex + 0;
-	mesh.Indices.push_back(vIndex + 1);
-	mesh.Indices.push_back(vIndex + 2);
+	Indexdata[baseIndex] = baseVertex + 0;
+	Indexdata[baseIndex + 1] = baseVertex + 1;
+	Indexdata[baseIndex + 2] = baseVertex + 2;
 
-	mesh.Indices.push_back(vIndex + 2);
-	mesh.Indices.push_back(vIndex + 1);
-	mesh.Indices.push_back(vIndex + 3);
-	*/
-	mesh.faces++;
+	Indexdata[baseIndex + 3] = baseVertex + 2;
+	Indexdata[baseIndex + 4] = baseVertex + 1;
+	Indexdata[baseIndex + 5] = baseVertex + 3;
+
+	mesh->faces++;
 }
 void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, int NumChunk) 
 {
 	Vector3 Radiants = player.Rotation.AngleToRadians();
-	auto& mesh = this->Terrain[NumChunk];
-	mesh.faces = 0;
-	mesh.MaxZ.clear();
+	auto* mesh = &this->Terrain[NumChunk];
+	mesh->faces = 0;
 
 	Vector3 CameraDir = {
 		cos(Radiants.x) * sin(Radiants.y),  // X
@@ -152,12 +152,14 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, int NumChunk)
 	std::vector<DrawnFace> Faces;
 	int index = 0;
 
-	for (auto& face : chunk.allFaces) {
-		if (CameraDir.Dot(Direction[face.side]) >= 0.5) continue;
+	for (int i = 0; i < chunk.allFaces.size(); i++) {
+		auto* face = &chunk.allFaces[i];
+		//std::cout << face << std::endl;
+		if (CameraDir.Dot(Direction[face->side]) >= 0.3) continue;
 		Vector3 Max, Min;
 		Vector3 local[4];
 		for (int j = 0; j < 4; j++) {
-			Vector3 worldFacePos = face.blockPos + Verts[face.side][j];
+			Vector3 worldFacePos = face->blockPos + Verts[face->side][j];
 			local[j] = rotate((worldFacePos - player.Position), player.Rotation);
 			if (j == 0) {
 				Max = Min = local[j];
@@ -169,8 +171,9 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, int NumChunk)
 		}
 		AABB volume(Min, Max);
 		if (Max.z < Znear) continue;
-		if (!volume.isOnFrustum(this->frustum, local)) continue;
-		Faces.push_back({ face.blockPos, face.side, face.blockID, Max.z, face.blockID == 5 });
+		//if (!volume.isOnFrustum(this->frustum, local)) continue;
+		//std::cout << Max.x << std::endl;
+		Faces.push_back({ face->blockPos, face->side, face->blockID, Max.z, face->blockID == 5 });
 	}
 	std::sort(Faces.begin(), Faces.end(), [](const DrawnFace& a, const DrawnFace& b) {
 		if (a.maxZ != b.maxZ) return a.maxZ > b.maxZ;
@@ -178,49 +181,66 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, int NumChunk)
 		return false; // consider them equal if both fields match
 		});
 
-	SDL_Vertex* data = (SDL_Vertex*)SDL_MapGPUTransferBuffer(this->GPU, mesh.transferBuffer, false);
+	Vertex* Vertexdata = (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer, false);
+	Uint32* Indexdata = (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer, false);
 
-	for (DrawnFace Face : Faces) {
-		DrawFace(player, Face.blockPos, Face.blockID, Face.side, mesh);
+	for (auto& Face : Faces) {
+		DrawFace(player, Face.blockPos, Face.blockID, Face.side, mesh, Vertexdata, Indexdata);
 	}
-	SDL_UnmapGPUTransferBuffer(this->GPU, mesh.transferBuffer);
 
-	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
+	//---------------Vertex-----------------
 
+	SDL_UnmapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
+	
 	// where is the data
-	SDL_GPUTransferBufferLocation location{};
-	location.transfer_buffer = mesh.transferBuffer;
-	location.offset = 0; // start from the beginning
+	SDL_GPUTransferBufferLocation Vertexlocation{};
+	Vertexlocation.transfer_buffer = mesh->VertextransferBuffer;
+	Vertexlocation.offset = 0; // start from the beginning
 
 	// where to upload the data
-	SDL_GPUBufferRegion region{};
-	region.buffer = mesh.VertexBuffer->buffer;
-	region.size = sizeof(mesh.VertexBuffer->buffer);
-	region.offset = 0;
+	SDL_GPUBufferRegion Vertexregion{};
+	Vertexregion.buffer = mesh->VertexBuffer.buffer;
+	Vertexregion.size = vertexSize;
+	Vertexregion.offset = 0;
 
 	// upload the data
-	SDL_UploadToGPUBuffer(copyPass, &location, &region, true);
+	SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, false);
 
-	// end the copy pass
-	SDL_EndGPUCopyPass(copyPass);
+	//---------------Index-----------------
+
+	SDL_UnmapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer);
+	
+	// where is the data
+	SDL_GPUTransferBufferLocation Indexlocation{};
+	Indexlocation.transfer_buffer = mesh->IndextransferBuffer;
+	Indexlocation.offset = 0; // start from the beginning
+
+	// where to upload the data
+	SDL_GPUBufferRegion Indexregion{};
+	Indexregion.buffer = mesh->IndexBuffer.buffer;
+	Indexregion.size = indexSize;
+	Indexregion.offset = 0;
+
+	// upload the data
+	SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, false);
 }
 void Renderer::DrawTerrain(Player& player) {
 	std::vector<std::thread> threads;
 	std::cout << "Nigga" << std::endl;
-	int chunksPerAxis = 5;
 
 	int threadIndex = 0;
 	Vector3 PlayerChunk = (player.Position / 32).Truncate();
-	for (int i = -0; i <= 0; i++) {
-		for (int j = -0; j <= 0; j++) {
-			Vector3 Chunk = { (double)i, 0, (double)j };
+	for (int i = -RenderDistance; i <= RenderDistance; i++) {
+		for (int j = -RenderDistance; j <= RenderDistance; j++) {
+			Vector3 Chunk = { (float)i, 0, (float)j };
 			Chunk += PlayerChunk;
 
 			threads.emplace_back(
 				&Renderer::RenderChunk,
 				this,
 				std::ref(chunkManager.get_chunk(Chunk)),
-				std::ref(player)
+				std::ref(player),
+				0
 			);
 
 			threadIndex++;
@@ -246,10 +266,10 @@ void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Pla
 			int RelativeY = (int)((Range.y / 2 - 2 - dy) * BlockPixelSize);
 
 			SDL_FRect OtherPlayerRect = {
-				(double)RelativeX,
-				(double)RelativeY,
-				(double)BlockPixelSize,
-				(double)BlockPixelSize * 2
+				(float)RelativeX,
+				(float)RelativeY,
+				(float)BlockPixelSize,
+				(float)BlockPixelSize * 2
 			};
 			SDL_SetRenderDrawColor(Renderer, (Uint8)SDL_clamp(PlayerPos[0].color.r, 0, 255), (Uint8)SDL_clamp(PlayerPos[0].color.g, 0, 255), (Uint8)SDL_clamp(PlayerPos[0].color.b, 0, 255), 255);
 			SDL_RenderFillRect(Renderer, &OtherPlayerRect);
@@ -259,19 +279,19 @@ void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, std::vector<Pla
 	// Your player
 	SDL_SetRenderDrawColor(Renderer, SDL_clamp(PlayerPos[0].color.r, 0, 255), SDL_clamp(PlayerPos[0].color.g, 0, 255), SDL_clamp(PlayerPos[0].color.b, 0, 255), 255);
 	SDL_FRect PlayerRect = {
-		(double)(Range.x / 2 - 1) *  BlockPixelSize,
-		(double)(Range.y / 2 - 2) * this->BlockPixelSize,
-		(double)this->BlockPixelSize,
-		(double)this->BlockPixelSize * 2
+		(float)(Range.x / 2 - 1) *  BlockPixelSize,
+		(float)(Range.y / 2 - 2) * this->BlockPixelSize,
+		(float)this->BlockPixelSize,
+		(float)this->BlockPixelSize * 2
 	};
 	SDL_RenderFillRect(Renderer, &PlayerRect);
 
 	SDL_SetRenderDrawColor(Renderer, SDL_clamp(PlayerPos[0].color.r + 90, 0, 255), SDL_clamp(PlayerPos[0].color.g + 90, 0, 255), SDL_clamp(PlayerPos[0].color.b + 90, 0, 255), 255);
 	SDL_FRect InsidePlayerRect = {
-		(double)(Range.x / 2 - 1) * this->BlockPixelSize + (this->BlockPixelSize * 0.1f),
-		(double)(Range.y / 2 - 2) * this->BlockPixelSize + (this->BlockPixelSize * 0.1f),
-		(double)(this->BlockPixelSize * 0.8f),
-		(double)(this->BlockPixelSize * 0.9f) * 2
+		(float)(Range.x / 2 - 1) * this->BlockPixelSize + (this->BlockPixelSize * 0.1f),
+		(float)(Range.y / 2 - 2) * this->BlockPixelSize + (this->BlockPixelSize * 0.1f),
+		(float)(this->BlockPixelSize * 0.8f),
+		(float)(this->BlockPixelSize * 0.9f) * 2
 	};
 	SDL_RenderFillRect(Renderer, &InsidePlayerRect);
 	*/
@@ -377,6 +397,8 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 	SDL_WaitAndAcquireGPUSwapchainTexture(this->cmdRender, this->window, &swap_texture, &this->Width, &this->Height);
 
 	if (swap_texture == NULL) return;
+	
+	this->copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
 
 	SDL_GPUColorTargetInfo colorInfo = { 0 };
 	colorInfo.clear_color = SDL_FColor{ 0.0f, 0.69f, 1.0f, 1.0f };
@@ -386,21 +408,27 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
 	
 
 	//SDL_SetGPUViewport(pass, NULL);
-
-	//DrawTerrain(players[0]);
+	DrawTerrain(players[0]);
+	
 	//Stats(player);
-	//DrawBG(renderer, players[0],{ (double)width, (double)height, 0}, texture);
+	//DrawBG(renderer, players[0],{ (float)width, (float)height, 0}, texture);
 	//ChunckManager::ShowInventor(renderer, width, height, std::ref(inventory), inventorySlot, font);
 	//DrawPlayer(renderer, Range, std::ref(players));
 	//SDL_Delay(1000 / 10);
-	
+	SDL_EndGPUCopyPass(this->copyPass);
+
 	this->pass = SDL_BeginGPURenderPass(this->cmdRender, &colorInfo, 1, NULL);
-	
-	for (Mesh mesh : this->Terrain)
+	SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
+
+	for (int i = 0; i < this->Terrain.size(); i++)
 	{
-		SDL_BindGPUVertexBuffers(this->pass, 0, mesh.VertexBuffer, 1);
-		SDL_BindGPUIndexBuffer(this->pass, mesh.IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-		SDL_DrawGPUIndexedPrimitives(this->pass, mesh.MaxZ.size() * 6, 1, 0, 0, 0);
+		auto* mesh = &this->Terrain[i];
+		std::cout << "Mesh pointer: " << mesh << "\tVertexBuffer pointer: " << &mesh->VertexBuffer << "\t Index Buffer pointer: " << &mesh->IndexBuffer << std::endl;
+		std::cout << "Pass pointer: " << this->pass << "\t Index size: " << SDL_GPU_INDEXELEMENTSIZE_32BIT << "\t Amount of faces: " << mesh->faces << std::endl;
+		std::cout << "Terrain size: " << this->Terrain.size() << "Drawing Chunk[" << i << "]\n" << std::endl;
+		SDL_BindGPUVertexBuffers(this->pass, 0, &mesh->VertexBuffer, 1);
+		SDL_BindGPUIndexBuffer(this->pass, &mesh->IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+		SDL_DrawGPUIndexedPrimitives(this->pass, mesh->faces * 6, 1, 0, 0, 0);
 	}
 
 	SDL_EndGPURenderPass(this->pass);
@@ -433,11 +461,11 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	}
 
 	// Use correct shader format for Direct3D (DXIL)
-	this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL, false, "direct3d12");  // or "d3d11"
-	const char* err = SDL_GetError();
-	printf("SDL GPU creation failed: %s\n", err);
-
-	if (SDL_ClaimWindowForGPUDevice(this->GPU, this->window)) {
+	this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL, false, "direct3d12");
+	if (this->GPU == nullptr) {
+		std::cout << "SDL GPU creation failed: \n" << SDL_GetError();
+	}
+	if (!SDL_ClaimWindowForGPUDevice(this->GPU, this->window)) {
 		std::cout << "Error claiming window for GPU device: " << SDL_GetError() << std::endl;
 	}
 
@@ -482,33 +510,41 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	this->event = {};
 	SDL_SetWindowRelativeMouseMode(window, true);
 
-	double aspect = this->ScreenSize.x / this->ScreenSize.y;
+	float aspect = this->ScreenSize.x / this->ScreenSize.y;
 	this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
 
-	constexpr Uint32 vertexSize = sizeof(SDL_Vertex) * 4 * 6000;
-	constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 6000;
 
+	std::cout << "Vertex size: " << vertexSize << "\t Index Size: " << indexSize << std::endl;
 	for (int i = 0; i < (RenderDistance + 1) * (RenderDistance + 1); i++) {
 		Mesh mesh{};
 		SDL_GPUBufferCreateInfo vertexInfo = {};
 		vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
 		vertexInfo.size = vertexSize;
-		mesh.VertexBuffer->buffer = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
-		mesh.VertexBuffer->offset = 0;
+		vertexInfo.props = 0;
+		mesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
+		mesh.VertexBuffer.offset = 0;
 
 		// Create index buffer
 		SDL_GPUBufferCreateInfo indexInfo = {};
 		indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
 		indexInfo.size = indexSize;
-		mesh.IndexBuffer->buffer = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
-		mesh.IndexBuffer->offset = 0;
+		indexInfo.props = 0;
+		mesh.IndexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
+		mesh.IndexBuffer.offset = 0;
 
-		SDL_GPUTransferBufferCreateInfo transferInfo{};
-		transferInfo.size = vertexSize;
-		transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-		SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(this->GPU, &transferInfo);
+		SDL_GPUTransferBufferCreateInfo VertextransferInfo{};
+		VertextransferInfo.size = vertexSize;
+		VertextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+		VertextransferInfo.props = 0;
+		mesh.VertextransferBuffer = SDL_CreateGPUTransferBuffer(this->GPU, &VertextransferInfo);
 
-		this->Terrain.push_back(std::ref(mesh));
+		SDL_GPUTransferBufferCreateInfo IndextransferInfo{};
+		IndextransferInfo.size = indexSize;
+		IndextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+		IndextransferInfo.props = 0;
+		mesh.IndextransferBuffer = SDL_CreateGPUTransferBuffer(this->GPU, &IndextransferInfo);
+
+		this->Terrain.push_back(mesh);
 	}
 
 	// load the vertex shader code
@@ -597,7 +633,7 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	pipelineInfo.target_info.color_target_descriptions = colorTargetDescriptions;
 
 	// create the pipeline
-	SDL_GPUGraphicsPipeline* graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &pipelineInfo);
+	this->graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &pipelineInfo);
 
 	// we don't need to store the shaders after creating the pipeline
 	SDL_ReleaseGPUShader(this->GPU, vertexShader);

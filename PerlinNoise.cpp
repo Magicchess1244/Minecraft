@@ -13,7 +13,7 @@ static uint32_t SeededHash(const void* data, size_t length, uint32_t seed = 2166
 
 	return hash;
 }
-double Fade(double t) {
+float Fade(float t) {
 	return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
@@ -30,14 +30,14 @@ static Vector3 GradientFromAngles(const Vector3& Angle) {
 	return dir.Normalized();
 }
 
-double BasicPerlinNoise(double xPos, double yPos, double zPos) {
+float BasicPerlinNoise(float xPos, float yPos, float zPos) {
 	int x0 = static_cast<int>(xPos) / 8;
 	int y0 = static_cast<int>(yPos) / 8;
 	int z0 = static_cast<int>(zPos) / 8;
 
-	double localX = (xPos - x0 * 8) / 8.0;
-	double localY = (yPos - y0 * 8) / 8.0;
-	double localZ = (zPos - z0 * 8) / 8.0;
+	float localX = (xPos - x0 * 8) / 8.0;
+	float localY = (yPos - y0 * 8) / 8.0;
+	float localZ = (zPos - z0 * 8) / 8.0;
 
 	// Gradients at corners
 	Vector3 gradients[8];
@@ -45,7 +45,7 @@ double BasicPerlinNoise(double xPos, double yPos, double zPos) {
 		for (int j = 0; j < 2; ++j) {
 			for (int k = 0; k < 2; ++k) {
 				int index = i * 4 + j * 2 + k;
-				Vector3 Position = { double(x0 + i), (double)(y0 + j), (double)(z0 + k) };
+				Vector3 Position = { float(x0 + i), (float)(y0 + j), (float)(z0 + k) };
 				//gradients[index] = GradientFromAngles(SeededHash(&Position, seed));
 			}
 		}
@@ -64,32 +64,32 @@ double BasicPerlinNoise(double xPos, double yPos, double zPos) {
 	};
 
 	// Dot products
-	double dots[8] = { 0 };
+	float dots[8] = { 0 };
 	for (int i = 0; i < 8; ++i) {
 		dots[i] = gradients[i].Dot(rel[i]);
 	}
 
 	// Interpolation weights
-	double u = Fade(localX);
-	double v = Fade(localY);
-	double w = Fade(localZ);
+	float u = Fade(localX);
+	float v = Fade(localY);
+	float w = Fade(localZ);
 
 	// Interpolate
-	double x00 = Lerp(dots[0], dots[1], u);
-	double x01 = Lerp(dots[4], dots[5], u);
-	double x10 = Lerp(dots[2], dots[3], u);
-	double x11 = Lerp(dots[6], dots[7], u);
+	float x00 = Lerp(dots[0], dots[1], u);
+	float x01 = Lerp(dots[4], dots[5], u);
+	float x10 = Lerp(dots[2], dots[3], u);
+	float x11 = Lerp(dots[6], dots[7], u);
 
-	double lerp0 = Lerp(x00, x10, v);
-	double lerp1 = Lerp(x01, x11, v);
+	float lerp0 = Lerp(x00, x10, v);
+	float lerp1 = Lerp(x01, x11, v);
 
 	return Lerp(lerp0, lerp1, w);
 }
 
-double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency) {
-	double Frequency = ConstFrequency;
-	double Amplitude = ConstFrequency;
-	double FinalNoise = 0.0;
+float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency) {
+	float Frequency = ConstFrequency;
+	float Amplitude = ConstFrequency;
+	float FinalNoise = 0.0;
 
 	for (int i = 0; i <= Octaves; ++i) {
 		FinalNoise += BasicPerlinNoise(Pos.x * Frequency, Pos.y * Frequency, Pos.z * Frequency) * Amplitude;

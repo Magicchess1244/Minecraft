@@ -3,7 +3,7 @@
 
 #include "common.hpp"
 
-double PerlinNoise(Vector3 Pos, int Octaves, double ConstFrequency);
+float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency);
 void SetSeed(int givenSeed);
 
 #endif

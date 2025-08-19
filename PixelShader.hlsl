@@ -1,7 +1,6 @@
 //----------------------
 // Pixel Shader
 //----------------------
-
 struct PSInput
 {
     float4 pos : SV_POSITION; // output position (clip space)

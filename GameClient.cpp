@@ -1,8 +1,8 @@
 #include "GameClient.h"
 #include "PerlinNoise.h"
 
-constexpr double mouseSensitivity = 0.1f;
-constexpr double playerSpeed = 1.0f;
+constexpr float mouseSensitivity = 0.1f;
+constexpr float playerSpeed = 1.0f;
 
 void GameClient::set_seed() {
 	int res;
@@ -129,8 +129,8 @@ namespace BitMiner {
 			// Rotate the horizontal movement by player rotation (Y-axis)
 			Vector3 Radiants = player.Rotation.AngleToRadians();
 
-			double cosY = cosf(Radiants.y);
-			double sinY = sinf(Radiants.y);
+			float cosY = cosf(Radiants.y);
+			float sinY = sinf(Radiants.y);
 
 			Vector3 rotatedDirection = {
 				playerDirection.x * cosY - playerDirection.z * sinY,

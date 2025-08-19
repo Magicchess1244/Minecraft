@@ -20,12 +20,12 @@
 #pragma comment(lib, "ws2_32.lib")
 
 constexpr unsigned int MAX_PLAYERS = 8;
-constexpr double PI = 3.1415926535f;
+constexpr float PI = 3.1415926535f;
 
 struct Vector3 {
-	double x, y, z;
+	float x, y, z;
 
-	Vector3(double x = 0, double y = 0, double z = 0) : x(x), y(y), z(z) {}
+	Vector3(float x = 0, float y = 0, float z = 0) : x(x), y(y), z(z) {}
 
 	Vector3 operator+(const Vector3& other) const {
 		return { x + other.x, y + other.y, z + other.z };
@@ -42,7 +42,7 @@ struct Vector3 {
 		return { x - other.x, y - other.y, z - other.z };
 	}
 
-	Vector3 operator*(double scalar) const {
+	Vector3 operator*(float scalar) const {
 		return { x * scalar, y * scalar, z * scalar };
 	}
 	Vector3 operator*(Vector3 vector) const {
@@ -56,7 +56,7 @@ struct Vector3 {
 		return *this;
 	}
 
-	Vector3 operator/(double scalar) const {
+	Vector3 operator/(float scalar) const {
 		return { x / scalar, y / scalar, z / scalar };
 	}
 
@@ -76,7 +76,7 @@ struct Vector3 {
 		return x > other.x && y > other.y && z > other.z;
 	}
 
-	double Dot(const Vector3& other) const {
+	float Dot(const Vector3& other) const {
 		return x * other.x + y * other.y + z * other.z;
 	}
 
@@ -88,21 +88,21 @@ struct Vector3 {
 		};
 	}
 
-	double LengthSquared() const {
+	float LengthSquared() const {
 		return x * x + y * y + z * z;
 	}
 
-	double Length() const {
+	float Length() const {
 		return std::sqrt(LengthSquared());
 	}
 
 	Vector3 Normalized() const {
-		double len = Length();
+		float len = Length();
 		return len != 0 ? *this / len : Vector3();
 	}
 
 	Vector3 AngleToRadians() const {
-		return { x * (PI / 180.0), y * (PI / 180.0), z * (PI / 180.0) };
+		return { x * float(PI / 180.0), y * float(PI / 180.0), z * float(PI / 180.0) };
 	}
 
 	Vector3 Truncate() const {
@@ -112,9 +112,9 @@ struct Vector3 {
 	Vector3 Forward() const {
 		Vector3 rotationRadians = AngleToRadians();
 
-		double pitch = rotationRadians.x;
-		double yaw = rotationRadians.y;
-		double roll = rotationRadians.z;
+		float pitch = rotationRadians.x;
+		float yaw = rotationRadians.y;
+		float roll = rotationRadians.z;
 
 		Vector3 forward;
 		forward.x = cos(pitch) * sin(yaw);
@@ -126,7 +126,7 @@ struct Vector3 {
 	Vector3 Right() const {
 		Vector3 rotationRadians = AngleToRadians();
 
-		double yaw = rotationRadians.y;
+		float yaw = rotationRadians.y;
 
 		Vector3 right;
 		right.x = cos(yaw);
@@ -181,6 +181,13 @@ struct Color {
 			1.0f
 		};
 	}
+	Vector3 ToFloat() const {
+		return Vector3{
+			static_cast<float>(r) / 255.0f,
+			static_cast<float>(g) / 255.0f,
+			static_cast<float>(b) / 255.0f,
+		};
+	}
 };
 struct Player {
 	Vector3 Position;
@@ -216,7 +223,7 @@ static std::vector<std::string> split(const std::string& s, const std::string& d
 	tokens.push_back(s.substr(start));
 	return tokens;
 }
-inline double Lerp(double a, double b, double t)
+inline float Lerp(float a, float b, float t)
 {
 	return a + t * (b - a);
 }

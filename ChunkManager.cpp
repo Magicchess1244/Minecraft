@@ -62,7 +62,7 @@ ChunkPrefab& ChunkManager::get_chunk(Vector3 key)
 	}
 	return std::ref(Chunks[key]);
 }
-int ChunkManager::BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights)
+int ChunkManager::BaseHeight(float ValueNoise, int Length, const HeightsDif* Heights)
 {
 	for (int i = 0; i < Length - 1; i++) {
 		if (ValueNoise > ContinentelnessHeight[i].x) {
@@ -72,7 +72,7 @@ int ChunkManager::BaseHeight(double ValueNoise, int Length, const HeightsDif* He
 	}
 	return Heights[Length - 1].y;
 }
-Biome ChunkManager::GetBiome(double Humudity, double Temperature)
+Biome ChunkManager::GetBiome(float Humudity, float Temperature)
 {
 	Biome TheBiome;
 
@@ -88,7 +88,7 @@ Biome ChunkManager::GetBiome(double Humudity, double Temperature)
 
 	return TheBiome;
 }
-int ChunkManager::GetHeight(double Continentalness, double Errotion, double PeakAndValleys) {
+int ChunkManager::GetHeight(float Continentalness, float Errotion, float PeakAndValleys) {
 	return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight));
 }
 
@@ -108,7 +108,7 @@ namespace ChunckManager {
 		int newY = (int)(PlayerPos.y + (int)(yRange / 2.0f));
 		int newZ = (int)(PlayerPos.z + (int)(FullRange / 2.0f - 1));
 
-		Vector3 chunk = { floorf((double)(newX) / 32), floorf((double)(newZ) / 32) };
+		Vector3 chunk = { floorf((float)(newX) / 32), floorf((float)(newZ) / 32) };
 		int localX = (int)(newX % 32);
 		int localZ = (int)(newZ % 32);
 
@@ -167,7 +167,7 @@ namespace ChunckManager {
 	void ShowInventor(SDL_Renderer* Renderer, int width, int height, std::vector<Slot>& Inventory, int InventorySlot, TTF_Font* font)
 	{
 		SDL_SetRenderDrawColor(Renderer, 157, 76, 0, 255);
-		SDL_FRect InventoryRect = { (double)(width / 2) - (BlockSize * 4), (height - (BlockSize * 1.3f)), (BlockSize * 1.1f) * 8 + (BlockSize * .1f), (BlockSize * 1.2f) };
+		SDL_FRect InventoryRect = { (float)(width / 2) - (BlockSize * 4), (height - (BlockSize * 1.3f)), (BlockSize * 1.1f) * 8 + (BlockSize * .1f), (BlockSize * 1.2f) };
 		SDL_RenderFillRect(Renderer, &InventoryRect);
 
 		for (int i = 0; i < 8; i++)
@@ -180,7 +180,7 @@ namespace ChunckManager {
 			{
 				SDL_SetRenderDrawColor(Renderer, 204, 102, 0, 255);
 			}
-			SDL_FRect InventoryRect = { (double)(((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.1f)), (double)((height - (BlockSize * 1.3f)) + (BlockSize * 0.1f)), (double)BlockSize, (double)BlockSize };
+			SDL_FRect InventoryRect = { (float)(((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.1f)), (float)((height - (BlockSize * 1.3f)) + (BlockSize * 0.1f)), (float)BlockSize, (float)BlockSize };
 			SDL_RenderFillRect(Renderer, &InventoryRect);
 
 			if (Inventory[i].Type != 0)
@@ -196,7 +196,7 @@ namespace ChunckManager {
 					SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), sizeof(text.c_str()), White);
 					SDL_Texture* texture = SDL_CreateTextureFromSurface(Renderer, surface);
 					SDL_DestroySurface(surface);
-					SDL_FRect dstRect{ (double)(((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.8f)), (double)((height - (BlockSize * 1.1f)) + (BlockSize * 0.4f)), BlockSize * 0.5f , BlockSize * 0.5f};
+					SDL_FRect dstRect{ (float)(((width / 2) - (BlockSize * 4)) + (BlockSize * 1.1f * i) + (BlockSize * 0.8f)), (float)((height - (BlockSize * 1.1f)) + (BlockSize * 0.4f)), BlockSize * 0.5f , BlockSize * 0.5f};
 					SDL_RenderTexture(Renderer, texture, NULL, &dstRect);
 					SDL_DestroyTexture(texture);
 				}

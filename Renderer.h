@@ -9,9 +9,9 @@ struct Plane
 {
 	Vector3 normal = { 0.f, 1.f, 0.f };
 
-	double distance = 0;
+	float distance = 0;
 
-	double getSignedDistanceToPlane(const Vector3& point) const
+	float getSignedDistanceToPlane(const Vector3& point) const
 	{
 		return normal.Dot(point);
 	}
@@ -98,7 +98,7 @@ struct AABB : public Volume
 		extents{ max.x - center.x, max.y - center.y, max.z - center.z }
 	{
 	}
-	AABB(const Vector3& inCenter, double iI, double iJ, double iK)
+	AABB(const Vector3& inCenter, float iI, float iJ, float iK)
 		: Volume{}, center{ inCenter }, extents{ iI, iJ, iK }
 	{
 	}
@@ -128,11 +128,15 @@ struct AABB : public Volume
 };
 struct Mesh
 {
-	SDL_GPUTransferBuffer* transferBuffer = nullptr;
-	SDL_GPUBufferBinding* VertexBuffer;
-	SDL_GPUBufferBinding* IndexBuffer;
-	std::vector<double> MaxZ;
+	SDL_GPUTransferBuffer* VertextransferBuffer = nullptr;
+	SDL_GPUTransferBuffer* IndextransferBuffer = nullptr;
+	SDL_GPUBufferBinding VertexBuffer;
+	SDL_GPUBufferBinding IndexBuffer;
 	int faces;
+};
+struct Vertex{
+	Vector3 Position;
+	Vector3 Color;
 };
 
 class GameClient;
@@ -155,19 +159,23 @@ private:
 	unsigned int Width, Height;
 	SDL_GPUCommandBuffer* cmdRender = nullptr;
 	SDL_GPUCommandBuffer* cmdCopy = nullptr;
-	std::vector<Mesh&> Terrain;
+	std::vector<Mesh> Terrain;
 	SDL_GPUGraphicsPipeline* graphicsPipeline = nullptr;
+	SDL_GPUCopyPass* copyPass = nullptr;
 
 	SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
 	Vector3 rotate(const Vector3 pos, const Vector3 Angle);
-	void DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh& mesh);
+	void DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh* mesh, Vertex* Vertexdata, Uint32* Indexdata);
 public:
 	Renderer(GameClient& gameClient);
 	~Renderer() {
-		for (Mesh& mesh : Terrain) {
-			SDL_ReleaseGPUBuffer(this->GPU, mesh.IndexBuffer->buffer);
-			SDL_ReleaseGPUBuffer(this->GPU, mesh.VertexBuffer->buffer);
-			SDL_ReleaseGPUTransferBuffer(this->GPU, mesh.transferBuffer);
+		for (int i = 0; i < this->Terrain.size(); i++)
+		{
+			auto* mesh = &this->Terrain[i];
+			SDL_ReleaseGPUBuffer(this->GPU, mesh->IndexBuffer.buffer);
+			SDL_ReleaseGPUBuffer(this->GPU, mesh->VertexBuffer.buffer);
+			SDL_ReleaseGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer);
+			SDL_ReleaseGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
 		}
 
 		SDL_ReleaseGPUGraphicsPipeline(this->GPU, graphicsPipeline);

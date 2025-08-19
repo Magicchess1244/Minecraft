@@ -22,8 +22,8 @@ typedef struct {
 	int ChangeAmount;
 } Biome;
 typedef struct {
-	double x;
-	double y;
+	float x;
+	float y;
 } HeightsDif;
 
 constexpr int BlockNum = 6;
@@ -44,9 +44,9 @@ public:
 	~ChunkManager() = default;
 
 	ChunkPrefab& get_chunk(Vector3 key);
-	int BaseHeight(double ValueNoise, int Length, const HeightsDif* Heights);
-	Biome GetBiome(double Humudity, double Temperature);
-	int GetHeight(double Continentalness, double Errotion, double PeakAndVallies);
+	int BaseHeight(float ValueNoise, int Length, const HeightsDif* Heights);
+	Biome GetBiome(float Humudity, float Temperature);
+	int GetHeight(float Continentalness, float Errotion, float PeakAndVallies);
 	Block GetBlock(int BlockId) {
 		if (BlockId < 0 || BlockId >= BlockNum) {
 			std::cerr << "Invalid Block ID: " << BlockId << std::endl;
