@@ -1,75 +1,63 @@
-#include "GameServer.h"
+#include "GameServer.hpp"
 
-void GameServer::handlePlayers(SOCKET player, int Id)
-{
-	char buf[16] = {};
-	int res = 0;
-	//std::cout << player << std::endl;
+void GameServer::handlePlayers(sock_t player, int Id) {
+    char buf[16] = {};
+    // std::cout << player << std::endl;
 
-	while (true) {
+    while (true) {
+        int res = recv(player, buf, sizeof(buf), 0);
 
-		res = recv(player, buf, sizeof(buf), 0);
+        // std::cout << res << std::endl;
 
-		//std::cout << res << std::endl;
+        if (res <= 0) {
+            std::cerr << "Client disconnected or error occurred\n";
+            std::cerr << "recv() failed with error: " << GET_LAST_ERROR << std::endl;
+            return;
+        }
 
-		if (res <= 0) {
-			std::cerr << "Client disconnected or error occurred\n";
-			std::cerr << "recv() failed with error: " << WSAGetLastError() << std::endl;
-			return;
-		}
+        // std::cout << "Result: " << res << "\n";
+        std::cout << "Buf:" << buf << "\n";
 
-		//std::cout << "Result: " << res << "\n";
-		std::cout << "Buf:" << buf << "\n";
+        if (strcmp(buf, "seed") == 0) {
+            std::string seed_str = std::to_string(this->seed);
+            res = send(player, seed_str.c_str(), seed_str.size(), 0);
+            std::cout << res << std::endl;
 
-		if (strcmp(buf, "seed") == 0) {
-			std::string seed_str = std::to_string(this->seed);
-			res = send(player, seed_str.c_str(), seed_str.size(), 0);
-			std::cout << res << std::endl;
-
-		}
-		else if (strcmp(buf, "getColor") == 0) {
-			std::string color_str = std::to_string(this->players[Id].color.r) + "," +  
-								   std::to_string(this->players[Id].color.g) + "," +  
-								   std::to_string(this->players[Id].color.b);
-			std::cout << "sending..." << std::endl;
-			res = send(player, color_str.c_str(), color_str.size(), 0);
-
-			std::cout << "Color: " << color_str[0] <<  std::endl;
-		}
-	}
+        } else if (strcmp(buf, "getColor") == 0) {
+            std::string color_str = std::to_string(this->players[Id].color.r) + "," +
+                                    std::to_string(this->players[Id].color.g) + "," +
+                                    std::to_string(this->players[Id].color.b);
+            std::cout << "sending..." << std::endl;
+            res = send(player, color_str.c_str(), color_str.size(), 0);
+            if (res != 0) std::cout << "Color: " << color_str[0] << std::endl;
+        }
+    }
 }
 
-void GameServer::AcceptClients()
-{
-	std::unordered_map<int, Color> PlayerColors = {
-		{0, {255, 0, 0} },
-		{1, {0, 255, 0} },
-		{2, {0, 0, 255} },
-		{3, {255, 255, 0} },
-		{4, {255, 0, 255} },
-		{5, {0, 255, 255} },
-		{6, {128, 128, 128} },
-		{7, {255, 165, 0} }
-	};
-	this->MakeServer();
-	std::cout << "Listener: " << listener << "\n";
+void GameServer::AcceptClients() {
+    std::unordered_map<int, Color> PlayerColors = {
+        {0, {255, 0, 0}},   {1, {0, 255, 0}},   {2, {0, 0, 255}},     {3, {255, 255, 0}},
+        {4, {255, 0, 255}}, {5, {0, 255, 255}}, {6, {128, 128, 128}}, {7, {255, 165, 0}}};
+    this->MakeServer();
+    std::cout << "Listener: " << listener << "\n";
 
-	while (player_count < MAX_PLAYERS) {
-		SOCKET clientSocket = accept(this->listener, NULL, NULL);
+    while (player_count < MAX_PLAYERS) {
+        sock_t clientSocket = accept(this->listener, NULL, NULL);
 
-		if (clientSocket == INVALID_SOCKET) {
-			std::cerr << "accept() failed with error: " << WSAGetLastError() << std::endl;
-			continue;
-		}
+        if (clientSocket == INVALID_SOCKET) {
+            std::cerr << "accept() failed with error: " << GET_LAST_ERROR << std::endl;
+            continue;
+        }
 
-		this->add_socket(clientSocket, Player{ Vector3{ 0, 24, 0 }, Vector3{ 0, 0, 0 }, PlayerColors[player_count] });
+        this->add_socket(clientSocket,
+                         Player{Vector3{0, 24, 0}, Vector3{0, 0, 0}, PlayerColors[player_count]});
 
-		//std::cout << player_count << " clients connected." << std::endl;
-		//std::cout << "Client connected! Socket: " << clientSocket << std::endl;
+        // std::cout << player_count << " clients connected." << std::endl;
+        // std::cout << "Client connected! Socket: " << clientSocket << std::endl;
 
-		// TODO: no et preocupis nigga
-
-		handlePlayers(clientSocket, player_count - 1);
-		//std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count - 1).detach();
-	}
+        // FIXME: acceptar més clients
+        handlePlayers(clientSocket, player_count - 1);
+        // std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count -
+        // 1).detach();
+    }
 }
