@@ -12,7 +12,7 @@ struct DrawnFace {
 };
 
 class ChunkPrefab {
-public:
+   public:
     static constexpr int xSize = 32;
     static constexpr int zSize = 32;
     static constexpr int ySize = 64;
@@ -20,7 +20,7 @@ public:
     int xPos = -1;
     int zPos = -1;
 
-    //Biome biome;
+    // Biome biome;
 
     std::unordered_map<Vector3, int> Blocks;
     std::vector<DrawnFace> allFaces;
@@ -28,10 +28,11 @@ public:
     ChunkPrefab() = default;
     void GenerateChunk();
 
-private:
+   private:
     void GenerateChunkSurface();
     void GenerateChunkCaves();
     void VisableFaces();
 };
 
 #endif
+
