@@ -115,11 +115,11 @@ struct Vector3 {
     }
 
     Vector3 Max(const Vector3& a) const {
-        return {std::max(x, a.x), std::max(y, a.y), std::max(z, a.z)};
+        return { max(x, a.x), max(y, a.y), max(z, a.z)};
     }
 
     Vector3 Min(const Vector3& a) const {
-        return {std::min(x, a.x), std::min(y, a.y), std::min(z, a.z)};
+        return {min(x, a.x), min(y, a.y), min(z, a.z)};
     }
 };
 

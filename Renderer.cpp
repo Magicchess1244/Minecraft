@@ -412,7 +412,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
 
     int i = 0;
-    for (auto mesh : this->Terrain) {
+    for (auto& mesh : this->Terrain) {
         std::cout << "Mesh pointer: " << &mesh << "\tVertexBuffer pointer: " << &mesh.VertexBuffer
                   << "\t Index Buffer pointer: " << &mesh.IndexBuffer << std::endl;
         std::cout << "Pass pointer: " << this->pass
@@ -420,9 +420,10 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
                   << "\t Amount of faces: " << mesh.faces << std::endl;
         std::cout << "Terrain size: " << this->Terrain.size() << "Drawing Chunk[" << i++ << "]\n"
                   << std::endl;
+
         SDL_BindGPUVertexBuffers(this->pass, 0, &mesh.VertexBuffer, 1);
         SDL_BindGPUIndexBuffer(this->pass, &mesh.IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        SDL_DrawGPUIndexedPrimitives(this->pass, mesh.faces * 6, 1, 0, 0, 0);
+        SDL_DrawGPUIndexedPrimitives(this->pass, 42000, 1, 0, 0, 0);
     }
 
     SDL_EndGPURenderPass(this->pass);
@@ -596,15 +597,15 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
     // describe the vertex buffers
-    SDL_GPUVertexBufferDescription vertexBufferDesctiptions[1];
-    vertexBufferDesctiptions[0].slot = 0;
-    vertexBufferDesctiptions[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-    vertexBufferDesctiptions[0].instance_step_rate = 0;
-    vertexBufferDesctiptions[0].pitch = sizeof(SDL_Vertex);
+    SDL_GPUVertexBufferDescription vertexBufferDesctiptions;
+    vertexBufferDesctiptions.slot = 0;
+    vertexBufferDesctiptions.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    vertexBufferDesctiptions.instance_step_rate = 0;
+    vertexBufferDesctiptions.pitch = sizeof(Vertex);
 
     pipelineInfo.vertex_input_state.num_vertex_buffers =
         (RenderDistance + 1) * (RenderDistance + 1);
-    pipelineInfo.vertex_input_state.vertex_buffer_descriptions = vertexBufferDesctiptions;
+    pipelineInfo.vertex_input_state.vertex_buffer_descriptions = &vertexBufferDesctiptions;
 
     // describe the vertex attribute
     SDL_GPUVertexAttribute vertexAttributes[2];
@@ -618,8 +619,8 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     // a_color
     vertexAttributes[1].buffer_slot = 0;  // use buffer at slot 0
     vertexAttributes[1].location = 1;     // layout (location = 1) in shader
-    vertexAttributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4;  // vec4
-    vertexAttributes[1].offset = sizeof(float) * 3;  // 4th float from current buffer position
+    vertexAttributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;  // vec4
+    vertexAttributes[1].offset = sizeof(Vector3);  // 4th float from current buffer position
 
     pipelineInfo.vertex_input_state.num_vertex_attributes = 2;
     pipelineInfo.vertex_input_state.vertex_attributes = vertexAttributes;
@@ -634,6 +635,9 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
 
     // create the pipeline
     this->graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &pipelineInfo);
+    if (this->graphicsPipeline == NULL) {
+        std::cout << "Creating graphicPipeline failed because: " << SDL_GetError() << std::endl;
+    }
 
     // we don't need to store the shaders after creating the pipeline
     SDL_ReleaseGPUShader(this->GPU, vertexShader);

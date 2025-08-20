@@ -128,8 +128,11 @@ struct Mesh {
 };
 struct Vertex {
     Vector3 Position;
+    //float pad1;  // padding to 16 bytes
     Vector3 Color;
+    //float pad2;  // padding to 16 bytes
 };
+
 
 class GameClient;
 
@@ -162,7 +165,7 @@ class Renderer {
    public:
     explicit Renderer(GameClient& gameClient);
     ~Renderer() {
-        for (auto mesh : this->Terrain) {
+        for (auto& mesh : this->Terrain) {
             SDL_ReleaseGPUBuffer(this->GPU, mesh.IndexBuffer.buffer);
             SDL_ReleaseGPUBuffer(this->GPU, mesh.VertexBuffer.buffer);
             SDL_ReleaseGPUTransferBuffer(this->GPU, mesh.IndextransferBuffer);
