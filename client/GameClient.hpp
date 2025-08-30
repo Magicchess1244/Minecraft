@@ -1,90 +1,63 @@
 #ifndef __GAME_CLIENT_H
 #define __GAME_CLIENT_H
 
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include "../core/common.hpp"
+#include "../net/common.hpp"
 #include "Renderer.hpp"
 
 typedef enum { GetSeed, GetColor } Commands;
 
 class GameClient {
    private:
-    unsigned int seed;
-    unsigned int player_count = 0;
+    std::atomic<unsigned int> seed{0};
+    std::atomic<unsigned int> player_count{0};
     std::vector<Player> players;
-    sock_t server;
-    bool running = true;
+    std::unique_ptr<Socket> server_socket;
+    std::atomic<bool> running{true};
+    mutable std::mutex players_mutex;
+
+    static constexpr int DEFAULT_PORT = 8080;
+    static constexpr const char* DEFAULT_SERVER_IP = "127.0.0.1";
+
+    bool sendCommand(const std::string& command);
+    std::string receiveResponse();
+    void GameLoop();
 
    public:
-    GameClient() : seed(0), player_count(0), server(INVALID_SOCKET) {}
-    ~GameClient() {
-        std::cout << "closing conn" << std::endl;
-        CLOSESOCKET(server);
-        cleanupSockets();
-    }
+    GameClient();
+    ~GameClient();
+
+    bool makeClient(const std::string& server_ip = DEFAULT_SERVER_IP, int port = DEFAULT_PORT);
+    void disconnect();
+    bool isConnected() const;
 
     void set_seed();
-    unsigned int get_seed() const { return seed; }
+    unsigned int get_seed() const { return seed.load(); }
 
-    sock_t get_socket() const { return server; }
+    sock_t get_socket() const { return server_socket ? server_socket->get() : INVALID_SOCKET; }
 
-    void add_player(const Player& player) {
-        if (players.size() < MAX_PLAYERS) {
-            this->players.push_back(player);
-            this->player_count++;
-        }
-        std::cout << "players size: " << players.size() << std::endl;
-    }
-    const std::vector<Player> get_players() { return this->players; }
+    void add_player(const Player& player);
+    const std::vector<Player> get_players() const;
 
     void set_color();
-    Color get_color() const {
-        if (players.size() > 0) {
-            return players[0].color;
-        }
+    Color get_color() const;
 
-        return {0, 0, 0};
-    }
-
-    void MakeClient() {
-        if (initSockets() != 0) {
-            std::cerr << "Failed to initialize sockets: " << GET_LAST_ERROR << "\n";
-            return;
-        }
-
-        sock_t serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-        if (serverSocket == INVALID_SOCKET) {
-            std::cerr << "Failed to create socket: " << GET_LAST_ERROR << "\n";
-            cleanupSockets();
-            return;
-        }
-
-        int PORT = 8080;
-        const char* SERVER_IP = "127.0.0.1";
-
-        sockaddr_in serverAddr;
-        serverAddr.sin_family = AF_INET;
-        serverAddr.sin_port = htons(PORT);
-        inet_pton(AF_INET, SERVER_IP, &serverAddr.sin_addr);
-
-        if (connect(serverSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-            std::cerr << "Failed to connect to the server.:" << GET_LAST_ERROR << "\n";
-            CLOSESOCKET(serverSocket);
-            return;
-        }
-
-        std::cout << "Connected to the server.\n";
-        this->server = serverSocket;
-    }
-
-    bool GetRunning() const { return running; }
+    bool GetRunning() const { return running.load(); }
     void Quit() { running = false; }
 };
 
+std::vector<std::string> split(const std::string& s, const std::string& delimiter);
+
 namespace BitMiner {
-int FindSlot(std::vector<Slot>& Inventory, short Type);
+int FindSlot(const std::vector<Slot>& Inventory, short Type);
 void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerRot);
 void PlayerMovement(Player& player, int& inventorySlot);
-void GameLoop(GameClient& game);
 }  // namespace BitMiner
 
-#endif
+#endif  // __GAME_CLIENT_H

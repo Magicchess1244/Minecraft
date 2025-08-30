@@ -1,6 +1,9 @@
 #ifndef __CHUNK__
 #define __CHUNK__
 
+#include <unordered_map>
+#include <vector>
+
 #include "common.hpp"
 
 struct DrawnFace {
@@ -35,4 +38,3 @@ class ChunkPrefab {
 };
 
 #endif
-
