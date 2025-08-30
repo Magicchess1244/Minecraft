@@ -1,8 +1,8 @@
 #ifndef __GAME_CLIENT_H
 #define __GAME_CLIENT_H
 
+#include "../core/common.hpp"
 #include "Renderer.hpp"
-#include "common.hpp"
 
 typedef enum { GetSeed, GetColor } Commands;
 

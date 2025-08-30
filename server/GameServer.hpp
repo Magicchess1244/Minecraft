@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common.hpp"
+#include "../core/common.hpp"
 
 class GameServer {
    private:
@@ -85,4 +85,3 @@ class GameServer {
         std::cout << "2. Server closed.\n";
     }
 };
-

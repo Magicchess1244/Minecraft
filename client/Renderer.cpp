@@ -546,9 +546,13 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
         this->Terrain.push_back(mesh);
     }
 
+    std::cout << "b" << std::endl;
+
     // load the vertex shader code
     size_t vertexCodeSize;
     void* vertexCode = SDL_LoadFile("VertexShader.cso", &vertexCodeSize);
+
+    std::cout << "c" << std::endl;
 
     // create the vertex shader
     SDL_GPUShaderCreateInfo vertexInfo{};
@@ -564,6 +568,7 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     SDL_GPUShader* vertexShader = SDL_CreateGPUShader(this->GPU, &vertexInfo);
 
     SDL_free(vertexCode);
+    std::cout << "d" << std::endl;
 
     // create the fragment shader
     size_t fragmentCodeSize;
@@ -583,6 +588,7 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
 
     SDL_GPUShader* fragmentShader = SDL_CreateGPUShader(this->GPU, &fragmentInfo);
 
+    std::cout << "e" << std::endl;
     // free the file
     SDL_free(fragmentCode);
 
@@ -624,6 +630,7 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     pipelineInfo.vertex_input_state.num_vertex_attributes = 2;
     pipelineInfo.vertex_input_state.vertex_attributes = vertexAttributes;
 
+    std::cout << "f" << std::endl;
     // describe the color target
     SDL_GPUColorTargetDescription colorTargetDescriptions[1];
     colorTargetDescriptions[0] = {};
@@ -632,10 +639,15 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     pipelineInfo.target_info.num_color_targets = 1;
     pipelineInfo.target_info.color_target_descriptions = colorTargetDescriptions;
 
+    std::cout << "g" << std::endl;
     // create the pipeline
     this->graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &pipelineInfo);
+
+    std::cout << "h" << std::endl;
 
     // we don't need to store the shaders after creating the pipeline
     SDL_ReleaseGPUShader(this->GPU, vertexShader);
     SDL_ReleaseGPUShader(this->GPU, fragmentShader);
+
+    std::cout << "a" << std::endl;
 }

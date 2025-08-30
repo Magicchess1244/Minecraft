@@ -1,7 +1,5 @@
 #include "GameClient.hpp"
 
-#include "PerlinNoise.hpp"
-
 constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 1.0f;
 
@@ -34,6 +32,7 @@ void GameClient::set_seed() {
     srand(server_seed);
     this->seed = server_seed;
 }
+
 void GameClient::set_color() {
     int res;
     char buf[11];
@@ -172,7 +171,8 @@ void GameLoop(GameClient& game) {
     // game.MakeClient();
     // game.set_seed();
     // game.set_color();
-    SetSeed(game.get_seed());
+
+    game.set_seed();
 
     /*
         int width = 600;

@@ -1,21 +1,46 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -O2 -g3 -pthread -gdwarf-4 -fPIC -Wno-deprecated -pipe -fno-elide-type -fdiagnostics-show-template-tree -Wall -Werror -Wextra -Wpedantic -Wvla -Wextra-semi -Wnull-dereference -Wswitch-enum -fvar-tracking-assignments -Wduplicated-cond -Wduplicated-branches -rdynamic -Wsuggest-override
+CXXFLAGS := -std=c++17 -O2 -g3 -pthread -gdwarf-4 -fPIC \
+	-Wno-deprecated -pipe -fno-elide-type -fdiagnostics-show-template-tree \
+	-Wall -Werror -Wextra -Wpedantic -Wvla -Wextra-semi -Wnull-dereference \
+	-Wswitch-enum -fvar-tracking-assignments -Wduplicated-cond -Wduplicated-branches \
+	-rdynamic -Wsuggest-override
+
 LDFLAGS := -lSDL3 -lSDL3_ttf
-TARGET := 2Dminecraft
 
-SRCS := Main.cpp GameClient.cpp GameServer.cpp Chunk.cpp ChunkManager.cpp PerlinNoise.cpp Renderer.cpp
-OBJS := $(SRCS:.cpp=.o)
-DEPS := Chunk.h ChunkManager.h GameClient.h GameServer.h PerlinNoise.h Renderer.h common.hpp
+# Targets
+CLIENT_TARGET := client.exe
+SERVER_TARGET := server.exe
 
-.PHONY: all clean
+# Source files (with subdirs)
+CLIENT_SRCS := Client.cpp client/GameClient.cpp client/Renderer.cpp \
+               core/Chunk.cpp core/ChunkManager.cpp
+SERVER_SRCS := Server.cpp server/GameServer.cpp server/PerlinNoise.cpp \
+               core/Chunk.cpp core/ChunkManager.cpp
 
-all: $(TARGET)
+CLIENT_OBJS := $(CLIENT_SRCS:.cpp=.o)
+SERVER_OBJS := $(SERVER_SRCS:.cpp=.o)
 
-$(TARGET): $(OBJS)
+DEPS := core/Chunk.hpp core/ChunkManager.hpp \
+        client/GameClient.hpp client/Renderer.hpp \
+        server/GameServer.hpp server/PerlinNoise.hpp \
+        net/common.hpp core/common.hpp
+
+.PHONY: all clean client server
+
+all: $(CLIENT_TARGET) $(SERVER_TARGET)
+
+client: $(CLIENT_TARGET)
+server: $(SERVER_TARGET)
+
+$(CLIENT_TARGET): $(CLIENT_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+$(SERVER_TARGET): $(SERVER_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+# Generic rule: build .o from .cpp regardless of subdir
 %.o: %.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(CLIENT_OBJS) $(SERVER_OBJS) $(CLIENT_TARGET) $(SERVER_TARGET)

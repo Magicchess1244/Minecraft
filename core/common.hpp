@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "net/common.hpp"
+#include "../net/common.hpp"
 
 constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;

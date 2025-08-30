@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Chunk.hpp"
-#include "ChunkManager.hpp"
-#include "common.hpp"
+#include "../core/Chunk.hpp"
+#include "../core/ChunkManager.hpp"
+#include "../core/common.hpp"
 
 struct Plane {
     Vector3 normal = {0.f, 1.f, 0.f};
