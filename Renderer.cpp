@@ -161,7 +161,7 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
         }
         AABB volume(Min, Max);
         if (Max.z < Znear) continue;
-        // if (!volume.isOnFrustum(this->frustum, local)) continue;
+        if (!volume.isOnFrustum(this->frustum, local)) continue;
         // std::cout << Max.x << std::endl;
         Faces.push_back({face.blockPos, face.side, face.blockID, Max.z, face.blockID == 5});
     }
@@ -332,8 +332,8 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 
             case SDL_EVENT_WINDOW_RESIZED:
                 // Update screen size
-                this->ScreenSize.x = this->event.window.data1;
-                this->ScreenSize.y = this->event.window.data2;
+                this->ScreenSize.x = (int)this->event.window.data1;
+                this->ScreenSize.y = (int)this->event.window.data2;
 
                 // Optionally update chunk manager here
                 // ChunckManager::Size(...);
@@ -393,7 +393,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 
     this->copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
 
-    SDL_GPUColorTargetInfo colorInfo;
+    SDL_GPUColorTargetInfo colorInfo = {};
     colorInfo.clear_color = SDL_FColor{0.0f, 0.69f, 1.0f, 1.0f};
     colorInfo.load_op = SDL_GPU_LOADOP_CLEAR;
     colorInfo.store_op = SDL_GPU_STOREOP_STORE;
@@ -436,8 +436,8 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 }
 
 Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManager() {
-    this->Width = 0;
-    this->Height = 0;
+    this->Width = 600;
+    this->Height = 400;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "Error initializing SDL: " << SDL_GetError() << std::endl;
@@ -566,6 +566,9 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
 
     SDL_free(vertexCode);
 
+    if (vertexShader == NULL) {
+        std::cout << "Error creating vertex shader because " << SDL_GetError();
+    }
     // create the fragment shader
     size_t fragmentCodeSize;
     void* fragmentCode = SDL_LoadFile("PixelShader.cso", &fragmentCodeSize);
@@ -587,7 +590,12 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     // free the file
     SDL_free(fragmentCode);
 
+    if (fragmentShader == NULL) {
+        std::cout << "Error creating fragment shader because " << SDL_GetError();
+    }
+
     SDL_GPUGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.props = 0;
 
     // bind shaders
     pipelineInfo.vertex_shader = vertexShader;
@@ -597,7 +605,7 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
     // describe the vertex buffers
-    SDL_GPUVertexBufferDescription vertexBufferDesctiptions;
+    SDL_GPUVertexBufferDescription vertexBufferDesctiptions = {};
     vertexBufferDesctiptions.slot = 0;
     vertexBufferDesctiptions.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
     vertexBufferDesctiptions.instance_step_rate = 0;
@@ -608,7 +616,7 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     pipelineInfo.vertex_input_state.vertex_buffer_descriptions = &vertexBufferDesctiptions;
 
     // describe the vertex attribute
-    SDL_GPUVertexAttribute vertexAttributes[2];
+    SDL_GPUVertexAttribute vertexAttributes[2] = {};
 
     // a_position
     vertexAttributes[0].buffer_slot = 0;  // fetch data from the buffer at slot 0
@@ -626,10 +634,26 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     pipelineInfo.vertex_input_state.vertex_attributes = vertexAttributes;
 
     // describe the color target
-    SDL_GPUColorTargetDescription colorTargetDescriptions[1];
+    SDL_GPUColorTargetDescription colorTargetDescriptions[1] = {};
     colorTargetDescriptions[0] = {};
     colorTargetDescriptions[0].format = SDL_GetGPUSwapchainTextureFormat(this->GPU, window);
+    SDL_GPUColorTargetBlendState blend = {};
+    blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    blend.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    blend.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend.color_write_mask = SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G |
+                            SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A;
+    blend.enable_blend = true; 
+    blend.enable_color_write_mask = true;
 
+    colorTargetDescriptions[0].blend_state = blend;
+
+    if (colorTargetDescriptions[0].format == SDL_GPU_TEXTUREFORMAT_INVALID) {
+        std::cout << "SDL_GPU_TEXTUREFORMAT_INVALID";
+    }
     pipelineInfo.target_info.num_color_targets = 1;
     pipelineInfo.target_info.color_target_descriptions = colorTargetDescriptions;
 

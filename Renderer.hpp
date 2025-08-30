@@ -36,6 +36,11 @@ struct Frustum {
         frustum.farFace.normal = camForward * -1;
         frustum.farFace.distance = Zfar;
 
+        frustum.leftFace.distance = 0;
+        frustum.rightFace.distance = 0;
+        frustum.topFace.distance = 0;
+        frustum.bottomFace.distance = 0;
+
         Vector3 A = {0, 0, 0};
 
         // Right
