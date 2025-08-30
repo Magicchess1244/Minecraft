@@ -1,6 +1,8 @@
 #ifndef __CHUNKMANAGER_HPP__
 #define __CHUNKMANAGER_HPP__
 
+#include <iostream>
+
 #include "common.hpp"
 
 class ChunkPrefab;
@@ -66,4 +68,3 @@ InventorySlot, TTF_Font* font); void SimulateWater(int chunkIndex);
 };
 */
 #endif
-

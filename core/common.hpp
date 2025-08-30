@@ -8,16 +8,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <iostream>
-#include <string>
-#include <thread>
-#include <tuple>
-#include <unordered_map>
-#include <vector>
+#include <functional>
 
-#include "../net/common.hpp"
-
-constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;
 
 struct Vector3 {
@@ -126,6 +118,8 @@ struct Vector3 {
 struct Color {
     unsigned int r, g, b;
 
+    Color(unsigned int r, unsigned int g, unsigned int b) : r(r), g(g), b(b) {}
+
     Color operator+(const Color& other) {
         return {SDL_clamp(r + other.r, 0u, 255u), SDL_clamp(g + other.g, 0u, 255u),
                 SDL_clamp(b + other.b, 0u, 255u)};
@@ -157,6 +151,11 @@ struct Player {
     Vector3 Position;
     Vector3 Rotation;
     Color color;
+    bool connected;
+
+    Player(const Vector3& pos = Vector3(), const Vector3& rot = Vector3(),
+           const Color& col = Color(255, 0, 0))
+        : Position(pos), Rotation(rot), color(col), connected(true) {}
 };
 
 struct Slot {
