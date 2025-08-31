@@ -1,6 +1,6 @@
 #include "Renderer.hpp"
-
 #include "GameClient.hpp"
+
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 7000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 7000;
@@ -434,6 +434,68 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
         std::cout << "Heil la memoria de Puigdemont\n";
     }
 }
+SDL_GPUShader* LoadShader(SDL_GPUDevice* device, const char* filename, Uint32 sampler_count,
+                          Uint32 uniform_buffer_count, Uint32 storage_buffer_count,
+                          Uint32 storage_texture_count) {
+    SDL_GPUShaderStage stage;
+    if (SDL_strstr(filename, ".vert")) {
+        stage = SDL_GPU_SHADERSTAGE_VERTEX;
+    } else if (SDL_strstr(filename, ".frag")) {
+        stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    } else {
+        SDL_Log("Unknown shader type: %s", filename);
+        return NULL;
+    }
+
+    SDL_GPUShaderFormat backend_formats = SDL_GetGPUShaderFormats(device);
+    SDL_GPUShaderFormat format = SDL_GPU_SHADERFORMAT_INVALID;
+    char fullpath[256];
+    const char* entrypoint;
+    const char* basepath = SDL_GetBasePath();
+
+    if (backend_formats & SDL_GPU_SHADERFORMAT_SPIRV) {
+        SDL_snprintf(fullpath, sizeof(fullpath), "%sshaders/%s.spv", basepath, filename);
+        entrypoint = "main";
+        format = SDL_GPU_SHADERFORMAT_SPIRV;
+    } else if (backend_formats & SDL_GPU_SHADERFORMAT_DXIL) {
+        SDL_snprintf(fullpath, sizeof(fullpath), "%sshaders/%s.dxil", basepath, filename);
+        entrypoint = "main";
+        format = SDL_GPU_SHADERFORMAT_DXIL;
+    } else if (backend_formats & SDL_GPU_SHADERFORMAT_MSL) {
+        SDL_snprintf(fullpath, sizeof(fullpath), "%sshaders/%s.msl", basepath, filename);
+        entrypoint = "main0";
+        format = SDL_GPU_SHADERFORMAT_MSL;
+    } else {
+        SDL_Log("No supported shader format found!");
+        return NULL;
+    }
+
+    size_t code_size;
+    void* code = SDL_LoadFile(fullpath, &code_size);
+    if (!code) {
+        SDL_Log("Couldn't load shader file: %s", SDL_GetError());
+        return NULL;
+    }
+
+    SDL_GPUShaderCreateInfo shader_info = {};
+    shader_info.code = (Uint8*)code;
+    shader_info.code_size = code_size, shader_info.entrypoint = entrypoint;
+    shader_info.format = format, shader_info.stage = stage;
+    shader_info.num_samplers = sampler_count;
+    shader_info.num_uniform_buffers = uniform_buffer_count;
+    shader_info.num_storage_buffers = storage_buffer_count;
+    shader_info.num_storage_textures = storage_texture_count;
+
+    SDL_GPUShader* shader = SDL_CreateGPUShader(device, &shader_info);
+    if (!shader) {
+        SDL_Log("Couldn't create shader: %s", SDL_GetError());
+        SDL_free(code);
+        return NULL;
+    }
+
+    SDL_free(code);
+    return shader;
+}
 
 Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManager() {
     this->Width = 600;
@@ -446,19 +508,14 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
         std::cout << "SDL initialized successfully." << std::endl;
     }
 
-    this->window = SDL_CreateWindow("Bit Miner", 600, 400, SDL_WINDOW_RESIZABLE);
+    this->window = SDL_CreateWindow("Bit Miner", this->Width, this->Height, SDL_WINDOW_RESIZABLE);
     if (this->window == nullptr) {
         std::cout << "Error creating window: " << SDL_GetError();
         SDL_Quit();
         assert(false);
     }
 
-    // Pick GPU backend depending on OS
-#ifdef _WIN32
-    this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL, false, "direct3d12");
-#else
-    this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
-#endif
+    this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_SPIRV, false, NULL);
 
     if (this->GPU == nullptr) {
         std::cerr << "SDL GPU creation failed: " << SDL_GetError() << std::endl;
@@ -514,6 +571,16 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     float aspect = this->ScreenSize.x / this->ScreenSize.y;
     this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
 
+    // load the vertex shader code
+    SDL_GPUShader* vertex_shader = LoadShader(this->GPU, "shader.vert", 0, 1, 0, 0);
+    if (!vertex_shader) {
+        SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
+    }
+    SDL_GPUShader* fragment_shader = LoadShader(this->GPU, "shader.frag", 0, 0, 0, 0);
+    if (!fragment_shader) {
+        SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
+    }
+
     std::cout << "Vertex size: " << vertexSize << "\t Index Size: " << indexSize << std::endl;
     for (int i = 0; i < (RenderDistance + 1) * (RenderDistance + 1); i++) {
         Mesh mesh{};
@@ -523,6 +590,9 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
         vertexInfo.props = 0;
         mesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
         mesh.VertexBuffer.offset = 0;
+        if (!mesh.VertexBuffer.buffer) {
+            SDL_Log("Couldn't create vertex buffer: %s", SDL_GetError());
+        }
 
         // Create index buffer
         SDL_GPUBufferCreateInfo indexInfo = {};
@@ -547,123 +617,62 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
         this->Terrain.push_back(mesh);
     }
 
-    // load the vertex shader code
-    size_t vertexCodeSize;
-    void* vertexCode = SDL_LoadFile("VertexShader.cso", &vertexCodeSize);
-
-    // create the vertex shader
-    SDL_GPUShaderCreateInfo vertexInfo{};
-    vertexInfo.code = (Uint8*)vertexCode;  // convert to an array of bytes
-    vertexInfo.code_size = vertexCodeSize;
-    vertexInfo.entrypoint = "VSMain";
-    vertexInfo.format = SDL_GPU_SHADERFORMAT_DXIL;  // loading .spv shaders
-    vertexInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;  // vertex shader
-    vertexInfo.num_samplers = 0;
-    vertexInfo.num_storage_buffers = 0;
-    vertexInfo.num_storage_textures = 0;
-    vertexInfo.num_uniform_buffers = 0;
-    SDL_GPUShader* vertexShader = SDL_CreateGPUShader(this->GPU, &vertexInfo);
-
-    SDL_free(vertexCode);
-
-    if (vertexShader == NULL) {
-        std::cout << "Error creating vertex shader because " << SDL_GetError();
-    }
-    // create the fragment shader
-    size_t fragmentCodeSize;
-    void* fragmentCode = SDL_LoadFile("PixelShader.cso", &fragmentCodeSize);
-
-    // create the fragment shader
-    SDL_GPUShaderCreateInfo fragmentInfo{};
-    fragmentInfo.code = (Uint8*)fragmentCode;
-    fragmentInfo.code_size = fragmentCodeSize;
-    fragmentInfo.entrypoint = "PSMain";
-    fragmentInfo.format = SDL_GPU_SHADERFORMAT_DXIL;
-    fragmentInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;  // fragment shader
-    fragmentInfo.num_samplers = 0;
-    fragmentInfo.num_storage_buffers = 0;
-    fragmentInfo.num_storage_textures = 0;
-    fragmentInfo.num_uniform_buffers = 0;
-
-    SDL_GPUShader* fragmentShader = SDL_CreateGPUShader(this->GPU, &fragmentInfo);
-
-    // free the file
-    SDL_free(fragmentCode);
-
-    if (fragmentShader == NULL) {
-        std::cout << "Error creating fragment shader because " << SDL_GetError();
-    }
-
     SDL_GPUGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.props = 0;
 
     // bind shaders
-    pipelineInfo.vertex_shader = vertexShader;
-    pipelineInfo.fragment_shader = fragmentShader;
+    SDL_GPUColorTargetDescription color_target_desc;
+    SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
 
-    // draw triangles
-    pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    SDL_zero(color_target_desc);
+    SDL_zero(pipeline_desc);
 
-    // describe the vertex buffers
-    SDL_GPUVertexBufferDescription vertexBufferDesctiptions = {};
-    vertexBufferDesctiptions.slot = 0;
-    vertexBufferDesctiptions.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-    vertexBufferDesctiptions.instance_step_rate = 0;
-    vertexBufferDesctiptions.pitch = sizeof(Vertex);
+    color_target_desc.format = SDL_GetGPUSwapchainTextureFormat(this->GPU, window);
 
-    pipelineInfo.vertex_input_state.num_vertex_buffers =
-        (RenderDistance + 1) * (RenderDistance + 1);
-    pipelineInfo.vertex_input_state.vertex_buffer_descriptions = &vertexBufferDesctiptions;
+    pipeline_desc.target_info.num_color_targets = 1;
+    pipeline_desc.target_info.color_target_descriptions = &color_target_desc;
+    pipeline_desc.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+    pipeline_desc.target_info.has_depth_stencil_target = true;
 
-    // describe the vertex attribute
-    SDL_GPUVertexAttribute vertexAttributes[2] = {};
+    pipeline_desc.depth_stencil_state.enable_depth_test = true;
+    pipeline_desc.depth_stencil_state.enable_depth_write = true;
+    pipeline_desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
 
-    // a_position
-    vertexAttributes[0].buffer_slot = 0;  // fetch data from the buffer at slot 0
-    vertexAttributes[0].location = 0;     // layout (location = 0) in shader
-    vertexAttributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;  // vec3
-    vertexAttributes[0].offset = 0;  // start from the first byte from current buffer position
+    pipeline_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    pipeline_desc.vertex_shader = vertex_shader;
+    pipeline_desc.fragment_shader = fragment_shader;
 
-    // a_color
-    vertexAttributes[1].buffer_slot = 0;  // use buffer at slot 0
-    vertexAttributes[1].location = 1;     // layout (location = 1) in shader
-    vertexAttributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;  // vec4
-    vertexAttributes[1].offset = sizeof(Vector3);  // 4th float from current buffer position
+    SDL_GPUVertexBufferDescription vertex_buffer_desc;
+    SDL_GPUVertexAttribute vertex_attributes[2];
 
-    pipelineInfo.vertex_input_state.num_vertex_attributes = 2;
-    pipelineInfo.vertex_input_state.vertex_attributes = vertexAttributes;
+    vertex_buffer_desc.slot = 0;
+    vertex_buffer_desc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    vertex_buffer_desc.instance_step_rate = 0;
+    vertex_buffer_desc.pitch = sizeof(Vertex);
 
-    // describe the color target
-    SDL_GPUColorTargetDescription colorTargetDescriptions[1] = {};
-    colorTargetDescriptions[0] = {};
-    colorTargetDescriptions[0].format = SDL_GetGPUSwapchainTextureFormat(this->GPU, window);
-    SDL_GPUColorTargetBlendState blend = {};
-    blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    blend.color_blend_op = SDL_GPU_BLENDOP_ADD;
-    blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-    blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    blend.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
-    blend.color_write_mask = SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G |
-                            SDL_GPU_COLORCOMPONENT_B | SDL_GPU_COLORCOMPONENT_A;
-    blend.enable_blend = true; 
-    blend.enable_color_write_mask = true;
+    vertex_attributes[0].buffer_slot = 0;
+    vertex_attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+    vertex_attributes[0].location = 0;
+    vertex_attributes[0].offset = 0;
 
-    colorTargetDescriptions[0].blend_state = blend;
+    vertex_attributes[1].buffer_slot = 0;
+    vertex_attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+    vertex_attributes[1].location = 1;
+    vertex_attributes[1].offset = sizeof(float) * 3;
 
-    if (colorTargetDescriptions[0].format == SDL_GPU_TEXTUREFORMAT_INVALID) {
-        std::cout << "SDL_GPU_TEXTUREFORMAT_INVALID";
-    }
-    pipelineInfo.target_info.num_color_targets = 1;
-    pipelineInfo.target_info.color_target_descriptions = colorTargetDescriptions;
+    pipeline_desc.vertex_input_state.num_vertex_buffers = (RenderDistance + 1) * (RenderDistance + 1);
+    pipeline_desc.vertex_input_state.vertex_buffer_descriptions = &vertex_buffer_desc;
+    pipeline_desc.vertex_input_state.num_vertex_attributes = 2;
+    pipeline_desc.vertex_input_state.vertex_attributes = (SDL_GPUVertexAttribute*)&vertex_attributes;
 
-    // create the pipeline
-    this->graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &pipelineInfo);
-    if (this->graphicsPipeline == NULL) {
-        std::cout << "Creating graphicPipeline failed because: " << SDL_GetError() << std::endl;
+    pipeline_desc.props = 0;
+
+    this->graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &pipeline_desc);
+    if (!this->graphicsPipeline) {
+        SDL_Log("Failed to create pipeline: %s", SDL_GetError());
     }
 
     // we don't need to store the shaders after creating the pipeline
-    SDL_ReleaseGPUShader(this->GPU, vertexShader);
-    SDL_ReleaseGPUShader(this->GPU, fragmentShader);
+    SDL_ReleaseGPUShader(this->GPU, vertex_shader);
+    SDL_ReleaseGPUShader(this->GPU, fragment_shader);
 }
