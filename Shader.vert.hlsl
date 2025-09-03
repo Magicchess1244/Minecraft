@@ -1,10 +1,17 @@
 //----------------------
 // Vertex Shader
 //----------------------
+#define REG(reg) register(reg)
+
+cbuffer UBO : REG(b0)
+{
+    float4x4 ModelViewProj;
+};
+
 struct VSInput
 {
-	float3 pos : POSITION; // input vertex position
-	float3 col : COLOR; // input vertex color
+    float3 pos : TEXCOORD0; // input vertex position
+    float3 col : TEXCOORD1; // input vertex color
 };
 
 struct PSOutput
@@ -16,7 +23,7 @@ struct PSOutput
 PSOutput VSMain(VSInput input)
 {
 	PSOutput output;
-	output.pos = float4(input.pos, 1.0); // convert to 4D
+    output.pos = mul(ModelViewProj, float4(input.pos, 1.0)); // convert to 4D
 	output.col = input.col; // pass color through
 	return output;
 }

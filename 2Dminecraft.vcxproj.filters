@@ -64,10 +64,10 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="VertexShader.hlsl">
+    <FxCompile Include="Shader.vert.hlsl">
       <Filter>Resource Files</Filter>
     </FxCompile>
-    <FxCompile Include="PixelShader.hlsl">
+    <FxCompile Include="Shader.frag.hlsl">
       <Filter>Resource Files</Filter>
     </FxCompile>
   </ItemGroup>

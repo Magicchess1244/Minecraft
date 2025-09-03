@@ -18,69 +18,56 @@ struct Frustum {
     Frustum createFrustumFromCamera(float aspect, float fovY, float Znear, float Zfar) const {
         Frustum frustum;
 
-        float tanHalfFovY = fovY;
-        float halfVSide = Zfar * tanHalfFovY;
+        // Half-angles
+        float halfVSide = Zfar * fovY;
         float halfHSide = halfVSide * aspect;
 
+        // Camera basis (assuming looking down +Z, Y up, X right)
         Vector3 camForward = {0, 0, 1};
         Vector3 camRight = {1, 0, 0};
         Vector3 camUp = {0, 1, 0};
 
-        // Vector3 nearCenter = camForward * Znear;
+        Vector3 nearCenter = camForward * Znear;
         Vector3 farCenter = camForward * Zfar;
 
-        // Near and far
+        // --- Near plane ---
         frustum.nearFace.normal = camForward;
-        frustum.nearFace.distance = Znear;
+        frustum.nearFace.distance = -camForward.Dot(nearCenter);
 
+        // --- Far plane ---
         frustum.farFace.normal = camForward * -1;
-        frustum.farFace.distance = Zfar;
+        frustum.farFace.distance = frustum.farFace.normal.Dot(farCenter);
 
-        frustum.leftFace.distance = 0;
-        frustum.rightFace.distance = 0;
-        frustum.topFace.distance = 0;
-        frustum.bottomFace.distance = 0;
-
-        Vector3 A = {0, 0, 0};
-
-        // Right
+        // --- Right plane ---
         {
-            Vector3 B = farCenter + (camRight * halfHSide);
-            Vector3 C = B + (camUp * halfVSide);
-
-            Vector3 normal =
-                (C - A).Cross(B - A).Normalized();  // camUp.Cross(rightEdge).Normalized();
+            Vector3 rightEdge = (farCenter + camRight * halfHSide).Normalized();
+            Vector3 normal = camUp.Cross(rightEdge).Normalized();
             frustum.rightFace.normal = normal;
+            frustum.rightFace.distance = 0.0f;  // passes through origin
         }
 
-        // Left
+        // --- Left plane ---
         {
-            Vector3 B = farCenter + (camRight * halfHSide * -1);
-            Vector3 C = B + (camUp * halfVSide);
-
-            Vector3 normal =
-                (B - A).Cross(C - A).Normalized();  // camUp.Cross(rightEdge).Normalized();
+            Vector3 leftEdge = (farCenter - camRight * halfHSide).Normalized();
+            Vector3 normal = leftEdge.Cross(camUp).Normalized();
             frustum.leftFace.normal = normal;
+            frustum.leftFace.distance = 0.0f;
         }
 
-        // Top
+        // --- Top plane ---
         {
-            Vector3 B = farCenter + (camUp * halfVSide);
-            Vector3 C = B + (camRight * halfHSide);
-
-            Vector3 normal =
-                (B - A).Cross(C - A).Normalized();  // camUp.Cross(rightEdge).Normalized();
+            Vector3 topEdge = (farCenter + camUp * halfVSide).Normalized();
+            Vector3 normal = topEdge.Cross(camRight).Normalized();
             frustum.topFace.normal = normal;
+            frustum.topFace.distance = 0.0f;
         }
 
-        // Bottom
+        // --- Bottom plane ---
         {
-            Vector3 B = farCenter + (camUp * halfVSide * -1);
-            Vector3 C = B + (camRight * halfHSide);
-
-            Vector3 normal =
-                (C - A).Cross(B - A).Normalized();  // camUp.Cross(rightEdge).Normalized();
+            Vector3 bottomEdge = (farCenter - camUp * halfVSide).Normalized();
+            Vector3 normal = camRight.Cross(bottomEdge).Normalized();
             frustum.bottomFace.normal = normal;
+            frustum.bottomFace.distance = 0.0f;
         }
 
         return frustum;
@@ -161,11 +148,13 @@ class Renderer {
     std::vector<Mesh> Terrain;
     SDL_GPUGraphicsPipeline* graphicsPipeline = nullptr;
     SDL_GPUCopyPass* copyPass = nullptr;
+    SDL_GPUTexture* depthTexture = nullptr;
 
     SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
     Vector3 rotate(const Vector3 pos, const Vector3 Angle);
     void DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh* mesh,
                   Vertex* Vertexdata, Uint32* Indexdata);
+    SDL_GPUTexture* CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
 
    public:
     explicit Renderer(GameClient& gameClient);

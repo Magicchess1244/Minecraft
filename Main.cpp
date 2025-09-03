@@ -45,77 +45,77 @@ static SDL_GPUBuffer *vertex_buffer = NULL;
 static SDL_GPUTexture *depth_texture = NULL;
 
 struct VertexData {
-    float x, y, z;          3D data. Vertex range -0.5..0.5 in all axes. Z -0.5 is
-                               near, 0.5 is far
+    float x, y, z;          //3D data. Vertex range -0.5..0.5 in all axes. Z -0.5 is
+                               //near, 0.5 is far
     float red, green, blue; //intensity 0 to 1 (alpha is always 1).
 };
 
 static const struct VertexData vertex_data[] = {
-    /* Front face.  
-    /* Bottom left  
-    {-0.5, 0.5, -0.5, 1.0, 0.0, 0.0},    red  
-    {0.5, -0.5, -0.5, 1.0, 0.0, 0.0},    blue  
-    {-0.5, -0.5, -0.5, 1.0, 0.0, 0.0},   green  
+    //Front face.  
+    //Bottom left  
+    {-0.5, 0.5, -0.5, 1.0, 0.0, 0.0},    //red  
+    {0.5, -0.5, -0.5, 1.0, 0.0, 0.0},    //blue  
+    {-0.5, -0.5, -0.5, 1.0, 0.0, 0.0},   //green  
 
-      Top right  
-    {-0.5, 0.5, -0.5, 1.0, 0.0, 0.0},   red  
-    {0.5, 0.5, -0.5, 1.0, 0.0, 0.0},    yellow  
-    {0.5, -0.5, -0.5, 1.0, 0.0, 0.0},   blue  
+    //  Top right  
+    {-0.5, 0.5, -0.5, 1.0, 0.0, 0.0},   //red  
+    {0.5, 0.5, -0.5, 1.0, 0.0, 0.0},    //yellow  
+    {0.5, -0.5, -0.5, 1.0, 0.0, 0.0},   //blue  
 
-      Left face  
-      Bottom left  
-    {-0.5, 0.5, 0.5, 0.0, 1.0, 0.0},     white  
-    {-0.5, -0.5, -0.5, 0.0, 1.0, 0.0},   green  
-    {-0.5, -0.5, 0.5, 0.0, 1.0, 0.0},    cyan  
+      //Left face  
+      //Bottom left  
+    {-0.5, 0.5, 0.5, 0.0, 1.0, 0.0},     //white  
+    {-0.5, -0.5, -0.5, 0.0, 1.0, 0.0},   //green  
+    {-0.5, -0.5, 0.5, 0.0, 1.0, 0.0},    //cyan  
 
-      Top right  
-    {-0.5, 0.5, 0.5, 0.0, 1.0, 0.0},     white  
-    {-0.5, 0.5, -0.5, 0.0, 1.0, 0.0},    red  
-    {-0.5, -0.5, -0.5, 0.0, 1.0, 0.0},   green  
+      //Top right  
+    {-0.5, 0.5, 0.5, 0.0, 1.0, 0.0},     //white  
+    {-0.5, 0.5, -0.5, 0.0, 1.0, 0.0},    //red  
+    {-0.5, -0.5, -0.5, 0.0, 1.0, 0.0},   //green  
 
-      Top face  
-      Bottom left  
-    {-0.5, 0.5, 0.5, 0.0, 0.0, 1.0},    white  
-    {0.5, 0.5, -0.5, 0.0, 0.0, 1.0},    yellow  
-    {-0.5, 0.5, -0.5, 0.0, 0.0, 1.0},   red  
+      //Top face  
+      //Bottom left  
+    {-0.5, 0.5, 0.5, 0.0, 0.0, 1.0},    //white  
+    {0.5, 0.5, -0.5, 0.0, 0.0, 1.0},    //yellow  
+    {-0.5, 0.5, -0.5, 0.0, 0.0, 1.0},   //red  
 
-      Top right  
-    {-0.5, 0.5, 0.5, 0.0, 0.0, 1.0},   white  
-    {0.5, 0.5, 0.5, 0.0, 0.0, 1.0},    black  
-    {0.5, 0.5, -0.5, 0.0, 0.0, 1.0},   yellow  
+      //Top right  
+    {-0.5, 0.5, 0.5, 0.0, 0.0, 1.0},   //white  
+    {0.5, 0.5, 0.5, 0.0, 0.0, 1.0},    //black  
+    {0.5, 0.5, -0.5, 0.0, 0.0, 1.0},   //yellow  
 
-      Right face  
-      Bottom left  
-    {0.5, 0.5, -0.5, 1.0, 1.0, 0.0},    yellow  
-    {0.5, -0.5, 0.5, 1.0, 1.0, 0.0},    magenta  
-    {0.5, -0.5, -0.5, 1.0, 1.0, 0.0},   blue  
+      //Right face  
+      //Bottom left  
+    {0.5, 0.5, -0.5, 1.0, 1.0, 0.0},    //yellow  
+    {0.5, -0.5, 0.5, 1.0, 1.0, 0.0},    //magenta  
+    {0.5, -0.5, -0.5, 1.0, 1.0, 0.0},   //blue  
 
-      Top right  
-    {0.5, 0.5, -0.5, 1.0, 1.0, 0.0},   yellow  
-    {0.5, 0.5, 0.5, 1.0, 1.0, 0.0},    black  
-    {0.5, -0.5, 0.5, 1.0, 1.0, 0.0},   magenta  
+      //Top right  
+    {0.5, 0.5, -0.5, 1.0, 1.0, 0.0},   //yellow  
+    {0.5, 0.5, 0.5, 1.0, 1.0, 0.0},    //black  
+    {0.5, -0.5, 0.5, 1.0, 1.0, 0.0},   //magenta  
 
-      Back face  
-      Bottom left  
-    {0.5, 0.5, 0.5, 1.0, 0.0, 1.0},     black  
-    {-0.5, -0.5, 0.5, 1.0, 0.0, 1.0},   cyan  
-    {0.5, -0.5, 0.5, 1.0, 0.0, 1.0},    magenta  
+      //Back face  
+      //Bottom left  
+    {0.5, 0.5, 0.5, 1.0, 0.0, 1.0},     //black  
+    {-0.5, -0.5, 0.5, 1.0, 0.0, 1.0},   //cyan  
+    {0.5, -0.5, 0.5, 1.0, 0.0, 1.0},    //magenta  
 
-      Top right  
-    {0.5, 0.5, 0.5, 1.0, 0.0, 1.0},     black  
-    {-0.5, 0.5, 0.5, 1.0, 0.0, 1.0},    white  
-    {-0.5, -0.5, 0.5, 1.0, 0.0, 1.0},   cyan  
+      //Top right  
+    {0.5, 0.5, 0.5, 1.0, 0.0, 1.0},     //black  
+    {-0.5, 0.5, 0.5, 1.0, 0.0, 1.0},    //white  
+    {-0.5, -0.5, 0.5, 1.0, 0.0, 1.0},   //cyan  
 
-      Bottom face  
-      Bottom left  
-    {-0.5, -0.5, -0.5, 0.0, 1.0, 1.0},   green  
-    {0.5, -0.5, 0.5, 0.0, 1.0, 1.0},     magenta  
-    {-0.5, -0.5, 0.5, 0.0, 1.0, 1.0},    cyan  
+      //Bottom face  
+      //Bottom left  
+    {-0.5, -0.5, -0.5, 0.0, 1.0, 1.0},   //green  
+    {0.5, -0.5, 0.5, 0.0, 1.0, 1.0},     //magenta  
+    {-0.5, -0.5, 0.5, 0.0, 1.0, 1.0},    //cyan  
 
-      Top right  
-    {-0.5, -0.5, -0.5, 0.0, 1.0, 1.0},   green  
-    {0.5, -0.5, -0.5, 0.0, 1.0, 1.0},    blue  
-    {0.5, -0.5, 0.5, 0.0, 1.0, 1.0}      magenta  
+      //Top right  
+    {-0.5, -0.5, -0.5, 0.0, 1.0, 1.0},   //green  
+    {0.5, -0.5, -0.5, 0.0, 1.0, 1.0},    //blue  
+    {0.5, -0.5, 0.5, 0.0, 1.0, 1.0}      //magenta  
 };
 
 static void rotate_matrix(float angle, float x, float y, float z, float *r) {
@@ -217,7 +217,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    window = SDL_CreateWindow("Hello Triangle", 640, 480, 0);
+    window = SDL_CreateWindow("Hello Triangle", 500, 300, 0);
     if (!window) {
         SDL_Log("Couldn't create window: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -413,7 +413,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     multiply_matrix(matrix_rotate, matrix_modelview, matrix_modelview);
 
-      Pull the camera back from the cube  
+      //Pull the camera back from the cube  
     matrix_modelview[14] -= 2.5f;
 
     perspective_matrix(45.0f, (float)drawablew / drawableh, 0.01f, 100.0f, matrix_perspective);
@@ -479,4 +479,4 @@ SDL_Surface *LoadImage(const char *filename) {
 
     return result;
 }
- */
+*/

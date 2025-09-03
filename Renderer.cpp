@@ -52,6 +52,69 @@ const Color Colors[3] = {
     {10, 10, 10},  // Top / Bottom
 };
 
+Matrix Perspective(float fovRadians, float aspect, float Near, float Far) {
+    float f = 1.0f / std::tan(fovRadians / 2.0f);
+    Matrix m(4, 4, 0.0f);
+    m(0, 0) = f / aspect;
+    m(1, 1) = f;
+    m(2, 2) = (Far + Near) / (Near - Far);
+    m(2, 3) = (2.0f * Far * Near) / (Near - Far);
+    m(3, 2) = 1.0f;
+    return m;
+}
+Matrix Translation(float x, float y, float z) {
+    Matrix m = Matrix::Identity(4);
+    m(0, 3) = x;
+    m(1, 3) = y;
+    m(2, 3) = z;
+    return m;
+}
+Matrix RotationY(float angleRad) {
+    Matrix m = Matrix::Identity(4);
+    float c = std::cos(angleRad);
+    float s = std::sin(angleRad);
+    m(0, 0) = c;
+    m(0, 2) = s;
+    m(2, 0) = -s;
+    m(2, 2) = c;
+    return m;
+}
+// LookAt View matrix (like glm::lookAt)
+Matrix LookAt(const std::vector<float>& eye, const std::vector<float>& target,
+              const std::vector<float>& up) {
+    auto normalize = [](std::vector<float> v) {
+        float len = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        for (auto& x : v) x /= len;
+        return v;
+    };
+    auto cross = [](const std::vector<float>& a, const std::vector<float>& b) {
+        return std::vector<float>{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+                                  a[0] * b[1] - a[1] * b[0]};
+    };
+    auto dot = [](const std::vector<float>& a, const std::vector<float>& b) {
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    };
+
+    std::vector<float> f = normalize({target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]});
+    std::vector<float> s = normalize(cross(f, up));
+    std::vector<float> u = cross(s, f);
+
+    Matrix m = Matrix::Identity(4);
+    m(0, 0) = s[0];
+    m(0, 1) = s[1];
+    m(0, 2) = s[2];
+    m(0, 3) = -dot(s, eye);
+    m(1, 0) = u[0];
+    m(1, 1) = u[1];
+    m(1, 2) = u[2];
+    m(1, 3) = -dot(u, eye);
+    m(2, 0) = -f[0];
+    m(2, 1) = -f[1];
+    m(2, 2) = -f[2];
+    m(2, 3) = -dot(f, eye);
+    return m;
+}
+
 SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
     const int tileSize = 16;
     const int atlasSize = 64;
@@ -97,24 +160,9 @@ void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mes
     for (int i = 0; i < 4; i++) {
         Vector3 relToScreen = ((verts[i] + blocks) - player.Position);
 
-        Vector3 localPos = this->rotate(relToScreen, player.Rotation);
-
-        // std::cout << " 3D:\t Px: " << Px << " Py: " << Py << " Pz: " << Pz << std::endl;
-
-        float screenX = localPos.x;
-        float screenY = localPos.y;
-
-        if (localPos.z <= Znear) localPos.z = Znear;
-
-        screenX = (localPos.x / (localPos.z * FOV)) * BlockPixelSize + ScreenSize.x / 2.0f;
-        screenY = (localPos.y / (localPos.z * FOV)) * BlockPixelSize + ScreenSize.y / 2.0f;
-        screenY = ScreenSize.y - screenY;
-
-        // std::cout << " 2D:\t Px: " << screenX << " Py: " << screenY << std::endl;
-
         Color faceColor = (this->chunkManager.GetBlock(color).color + Colors[(int)(Side / 2)]);
 
-        Vertex vertex = {{screenX, screenY}, faceColor.ToFloat()};
+        Vertex vertex = {relToScreen, {1, 1, 1}};
         Vertexdata[baseVertex + i] = vertex;
     }
 
@@ -161,7 +209,7 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
         }
         AABB volume(Min, Max);
         if (Max.z < Znear) continue;
-        if (!volume.isOnFrustum(this->frustum, local)) continue;
+        //if (!volume.isOnFrustum(this->frustum, local)) continue;
         // std::cout << Max.x << std::endl;
         Faces.push_back({face.blockPos, face.side, face.blockID, Max.z, face.blockID == 5});
     }
@@ -172,9 +220,9 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
     });
 
     Vertex* Vertexdata =
-        (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer, false);
+        (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer, true);
     Uint32* Indexdata =
-        (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer, false);
+        (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer, true);
 
     for (auto& Face : Faces) {
         DrawFace(player, Face.blockPos, Face.blockID, Face.side, mesh, Vertexdata, Indexdata);
@@ -196,7 +244,7 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
     Vertexregion.offset = 0;
 
     // upload the data
-    SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, false);
+    SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, true);
 
     //---------------Index-----------------
 
@@ -214,7 +262,7 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
     Indexregion.offset = 0;
 
     // upload the data
-    SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, false);
+    SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
 }
 void Renderer::DrawTerrain(Player& player) {
     std::vector<std::thread> threads;
@@ -391,7 +439,6 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 
     if (swap_texture == NULL) return;
 
-    this->copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
 
     SDL_GPUColorTargetInfo colorInfo = {};
     colorInfo.clear_color = SDL_FColor{0.0f, 0.69f, 1.0f, 1.0f};
@@ -399,8 +446,27 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     colorInfo.store_op = SDL_GPU_STOREOP_STORE;
     colorInfo.texture = swap_texture;
 
+    SDL_GPUDepthStencilTargetInfo depth_target_info;
+    SDL_zero(depth_target_info);
+    depth_target_info.clear_depth = 1.0f;
+    depth_target_info.load_op = SDL_GPU_LOADOP_CLEAR;
+    depth_target_info.store_op = SDL_GPU_STOREOP_DONT_CARE;
+    depth_target_info.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    depth_target_info.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    depth_target_info.texture = depthTexture;
+    depth_target_info.cycle = true;
+
+    this->copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
+
     // SDL_SetGPUViewport(pass, NULL);
     DrawTerrain(players[0]);
+    /*
+    Vertex* Vertexdata = (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, this->Terrain[0].VertextransferBuffer, true);
+    Uint32* Indexdata = (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, this->Terrain[0].IndextransferBuffer, true);
+
+    std::memcpy(Vertexdata, DefaultVertex, sizeof(DefaultVertex));
+    std::memcpy(Indexdata, DefaultIndex, sizeof(DefaultIndex));
+    */
 
     // Stats(player);
     // DrawBG(renderer, players[0],{ (float)width, (float)height, 0}, texture);
@@ -408,10 +474,31 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     // font); DrawPlayer(renderer, Range, std::ref(players)); SDL_Delay(1000 / 10);
     SDL_EndGPUCopyPass(this->copyPass);
 
+    if (!SDL_SubmitGPUCommandBuffer(this->cmdCopy)) {
+        std::cout << "Heil la memoria de Puigdemont\n";
+    }
     this->pass = SDL_BeginGPURenderPass(this->cmdRender, &colorInfo, 1, NULL);
     SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
 
     int i = 0;
+    Matrix model = RotationY(30.0f * 3.141592 / 180.0f);
+
+    // Camera at (3,0,5), looking at origin, up = Y axis
+    std::vector<float> eye = {3.0f, 0.0f, 5.0f};
+    std::vector<float> target = {0.0f, 0.0f, -1.0f};
+    std::vector<float> up = {0.0f, 1.0f, 0.0f};
+    Matrix view = LookAt(eye, target, up);
+
+    // Projection
+    Matrix proj = Perspective(FOV, 16.0f / 9.0f, 0.1f, 100.0f);
+
+    // Final MVP matrix
+    Matrix mvp = proj * view * model;
+
+    SDL_PushGPUVertexUniformData(this->cmdRender, 0, mvp.data.data(), sizeof(float) * mvp.data.size());
+    std::cout << "MVP matrix:\n";
+    mvp.print();
+
     for (auto& mesh : this->Terrain) {
         std::cout << "Mesh pointer: " << &mesh << "\tVertexBuffer pointer: " << &mesh.VertexBuffer
                   << "\t Index Buffer pointer: " << &mesh.IndexBuffer << std::endl;
@@ -423,15 +510,13 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 
         SDL_BindGPUVertexBuffers(this->pass, 0, &mesh.VertexBuffer, 1);
         SDL_BindGPUIndexBuffer(this->pass, &mesh.IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        SDL_DrawGPUIndexedPrimitives(this->pass, 42000, 1, 0, 0, 0);
+        SDL_DrawGPUIndexedPrimitives(this->pass, mesh.faces * 6, 1, 0, 0, 0);
     }
 
     SDL_EndGPURenderPass(this->pass);
+    
     if (!SDL_SubmitGPUCommandBuffer(this->cmdRender)) {
         std::cout << "Heil el render de Puigdemont\n";
-    }
-    if (!SDL_SubmitGPUCommandBuffer(this->cmdCopy)) {
-        std::cout << "Heil la memoria de Puigdemont\n";
     }
 }
 SDL_GPUShader* LoadShader(SDL_GPUDevice* device, const char* filename, Uint32 sampler_count,
@@ -495,6 +580,28 @@ SDL_GPUShader* LoadShader(SDL_GPUDevice* device, const char* filename, Uint32 sa
 
     SDL_free(code);
     return shader;
+}
+SDL_GPUTexture* Renderer::CreateDepthTexture(Uint32 drawablew, Uint32 drawableh) {
+    SDL_GPUTextureCreateInfo createinfo;
+    SDL_GPUTexture* result;
+
+    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
+    createinfo.format = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+    createinfo.width = drawablew;
+    createinfo.height = drawableh;
+    createinfo.layer_count_or_depth = 1;
+    createinfo.num_levels = 1;
+    createinfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    createinfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+    createinfo.props = 0;
+
+    result = SDL_CreateGPUTexture(this->GPU, &createinfo);
+    if (!result) {
+        SDL_Log("Failed to create depth texture: %s", SDL_GetError());
+        return NULL;
+    }
+
+    return result;
 }
 
 Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManager() {
@@ -572,11 +679,11 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
 
     // load the vertex shader code
-    SDL_GPUShader* vertex_shader = LoadShader(this->GPU, "shader.vert", 0, 1, 0, 0);
+    SDL_GPUShader* vertex_shader = LoadShader(this->GPU, "Shader.vert", 0, 1, 0, 0);
     if (!vertex_shader) {
         SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
     }
-    SDL_GPUShader* fragment_shader = LoadShader(this->GPU, "shader.frag", 0, 0, 0, 0);
+    SDL_GPUShader* fragment_shader = LoadShader(this->GPU, "Shader.frag", 0, 0, 0, 0);
     if (!fragment_shader) {
         SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
     }
@@ -675,4 +782,5 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     // we don't need to store the shaders after creating the pipeline
     SDL_ReleaseGPUShader(this->GPU, vertex_shader);
     SDL_ReleaseGPUShader(this->GPU, fragment_shader);
+    this->depthTexture = CreateDepthTexture(this->Width, this->Height);
 }

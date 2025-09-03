@@ -122,7 +122,48 @@ struct Vector3 {
         return {min(x, a.x), min(y, a.y), min(z, a.z)};
     }
 };
+struct Matrix {
+    size_t rows, cols;
+    std::vector<float> data;  // row-major
 
+    Matrix(size_t r, size_t c, float val = 0.0f) : rows(r), cols(c), data(r * c, val) {}
+
+    float& operator()(size_t r, size_t c) { return data[r * cols + c]; }
+    float operator()(size_t r, size_t c) const { return data[r * cols + c]; }
+
+    // Matrix multiplication
+    Matrix operator*(const Matrix& other) const {
+        if (cols != other.rows) {
+            throw std::invalid_argument("Matrix dimensions do not match for multiplication");
+        }
+        Matrix result(rows, other.cols, 0.0f);
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < other.cols; ++j) {
+                float sum = 0.0f;
+                for (size_t k = 0; k < cols; ++k) {
+                    sum += (*this)(i, k) * other(k, j);
+                }
+                result(i, j) = sum;
+            }
+        }
+        return result;
+    }
+
+    static Matrix Identity(size_t n) {
+        Matrix I(n, n, 0.0f);
+        for (size_t i = 0; i < n; ++i) I(i, i) = 1.0f;
+        return I;
+    }
+
+    void print() const {
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                std::cout << (*this)(i, j) << " ";
+            }
+            std::cout << "\n";
+        }
+    }
+};
 struct Color {
     unsigned int r, g, b;
 
@@ -152,13 +193,11 @@ struct Color {
         };
     }
 };
-
 struct Player {
     Vector3 Position;
     Vector3 Rotation;
     Color color;
 };
-
 struct Slot {
     short Amount;
     short Type;
