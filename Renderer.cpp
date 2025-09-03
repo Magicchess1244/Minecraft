@@ -62,21 +62,62 @@ Matrix Perspective(float fovRadians, float aspect, float Near, float Far) {
     m(3, 2) = 1.0f;
     return m;
 }
-Matrix Translation(float x, float y, float z) {
+Matrix RotationX(float angleRad) {
     Matrix m = Matrix::Identity(4);
-    m(0, 3) = x;
-    m(1, 3) = y;
-    m(2, 3) = z;
+    float c = std::cos(angleRad);
+    float s = std::sin(angleRad);
+
+    // Rotation around X-axis
+    m(1, 1) = c;   // cos 
+    m(1, 2) = -s;  // -sin 
+    m(2, 1) = s;   // sin 
+    m(2, 2) = c;   // cos 
+
     return m;
 }
 Matrix RotationY(float angleRad) {
     Matrix m = Matrix::Identity(4);
     float c = std::cos(angleRad);
     float s = std::sin(angleRad);
-    m(0, 0) = c;
-    m(0, 2) = s;
-    m(2, 0) = -s;
-    m(2, 2) = c;
+
+    // Rotation around Y-axis
+    m(0, 0) = c;   // cos 
+    m(0, 2) = s;   // sin 
+    m(2, 0) = -s;  // -sin 
+    m(2, 2) = c;   // cos 
+
+    return m;
+}
+Matrix RotationZ(float angleRad) {
+    Matrix m = Matrix::Identity(4);
+    float c = std::cos(angleRad);
+    float s = std::sin(angleRad);
+
+    // Rotation around Z-axis
+    m(0, 0) = c;   // cos 
+    m(0, 1) = -s;  // -sin 
+    m(1, 0) = s;   // sin 
+    m(1, 1) = c;   // cos 
+
+    return m;
+}
+// Combined rotation functions
+Matrix Rotation(float x, float y, float z) {
+    // Apply rotations in order: Z * Y * X (standard Euler angle order)
+    return RotationZ(z) * RotationY(y) * RotationX(x);
+}
+Matrix Translation(float x, float y, float z) {
+    Matrix m = Matrix::Identity(4);
+    m(0, 3) = x;  // X translation
+    m(1, 3) = y;  // Y translation
+    m(2, 3) = z;  // Z translation
+    return m;
+}
+Matrix Scale(float x, float y, float z) {
+    Matrix m = Matrix::Identity(4);
+    m(0, 0) = x;  // X scale
+    m(1, 1) = y;  // Y scale
+    m(2, 2) = z;  // Z scale
     return m;
 }
 // LookAt View matrix (like glm::lookAt)
@@ -158,11 +199,11 @@ void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mes
 
     // std::cout << "\n \n";
     for (int i = 0; i < 4; i++) {
-        Vector3 relToScreen = ((verts[i] + blocks) - player.Position);
+        Vector3 relToScreen = ((verts[i] + blocks) - player.Position) * 0.02f;
 
         Color faceColor = (this->chunkManager.GetBlock(color).color + Colors[(int)(Side / 2)]);
 
-        Vertex vertex = {relToScreen, {1, 1, 1}};
+        Vertex vertex = {relToScreen, faceColor.ToFloat()};
         Vertexdata[baseVertex + i] = vertex;
     }
 
@@ -481,14 +522,15 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
 
     int i = 0;
-    Matrix model = RotationY(30.0f * 3.141592 / 180.0f);
-
+    Vector3 Rotationplayers = players[0].Rotation.AngleToRadians();
+    Vector3 Positionplayers = players[0].Position;
+    Matrix translation = Translation(Positionplayers.x, Positionplayers.y, Positionplayers.z);
+    Matrix model = Rotation(0, 0, 0);
     // Camera at (3,0,5), looking at origin, up = Y axis
     std::vector<float> eye = {3.0f, 0.0f, 5.0f};
-    std::vector<float> target = {0.0f, 0.0f, -1.0f};
+    std::vector<float> target = {0.0f, 0.0f, 0.0f};
     std::vector<float> up = {0.0f, 1.0f, 0.0f};
     Matrix view = LookAt(eye, target, up);
-
     // Projection
     Matrix proj = Perspective(FOV, 16.0f / 9.0f, 0.1f, 100.0f);
 
