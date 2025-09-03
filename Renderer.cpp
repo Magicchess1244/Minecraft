@@ -532,7 +532,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     std::vector<float> up = {0.0f, 1.0f, 0.0f};
     Matrix view = LookAt(eye, target, up);
     // Projection
-    Matrix proj = Perspective(FOV, 16.0f / 9.0f, 0.1f, 100.0f);
+    Matrix proj = Perspective(FOV, 16.0f / 9.0f, Znear, Zfar);
 
     // Final MVP matrix
     Matrix mvp = proj * view * model;
