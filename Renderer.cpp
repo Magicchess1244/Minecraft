@@ -1,6 +1,6 @@
 #include "Renderer.hpp"
-#include "GameClient.hpp"
 
+#include "GameClient.hpp"
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 7000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 7000;
@@ -39,12 +39,12 @@ const Vector3 Verts[6][4] = {{// Front (-Z)
                               {-0.5, -0.5, 0.5},
                               {0.5, -0.5, 0.5}}};
 const Vector3 Direction[6] = {
-    {0, 0, -1},  // Front
-    {0, 0, 1},   // Back
+    {0, 0, 1},  // Front
+    {0, 0, -1},   // Back
     {1, 0, 0},   // Right
     {-1, 0, 0},  // Left
-    {0, 1, 0},   // Top
-    {0, -1, 0}   // Bottom
+    {0, -1, 0},   // Top
+    {0, 1, 0}   // Bottom
 };
 const Color Colors[3] = {
     {0, 0, 0},     // Front / Back
@@ -68,10 +68,10 @@ Matrix RotationX(float angleRad) {
     float s = std::sin(angleRad);
 
     // Rotation around X-axis
-    m(1, 1) = c;   // cos 
-    m(1, 2) = -s;  // -sin 
-    m(2, 1) = s;   // sin 
-    m(2, 2) = c;   // cos 
+    m(1, 1) = c;   // cos
+    m(1, 2) = -s;  // -sin
+    m(2, 1) = s;   // sin
+    m(2, 2) = c;   // cos
 
     return m;
 }
@@ -81,10 +81,10 @@ Matrix RotationY(float angleRad) {
     float s = std::sin(angleRad);
 
     // Rotation around Y-axis
-    m(0, 0) = c;   // cos 
-    m(0, 2) = s;   // sin 
-    m(2, 0) = -s;  // -sin 
-    m(2, 2) = c;   // cos 
+    m(0, 0) = c;   // cos
+    m(0, 2) = s;   // sin
+    m(2, 0) = -s;  // -sin
+    m(2, 2) = c;   // cos
 
     return m;
 }
@@ -94,10 +94,10 @@ Matrix RotationZ(float angleRad) {
     float s = std::sin(angleRad);
 
     // Rotation around Z-axis
-    m(0, 0) = c;   // cos 
-    m(0, 1) = -s;  // -sin 
-    m(1, 0) = s;   // sin 
-    m(1, 1) = c;   // cos 
+    m(0, 0) = c;   // cos
+    m(0, 1) = -s;  // -sin
+    m(1, 0) = s;   // sin
+    m(1, 1) = c;   // cos
 
     return m;
 }
@@ -155,7 +155,25 @@ Matrix LookAt(const std::vector<float>& eye, const std::vector<float>& target,
     m(2, 3) = -dot(f, eye);
     return m;
 }
+bool isFaceInFrustum(const Frustum& frustum, const Vector3 faceVerts[4]) {
+    const Plane planes[6] = {frustum.nearFace, frustum.farFace, frustum.rightFace,
+                             frustum.leftFace, frustum.topFace, frustum.bottomFace};
 
+    // For each plane, check if all 4 vertices are outside
+    for (const auto& plane : planes) {
+        int outsideCount = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (plane.getSignedDistanceToPlane(faceVerts[i]) < 0.0f) {
+                ++outsideCount;
+            }
+        }
+        if (outsideCount == 4) {
+            return false;  // entire face is outside this plane
+        }
+    }
+
+    return true;  // at least partially inside all planes
+}
 SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
     const int tileSize = 16;
     const int atlasSize = 64;
@@ -173,23 +191,29 @@ SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
     SDL_FPoint point = {(float)u, (float)v};
     return point;
 }
-Vector3 Renderer::rotate(const Vector3 pos, Vector3 Angle) {
-    Vector3 angleRadians = Angle.AngleToRadians();
-    float cx = cos(angleRadians.x), sx = sin(angleRadians.x);
-    float cy = cos(angleRadians.y), sy = sin(angleRadians.y);
-    float cz = cos(angleRadians.z), sz = sin(angleRadians.z);
+Vector3 RotateVector(const Vector3& v, const Vector3& v1) {
+    float xRad = v1.x;
+    float yRad = v1.y;
+    float zRad = v1.z;
+    float cx = std::cos(xRad), sx = std::sin(xRad);
+    float cy = std::cos(yRad), sy = std::sin(yRad);
+    float cz = std::cos(zRad), sz = std::sin(zRad);
 
-    Vector3 result = {0};
+    // Rotation order: Z * Y * X
+    float m00 = cy * cz;
+    float m01 = -cy * sz;
+    float m02 = sy;
 
-    result.x = pos.x * (cy * cz) + pos.y * (-cy * sz) + pos.z * (sy);
+    float m10 = sx * sy * cz + cx * sz;
+    float m11 = -sx * sy * sz + cx * cz;
+    float m12 = -sx * cy;
 
-    result.y =
-        pos.x * (sx * sy * cz + cx * sz) + pos.y * (-sx * sy * sz + cx * cz) + pos.z * (-sx * cy);
+    float m20 = -cx * sy * cz + sx * sz;
+    float m21 = cx * sy * sz + sx * cz;
+    float m22 = cx * cy;
 
-    result.z =
-        pos.x * (-cx * sy * cz + sx * sz) + pos.y * (cx * sy * sz + sx * cz) + pos.z * (cx * cy);
-
-    return result;
+    return {m00 * v.x + m01 * v.y + m02 * v.z, m10 * v.x + m11 * v.y + m12 * v.z,
+            m20 * v.x + m21 * v.y + m22 * v.z};
 }
 void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh* mesh,
                         Vertex* Vertexdata, Uint32* Indexdata) {
@@ -199,7 +223,7 @@ void Renderer::DrawFace(Player& player, Vector3 blocks, int color, int Side, Mes
 
     // std::cout << "\n \n";
     for (int i = 0; i < 4; i++) {
-        Vector3 relToScreen = ((verts[i] + blocks) - player.Position) * 0.02f;
+        Vector3 relToScreen = ((verts[i] + blocks) - player.Position);
 
         Color faceColor = (this->chunkManager.GetBlock(color).color + Colors[(int)(Side / 2)]);
 
@@ -222,43 +246,21 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
     auto* mesh = &this->Terrain[NumChunk];
     mesh->faces = 0;
 
-    Vector3 CameraDir = {
-        cosf(Radiants.x) * sinf(Radiants.y),  // X
-        sinf(Radiants.x),                     // Y
-        cosf(Radiants.x) * cosf(Radiants.y)   // Z
-    };
-
-    //    int chunkX = (int)floor((player.Position.x) / 32);
-    //    int chunkZ = (int)floor((player.Position.z) / 32);
     std::vector<DrawnFace> Faces;
-    //    int index = 0;
 
     for (const auto& face : chunk.allFaces) {
         // std::cout << face << std::endl;
-        if (CameraDir.Dot(Direction[face.side]) >= 0.3) continue;
-        Vector3 Max, Min;
+        if (player.Rotation.Forward().Dot(Direction[face.side]) > 0.4) continue;
         Vector3 local[4];
         for (int j = 0; j < 4; j++) {
             Vector3 worldFacePos = face.blockPos + Verts[face.side][j];
-            local[j] = rotate((worldFacePos - player.Position), player.Rotation);
-            if (j == 0) {
-                Max = Min = local[j];
-            } else {
-                Max = Max.Max(local[j]);
-                Min = Min.Min(local[j]);
-            }
+            local[j] = RotateVector((worldFacePos - player.Position), player.Rotation.AngleToRadians() * -1);
         }
-        AABB volume(Min, Max);
-        if (Max.z < Znear) continue;
-        //if (!volume.isOnFrustum(this->frustum, local)) continue;
-        // std::cout << Max.x << std::endl;
-        Faces.push_back({face.blockPos, face.side, face.blockID, Max.z, face.blockID == 5});
+        //if (Max.z < Znear) continue;
+        if (!isFaceInFrustum(this->frustum, local)) continue;
+        //  std::cout << Max.x << std::endl;
+        Faces.push_back({face.blockPos, face.side, face.blockID, face.blockID == 5});
     }
-    std::sort(Faces.begin(), Faces.end(), [](const DrawnFace& a, const DrawnFace& b) {
-        if (a.maxZ != b.maxZ) return a.maxZ > b.maxZ;
-        if (a.Transparent != b.Transparent) return !a.Transparent && b.Transparent;
-        return false;  // consider them equal if both fields match
-    });
 
     Vertex* Vertexdata =
         (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer, true);
@@ -423,9 +425,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
                 // Update screen size
                 this->ScreenSize.x = (int)this->event.window.data1;
                 this->ScreenSize.y = (int)this->event.window.data2;
-
-                // Optionally update chunk manager here
-                // ChunckManager::Size(...);
+                this->depthTexture = CreateDepthTexture(this->Width, this->Height);
                 break;
 
             case SDL_EVENT_KEY_DOWN: {
@@ -480,7 +480,6 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 
     if (swap_texture == NULL) return;
 
-
     SDL_GPUColorTargetInfo colorInfo = {};
     colorInfo.clear_color = SDL_FColor{0.0f, 0.69f, 1.0f, 1.0f};
     colorInfo.load_op = SDL_GPU_LOADOP_CLEAR;
@@ -502,8 +501,9 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     // SDL_SetGPUViewport(pass, NULL);
     DrawTerrain(players[0]);
     /*
-    Vertex* Vertexdata = (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, this->Terrain[0].VertextransferBuffer, true);
-    Uint32* Indexdata = (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, this->Terrain[0].IndextransferBuffer, true);
+    Vertex* Vertexdata = (Vertex*)SDL_MapGPUTransferBuffer(this->GPU,
+    this->Terrain[0].VertextransferBuffer, true); Uint32* Indexdata =
+    (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, this->Terrain[0].IndextransferBuffer, true);
 
     std::memcpy(Vertexdata, DefaultVertex, sizeof(DefaultVertex));
     std::memcpy(Indexdata, DefaultIndex, sizeof(DefaultIndex));
@@ -524,20 +524,22 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     int i = 0;
     Vector3 Rotationplayers = players[0].Rotation.AngleToRadians();
     Vector3 Positionplayers = players[0].Position;
-    Matrix translation = Translation(Positionplayers.x, Positionplayers.y, Positionplayers.z);
-    Matrix model = Rotation(0, 0, 0);
+    Player player = players[0]; 
+    Matrix model = Rotation(player.Rotation.AngleToRadians().x, player.Rotation.AngleToRadians().y,
+                            player.Rotation.AngleToRadians().z);
     // Camera at (3,0,5), looking at origin, up = Y axis
-    std::vector<float> eye = {3.0f, 0.0f, 5.0f};
-    std::vector<float> target = {0.0f, 0.0f, 0.0f};
+    std::vector<float> eye = {0.0f, 0.0f, 0.0f};
+    std::vector<float> target = {0.0f, 0.0f, 1.0f};
     std::vector<float> up = {0.0f, 1.0f, 0.0f};
     Matrix view = LookAt(eye, target, up);
     // Projection
     Matrix proj = Perspective(FOV, 16.0f / 9.0f, Znear, Zfar);
 
     // Final MVP matrix
-    Matrix mvp = proj * view * model;
+    Matrix mvp = model * view * proj;
 
-    SDL_PushGPUVertexUniformData(this->cmdRender, 0, mvp.data.data(), sizeof(float) * mvp.data.size());
+    SDL_PushGPUVertexUniformData(this->cmdRender, 0, mvp.data.data(),
+                                 sizeof(float) * mvp.data.size());
     std::cout << "MVP matrix:\n";
     mvp.print();
 
@@ -556,7 +558,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     }
 
     SDL_EndGPURenderPass(this->pass);
-    
+
     if (!SDL_SubmitGPUCommandBuffer(this->cmdRender)) {
         std::cout << "Heil el render de Puigdemont\n";
     }
@@ -664,7 +666,8 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
         assert(false);
     }
 
-    this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_SPIRV, false, NULL);
+    this->GPU =
+        SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_SPIRV, false, NULL);
 
     if (this->GPU == nullptr) {
         std::cerr << "SDL GPU creation failed: " << SDL_GetError() << std::endl;
@@ -809,10 +812,12 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     vertex_attributes[1].location = 1;
     vertex_attributes[1].offset = sizeof(float) * 3;
 
-    pipeline_desc.vertex_input_state.num_vertex_buffers = (RenderDistance + 1) * (RenderDistance + 1);
+    pipeline_desc.vertex_input_state.num_vertex_buffers =
+        (RenderDistance + 1) * (RenderDistance + 1);
     pipeline_desc.vertex_input_state.vertex_buffer_descriptions = &vertex_buffer_desc;
     pipeline_desc.vertex_input_state.num_vertex_attributes = 2;
-    pipeline_desc.vertex_input_state.vertex_attributes = (SDL_GPUVertexAttribute*)&vertex_attributes;
+    pipeline_desc.vertex_input_state.vertex_attributes =
+        (SDL_GPUVertexAttribute*)&vertex_attributes;
 
     pipeline_desc.props = 0;
 

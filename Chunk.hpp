@@ -7,7 +7,6 @@ struct DrawnFace {
     Vector3 blockPos;
     int side;
     int blockID;
-    float maxZ;
     bool Transparent;
 };
 

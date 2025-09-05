@@ -3,7 +3,7 @@
 #include "PerlinNoise.hpp"
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 1.0f;
+constexpr float playerSpeed = 4.0f;
 
 std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
     std::vector<std::string> tokens;
@@ -104,11 +104,11 @@ void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, V
     // Mouse X controls yaw (Y-axis rotation)
     // Mouse Y controls pitch (X-axis rotation)
     PlayerRot.y = -mouseX;  // Yaw (left/right)
-    PlayerRot.x = -mouseY;  // Pitch (up/down)
+    PlayerRot.x = mouseY;  // Pitch (up/down)
     PlayerRot.z = 0;        // Roll (not used for FPS camera)
 
     if (move_left || move_right) {
-        PlayerDirection.x = move_left ? -1 : 1;
+        PlayerDirection.x = move_left? -1 : 1;
     }
     if (move_down || move_up) {
         PlayerDirection.y = move_down ? -1 : 1;
@@ -133,7 +133,7 @@ void PlayerMovement(Player& player, int& inventorySlot) {
     if (RotationDir.x != 0 || RotationDir.y != 0) {
         player.Rotation.y += RotationDir.y * mouseSensitivity;
         player.Rotation.x += RotationDir.x * mouseSensitivity;
-        player.Rotation.x = SDL_clamp(player.Rotation.x, -89.0f, 89.0f);
+        player.Rotation.x = SDL_clamp(player.Rotation.x, -90.0f, 90.0f);
         if (player.Rotation.y > 360.0f) player.Rotation.y -= 360.0f;
         if (player.Rotation.y < 0.0f) player.Rotation.y += 360.0f;
     }
@@ -148,14 +148,9 @@ void PlayerMovement(Player& player, int& inventorySlot) {
 
         playerDirection = playerDirection.Normalized();
         // Rotate the horizontal movement by player rotation (Y-axis)
-        Vector3 Radiants = player.Rotation.AngleToRadians();
 
-        float cosY = cosf(Radiants.y);
-        float sinY = sinf(Radiants.y);
-
-        Vector3 rotatedDirection = {playerDirection.x * cosY - playerDirection.z * sinY, 0,
-                                    playerDirection.x * sinY + playerDirection.z * cosY};
-
+        Vector3 rotatedDirection = player.Rotation.Forward() * playerDirection.z +
+                                   player.Rotation.Right() * playerDirection.x;
         // Apply movement
         player.Position.x += rotatedDirection.x * playerSpeed;
         player.Position.z += rotatedDirection.z * playerSpeed;

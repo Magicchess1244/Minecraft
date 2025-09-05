@@ -5,110 +5,71 @@
 #include "common.hpp"
 
 struct Plane {
-    Vector3 normal = {0.f, 1.f, 0.f};
+    Vector3 normal{0.f, 1.f, 0.f};  // must be normalized
+    float distance = 0.f;           // the "d" in ax+by+cz+d=0
 
-    float distance = 0;
-
-    float getSignedDistanceToPlane(const Vector3& point) const { return normal.Dot(point); }
+    // signed distance = n·p + d
+    float getSignedDistanceToPlane(const Vector3& point) const {
+        return normal.Dot(point) + distance;
+    }
 };
-
 struct Frustum {
     Plane topFace, bottomFace, rightFace, leftFace, farFace, nearFace;
 
-    Frustum createFrustumFromCamera(float aspect, float fovY, float Znear, float Zfar) const {
+    // Creates a frustum in camera space. Camera is at origin looking +Z, Y up, X right.
+    static Frustum createFrustumFromCamera(float aspect, float fovY_radians, float Znear,
+                                           float Zfar) {
         Frustum frustum;
 
-        // Half-angles
-        float halfVSide = Zfar * fovY;
+        // half sizes at far plane
+        float halfVSide = Zfar * fovY_radians;
         float halfHSide = halfVSide * aspect;
 
-        // Camera basis (assuming looking down +Z, Y up, X right)
-        Vector3 camForward = {0, 0, 1};
-        Vector3 camRight = {1, 0, 0};
-        Vector3 camUp = {0, 1, 0};
+        Vector3 camForward = {0.f, 0.f, 1.f};
+        Vector3 camRight = {1.f, 0.f, 0.f};
+        Vector3 camUp = {0.f, 1.f, 0.f};
 
         Vector3 nearCenter = camForward * Znear;
         Vector3 farCenter = camForward * Zfar;
 
-        // --- Near plane ---
-        frustum.nearFace.normal = camForward;
-        frustum.nearFace.distance = -camForward.Dot(nearCenter);
+        // Near plane (points toward +Z)
+        frustum.nearFace.normal = camForward;                                  // (0,0,1)
+        frustum.nearFace.distance = -frustum.nearFace.normal.Dot(nearCenter);  // -Znear
 
-        // --- Far plane ---
+        // Far plane (points toward -Z)
         frustum.farFace.normal = camForward * -1;
-        frustum.farFace.distance = frustum.farFace.normal.Dot(farCenter);
+        frustum.farFace.distance = -frustum.farFace.normal.Dot(farCenter);
 
-        // --- Right plane ---
+        // Right plane: use right edge direction and ensure normal points inward
         {
-            Vector3 rightEdge = (farCenter + camRight * halfHSide).Normalized();
-            Vector3 normal = camUp.Cross(rightEdge).Normalized();
-            frustum.rightFace.normal = normal;
-            frustum.rightFace.distance = 0.0f;  // passes through origin
+            Vector3 rightEdge =
+                (farCenter + camRight * halfHSide).Normalized();               // dir to far-right
+            frustum.rightFace.normal = (rightEdge.Cross(camUp)).Normalized();  // inward
+            frustum.rightFace.distance = 0.0f;  // plane goes through origin (camera)
         }
 
-        // --- Left plane ---
+        // Left plane
         {
             Vector3 leftEdge = (farCenter - camRight * halfHSide).Normalized();
-            Vector3 normal = leftEdge.Cross(camUp).Normalized();
-            frustum.leftFace.normal = normal;
+            frustum.leftFace.normal = (camUp.Cross(leftEdge)).Normalized();  // inward
             frustum.leftFace.distance = 0.0f;
         }
 
-        // --- Top plane ---
+        // Top plane
         {
             Vector3 topEdge = (farCenter + camUp * halfVSide).Normalized();
-            Vector3 normal = topEdge.Cross(camRight).Normalized();
-            frustum.topFace.normal = normal;
+            frustum.topFace.normal = (camRight.Cross(topEdge)).Normalized();  // inward
             frustum.topFace.distance = 0.0f;
         }
 
-        // --- Bottom plane ---
+        // Bottom plane
         {
             Vector3 bottomEdge = (farCenter - camUp * halfVSide).Normalized();
-            Vector3 normal = camRight.Cross(bottomEdge).Normalized();
-            frustum.bottomFace.normal = normal;
+            frustum.bottomFace.normal = (bottomEdge.Cross(camRight)).Normalized();  // inward
             frustum.bottomFace.distance = 0.0f;
         }
 
         return frustum;
-    }
-};
-struct Volume {
-    virtual bool isOnFrustum(const Frustum& camFrustum, Vector3* pointPosition) const = 0;
-};
-struct AABB : public Volume {
-    Vector3 center{0.0, 0.0, 0.0};
-    Vector3 extents{0.0, 0.0, 0.0};
-
-    AABB(const Vector3& min, const Vector3& max)
-        : Volume{},
-          center{(max + min) * 0.5},
-          extents{max.x - center.x, max.y - center.y, max.z - center.z} {}
-    AABB(const Vector3& inCenter, float iI, float iJ, float iK)
-        : Volume{}, center{inCenter}, extents{iI, iJ, iK} {}
-
-    bool isOnFrustum(const Frustum& camFrustum, Vector3* pointPosition) const override {
-        /*        Vector3 forward = {0, 0, 1};
-                Vector3 right = {1, 0, 0};
-                Vector3 up = {0, 1, 0};
-        */
-
-        for (int i = 0; i < 4; i++) {
-            bool IsOnNearPlane = isOnOrForwardPlane(camFrustum.nearFace, pointPosition[i]);
-            bool IsOnFarPlane = isOnOrForwardPlane(camFrustum.farFace, pointPosition[i]);
-            bool IsOnRightPlane = isOnOrForwardPlane(camFrustum.rightFace, pointPosition[i]);
-            bool IsOnLeftPlane = isOnOrForwardPlane(camFrustum.leftFace, pointPosition[i]);
-            bool IsOnTopPlane = isOnOrForwardPlane(camFrustum.topFace, pointPosition[i]);
-            bool IsOnBottomPlane = isOnOrForwardPlane(camFrustum.bottomFace, pointPosition[i]);
-
-            if (IsOnNearPlane && IsOnFarPlane && IsOnRightPlane && IsOnLeftPlane && IsOnTopPlane &&
-                IsOnBottomPlane)
-                return false;
-        }
-        return true;
-    }
-    bool isOnOrForwardPlane(const Plane& plane, Vector3 point) const {
-        return plane.normal.Dot(point) - plane.distance;
     }
 };
 struct Mesh {
@@ -116,6 +77,7 @@ struct Mesh {
     SDL_GPUTransferBuffer* IndextransferBuffer = nullptr;
     SDL_GPUBufferBinding VertexBuffer;
     SDL_GPUBufferBinding IndexBuffer;
+    std::vector<DrawnFace> Faces;
     int faces;
 };
 struct Vertex {
@@ -124,7 +86,6 @@ struct Vertex {
     Vector3 Color;
     //float pad2;  // padding to 16 bytes
 };
-
 
 class GameClient;
 
@@ -149,13 +110,13 @@ class Renderer {
     SDL_GPUGraphicsPipeline* graphicsPipeline = nullptr;
     SDL_GPUCopyPass* copyPass = nullptr;
     SDL_GPUTexture* depthTexture = nullptr;
+    Vector3 LastChunk = {999, 999, 999};
+    Vector3 CurrentChunk = {0,0,0};
 
     SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
-    Vector3 rotate(const Vector3 pos, const Vector3 Angle);
     void DrawFace(Player& player, Vector3 blocks, int color, int Side, Mesh* mesh,
                   Vertex* Vertexdata, Uint32* Indexdata);
     SDL_GPUTexture* CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
-
    public:
     explicit Renderer(GameClient& gameClient);
     ~Renderer() {

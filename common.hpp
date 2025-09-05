@@ -60,6 +60,10 @@ struct Vector3 {
         return x == other.x && y == other.y && z == other.z;
     }
 
+    bool operator!=(const Vector3& other) const {
+        return x != other.x && y != other.y && z != other.z;
+    }
+
     bool operator>(const Vector3& other) const { return x > other.x && y > other.y && z > other.z; }
 
     float Dot(const Vector3& other) const { return x * other.x + y * other.y + z * other.z; }
@@ -92,26 +96,17 @@ struct Vector3 {
 
         Vector3 forward;
         forward.x = cos(pitch) * sin(yaw);
-        forward.y = -sin(pitch);
-        forward.z = -cos(pitch) * cos(yaw);
+        forward.y = sin(pitch);
+        forward.z = cos(pitch) * cos(yaw);
         return forward.Normalized();
     }
 
     Vector3 Right() const {
-        Vector3 rotationRadians = AngleToRadians();
-
-        float yaw = rotationRadians.y;
-
-        Vector3 right;
-        right.x = cos(yaw);
-        right.y = 0;
-        right.z = sin(yaw);
-        return right.Normalized();
+        return Forward().Cross(Vector3{0, 1, 0});
     }
 
     Vector3 Up() const {
-        Vector3 up = Right().Cross(Forward()).Normalized();
-        return up;
+        return Right().Cross(Forward());
     }
 
     Vector3 Max(const Vector3& a) const {
