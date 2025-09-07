@@ -1,6 +1,7 @@
 #pragma once
 #include "common.hpp"
-/*
+class ChunkManager;
+
 struct RayHit {
     bool hit;
     int x, y, z;  // voxel coordinates of the hit
@@ -8,7 +9,7 @@ struct RayHit {
 };
 class Physics {
 	public:
-	Physics();
+    explicit Physics(ChunkManager& manager) : chunkManager(manager) {}
 	~Physics();
 
 		RayHit RaycastVoxel(const Vector3& rayOrigin, const Vector3& rayDir, float maxDistance);
@@ -16,5 +17,5 @@ class Physics {
 									const Vector3& boxMin, const Vector3& boxMax, float& tNear,
 									float& tFar);
 	private:
-		ChunkManager* chunkManager = nullptr;
-};*/
+		ChunkManager& chunkManager;
+};

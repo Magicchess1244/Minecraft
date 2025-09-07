@@ -151,15 +151,14 @@
     <ClCompile Include="Renderer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Chunck.h" />
-    <ClInclude Include="ChunkManager.h" />
+    <ClInclude Include="Chunck.hpp" />
+    <ClInclude Include="ChunkManager.hpp" />
     <ClInclude Include="common.hpp" />
-    <ClInclude Include="GameClient.h" />
-    <ClInclude Include="GameServer.h" />
-    <ClInclude Include="PerlinNoise.h" />
+    <ClInclude Include="GameClient.hpp" />
+    <ClInclude Include="GameServer.hpp" />
+    <ClInclude Include="PerlinNoise.hpp" />
     <ClInclude Include="Physics.hpp" />
     <ClInclude Include="Renderer.h" />
-    <ClInclude Include="Test.hpp" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shader.frag.hlsl">

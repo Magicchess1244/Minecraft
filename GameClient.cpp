@@ -104,11 +104,11 @@ void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, V
     // Mouse X controls yaw (Y-axis rotation)
     // Mouse Y controls pitch (X-axis rotation)
     PlayerRot.y = -mouseX;  // Yaw (left/right)
-    PlayerRot.x = mouseY;  // Pitch (up/down)
+    PlayerRot.x = mouseY;   // Pitch (up/down)
     PlayerRot.z = 0;        // Roll (not used for FPS camera)
 
     if (move_left || move_right) {
-        PlayerDirection.x = move_left? -1 : 1;
+        PlayerDirection.x = move_left ? -1 : 1;
     }
     if (move_down || move_up) {
         PlayerDirection.y = move_down ? -1 : 1;
@@ -123,7 +123,19 @@ void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, V
             break;
         }
     }
+
+    const Uint32 MouseState = SDL_GetMouseState(NULL, NULL);
+    const bool left_click = (MouseState & SDL_BUTTON_LMASK);
+    const bool right_click = (MouseState & SDL_BUTTON_RMASK);
+
+    if (right_click) {
+        std::cout << "Right click" << std::endl;
+    }
+    if (left_click) {
+        std::cout << "Left click" << std::endl;
+    }
 }
+
 void PlayerMovement(Player& player, int& inventorySlot) {
     Vector3 playerDirection = {0, 0, 0};
     Vector3 RotationDir = {0, 0, 0};

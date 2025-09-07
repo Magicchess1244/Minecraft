@@ -41,28 +41,25 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="PerlinNoise.h">
+    <ClInclude Include="PerlinNoise.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Chunck.h">
+    <ClInclude Include="Chunck.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ChunkManager.h">
+    <ClInclude Include="ChunkManager.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="GameClient.h">
+    <ClInclude Include="GameClient.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="GameServer.h">
+    <ClInclude Include="GameServer.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Renderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="common.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Test.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Physics.hpp">

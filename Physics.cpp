@@ -1,7 +1,6 @@
 #include "Physics.hpp"
 #include "ChunkManager.hpp"
-
-/*
+#include "Chunk.hpp"
 
 RayHit Physics::RaycastVoxel(const Vector3& rayOrigin, const Vector3& rayDir, float maxDistance) {
     RayHit result{false, 0, 0, 0, 0.0f};
@@ -33,12 +32,13 @@ RayHit Physics::RaycastVoxel(const Vector3& rayOrigin, const Vector3& rayDir, fl
     float tDeltaZ = (rayDir.z != 0.0f) ? fabs(1.0f / rayDir.z) : INFINITY;
 
     float t = 0.0f;
-    Vector3 Pos = {x, y, z};
+    Vector3 Pos = {(float)x, (float)y, (float)z};
     Pos = (Pos / 32).Truncate();
     while (t < maxDistance) {
         // Check voxel
-        ChunkPrefab& Pref = this->chunkManager->get_chunk(Pos);
-        if () {  // 0 = air
+        auto& Pref = this->chunkManager.get_chunk(Pos);
+        auto it = Pref.Blocks.find(Pos);
+        if (it == Pref.Blocks.end()) {  // 0 = air
             result.hit = true;
             result.x = x;
             result.y = y;
@@ -98,4 +98,3 @@ bool Physics::RayIntersectsAABB(const Vector3& rayOrigin, const Vector3& rayDir,
     }
     return true;
 }
-*/
