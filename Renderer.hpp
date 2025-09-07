@@ -97,7 +97,6 @@ class Renderer {
     SDL_Event event;
     TTF_Font* font = nullptr;
     SDL_GPUTexture* texture = nullptr;
-    Vector3 ScreenSize = {0, 0, 0};
     GameClient& gameClient;
     ChunkManager chunkManager;
     int BlockPixelSize = 50;

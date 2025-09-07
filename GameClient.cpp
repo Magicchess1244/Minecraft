@@ -3,7 +3,7 @@
 #include "PerlinNoise.hpp"
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 4.0f;
+constexpr float playerSpeed = 2.0f;
 
 std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
     std::vector<std::string> tokens;

@@ -147,6 +147,7 @@
     <ClCompile Include="GameServer.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="PerlinNoise.cpp" />
+    <ClCompile Include="Physics.cpp" />
     <ClCompile Include="Renderer.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -156,6 +157,7 @@
     <ClInclude Include="GameClient.h" />
     <ClInclude Include="GameServer.h" />
     <ClInclude Include="PerlinNoise.h" />
+    <ClInclude Include="Physics.hpp" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Test.hpp" />
   </ItemGroup>

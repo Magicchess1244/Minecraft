@@ -4,8 +4,8 @@
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 7000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 7000;
-const float FOV = tan((45 * (PI / 180)) / 2.0f);
-const float Znear = 1 / FOV;
+const float FOV = tan(90 / 2.0f * (PI / 180));
+const float Znear = 0.1f;
 constexpr float Zfar = 1000.0f;
 constexpr int RenderDistance = 0;
 const Vector3 Verts[6][4] = {{// Front (-Z)
@@ -53,7 +53,7 @@ const Color Colors[3] = {
 };
 
 Matrix Perspective(float fovRadians, float aspect, float Near, float Far) {
-    float f = 1.0f / std::tan(fovRadians / 2.0f);
+    float f = 1 / fovRadians;
     Matrix m(4, 4, 0.0f);
     m(0, 0) = f / aspect;
     m(1, 1) = f;
@@ -309,7 +309,7 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
 }
 void Renderer::DrawTerrain(Player& player) {
     std::vector<std::thread> threads;
-    std::cout << "Nigga" << std::endl;
+    //std::cout << "Nigga" << std::endl;
 
     int threadIndex = 0;
     Vector3 PlayerChunk = (player.Position / 32).Truncate();
@@ -385,33 +385,91 @@ void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range,
 void Renderer::Stats(const Player& player) {
     std::string text = std::to_string(player.Position.x) + ", " +
                        std::to_string(player.Position.y) + ", " + std::to_string(player.Position.z);
-
-    SDL_Color White = {200, 200, 200, 1};
+    SDL_Color White = {200, 200, 200, 255};
 
     if (!this->font) {
         std::cerr << "Font not loaded!\n";
         return;
     }
 
+    // Create text surface using TTF
     SDL_Surface* surface = TTF_RenderText_Blended(this->font, text.c_str(), text.length(), White);
     if (!surface) {
-        std::cerr << "TTF_RenderText_Blended failed: \n";
+        //std::cerr << "TTF_RenderText_Blended failed: " << TTF_GetError() << "\n";
         return;
     }
 
-    // SDL_Texture* texture = SDL_CreateTextureFromSurface(this->renderer, surface);
+    // Create GPU texture
+    SDL_GPUTextureCreateInfo textureCreateInfo = {};
+    textureCreateInfo.type = SDL_GPU_TEXTURETYPE_2D;
+    textureCreateInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    textureCreateInfo.width = surface->w;
+    textureCreateInfo.height = surface->h;
+    textureCreateInfo.layer_count_or_depth = 1;
+    textureCreateInfo.num_levels = 1;
+    textureCreateInfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+
+    SDL_GPUTexture* texture = SDL_CreateGPUTexture(this->GPU, &textureCreateInfo);
     if (!texture) {
-        std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << "\n";
+        std::cerr << "SDL_CreateGPUTexture failed: " << SDL_GetError() << "\n";
         SDL_DestroySurface(surface);
         return;
     }
 
-    //    SDL_FRect dstRect{10, 10, (float)surface->w, (float)surface->h};
-    // SDL_RenderTexture(this->renderer, texture, NULL, &dstRect);
+    // Create transfer buffer for uploading texture data
+    SDL_GPUTransferBufferCreateInfo VertextransferInfo{};
+    VertextransferInfo.size = 16;
+    VertextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    VertextransferInfo.props = 0;
+    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(this->GPU, &VertextransferInfo);
 
-    // SDL_DestroyTexture(texture);
-    // SDL_DestroySurface(surface);
+    if (!transferBuffer) {
+        std::cerr << "SDL_CreateGPUTransferBuffer failed: " << SDL_GetError() << "\n";
+        SDL_ReleaseGPUTexture(this->GPU, texture);
+        SDL_DestroySurface(surface);
+        return;
+    }
+
+    // Map transfer buffer and copy surface data
+    void* mapped = SDL_MapGPUTransferBuffer(this->GPU, transferBuffer, false);
+    if (mapped) {
+        memcpy(mapped, surface->pixels, surface->w * surface->h * 4);
+        SDL_UnmapGPUTransferBuffer(this->GPU, transferBuffer);
+
+        // Create copy pass and upload texture
+
+        SDL_GPUTextureTransferInfo transferInfo = {};
+        transferInfo.transfer_buffer = transferBuffer;
+        transferInfo.offset = 0;
+
+        SDL_GPUTextureRegion textureRegion = {};
+        textureRegion.texture = texture;
+        textureRegion.mip_level = 0;
+        textureRegion.layer = 0;
+        textureRegion.x = 0;
+        textureRegion.y = 0;
+        textureRegion.z = 0;
+        textureRegion.w = surface->w;
+        textureRegion.h = surface->h;
+        textureRegion.d = 1;
+
+        SDL_UploadToGPUTexture(copyPass, &transferInfo, &textureRegion, false);
+        SDL_EndGPUCopyPass(copyPass);
+
+        // Now you would need to render this texture using a render pass
+        // This requires setting up graphics pipelines, vertex buffers, etc.
+        // which is much more complex than the simple blit operation you had before
+
+        // TODO: Add your rendering logic here using SDL_BeginGPURenderPass()
+        // and appropriate graphics pipeline setup
+    }
+
+    // Clean up
+    SDL_ReleaseGPUTransferBuffer(this->GPU, transferBuffer);
+    SDL_ReleaseGPUTexture(this->GPU, texture);
+    SDL_DestroySurface(surface);
 }
+
 void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
                               std::vector<Player>& players) {
     while (SDL_PollEvent(&this->event)) {
@@ -423,8 +481,8 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 
             case SDL_EVENT_WINDOW_RESIZED:
                 // Update screen size
-                this->ScreenSize.x = (int)this->event.window.data1;
-                this->ScreenSize.y = (int)this->event.window.data2;
+                this->Width= (int)this->event.window.data1;
+                this->Height = (int)this->event.window.data2;
                 this->depthTexture = CreateDepthTexture(this->Width, this->Height);
                 break;
 
@@ -533,17 +591,19 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     std::vector<float> up = {0.0f, 1.0f, 0.0f};
     Matrix view = LookAt(eye, target, up);
     // Projection
-    Matrix proj = Perspective(FOV, 16.0f / 9.0f, Znear, Zfar);
+    float aspect = (float)this->Width / (float)this->Height;
+    Matrix proj = Perspective(FOV, aspect, Znear, Zfar);
 
     // Final MVP matrix
     Matrix mvp = model * view * proj;
 
     SDL_PushGPUVertexUniformData(this->cmdRender, 0, mvp.data.data(),
                                  sizeof(float) * mvp.data.size());
-    std::cout << "MVP matrix:\n";
-    mvp.print();
+    //std::cout << "MVP matrix:\n";
+    //mvp.print();
 
     for (auto& mesh : this->Terrain) {
+        /*
         std::cout << "Mesh pointer: " << &mesh << "\tVertexBuffer pointer: " << &mesh.VertexBuffer
                   << "\t Index Buffer pointer: " << &mesh.IndexBuffer << std::endl;
         std::cout << "Pass pointer: " << this->pass
@@ -551,7 +611,7 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
                   << "\t Amount of faces: " << mesh.faces << std::endl;
         std::cout << "Terrain size: " << this->Terrain.size() << "Drawing Chunk[" << i++ << "]\n"
                   << std::endl;
-
+        */
         SDL_BindGPUVertexBuffers(this->pass, 0, &mesh.VertexBuffer, 1);
         SDL_BindGPUIndexBuffer(this->pass, &mesh.IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
         SDL_DrawGPUIndexedPrimitives(this->pass, mesh.faces * 6, 1, 0, 0, 0);
@@ -720,9 +780,10 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
     this->event = {};
     SDL_SetWindowRelativeMouseMode(window, true);
 
-    float aspect = this->ScreenSize.x / this->ScreenSize.y;
+    float aspect = (float)this->Width / (float)this->Height;
     this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
-
+    std::cout << "Frustum created with aspect: " << aspect << " FOV: " << FOV << " Znear: " << Znear
+              << " Zfar: " << Zfar << std::endl;
     // load the vertex shader code
     SDL_GPUShader* vertex_shader = LoadShader(this->GPU, "Shader.vert", 0, 1, 0, 0);
     if (!vertex_shader) {

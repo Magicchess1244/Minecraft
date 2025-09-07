@@ -65,8 +65,22 @@ struct Vector3 {
     }
 
     bool operator>(const Vector3& other) const { return x > other.x && y > other.y && z > other.z; }
+    float operator[](int i) const {
+        switch (i) {
+            case 0:
+                return x;
+            case 1:
+                return y;
+            case 2:
+                return z;
+            default:
+                throw std::out_of_range("Vector3 index out of range");
+        }
+    }
 
-    float Dot(const Vector3& other) const { return x * other.x + y * other.y + z * other.z; }
+    float Dot(const Vector3& other) const {
+        return x * other.x + y * other.y + z * other.z; 
+    }
 
     Vector3 Cross(const Vector3& other) const {
         return {y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x};
@@ -96,7 +110,7 @@ struct Vector3 {
 
         Vector3 forward;
         forward.x = cos(pitch) * sin(yaw);
-        forward.y = sin(pitch);
+        forward.y = 0;
         forward.z = cos(pitch) * cos(yaw);
         return forward.Normalized();
     }
