@@ -6,37 +6,37 @@
 const float FOV = 90.0f * (PI / 180.0f);
 const float Znear = 0.1f;
 constexpr float Zfar = 1000.0f;
-constexpr int RenderDistance = 0;
+constexpr int RenderDistance = 1;
 const Vector3 Verts[6][4] = {{// Front (-Z)
-                              {-0.5, -0.5, -0.5},
-                              {0.5, -0.5, -0.5},
-                              {-0.5, 0.5, -0.5},
-                              {0.5, 0.5, -0.5}},
-                             {// Back (+Z)
-                              {0.5, -0.5, 0.5},
-                              {-0.5, -0.5, 0.5},
-                              {0.5, 0.5, 0.5},
-                              {-0.5, 0.5, 0.5}},
-                             {// Right (+X)
-                              {0.5, -0.5, -0.5},
-                              {0.5, -0.5, 0.5},
-                              {0.5, 0.5, -0.5},
-                              {0.5, 0.5, 0.5}},
-                             {// Left (-X)
-                              {-0.5, -0.5, 0.5},
-                              {-0.5, -0.5, -0.5},
-                              {-0.5, 0.5, 0.5},
-                              {-0.5, 0.5, -0.5}},
-                             {// Top (+Y)
-                              {-0.5, 0.5, -0.5},
-                              {0.5, 0.5, -0.5},
-                              {-0.5, 0.5, 0.5},
-                              {0.5, 0.5, 0.5}},
-                             {// Bottom (-Y)
-                              {-0.5, -0.5, -0.5},
-                              {0.5, -0.5, -0.5},
-                              {-0.5, -0.5, 0.5},
-                              {0.5, -0.5, 0.5}}};
+                             {-0.5, -0.5, -0.5},
+                             {0.5, -0.5, -0.5},
+                             {-0.5, 0.5, -0.5},
+                             {0.5, 0.5, -0.5}},
+                            {// Back (+Z)
+                             {0.5, -0.5, 0.5},
+                             {-0.5, -0.5, 0.5},
+                             {0.5, 0.5, 0.5},
+                             {-0.5, 0.5, 0.5}},
+                            {// Right (+X)
+                             {0.5, -0.5, -0.5},
+                             {0.5, -0.5, 0.5},
+                             {0.5, 0.5, -0.5},
+                             {0.5, 0.5, 0.5}},
+                            {// Left (-X)
+                             {-0.5, -0.5, 0.5},
+                             {-0.5, -0.5, -0.5},
+                             {-0.5, 0.5, 0.5},
+                             {-0.5, 0.5, -0.5}},
+                            {// Top (+Y)
+                             {-0.5, 0.5, -0.5},
+                             {0.5, 0.5, -0.5},
+                             {-0.5, 0.5, 0.5},
+                             {0.5, 0.5, 0.5}},
+                            {// Bottom (-Y)
+                             {-0.5, -0.5, -0.5},
+                             {0.5, -0.5, -0.5},
+                             {-0.5, -0.5, 0.5},
+                             {0.5, -0.5, 0.5}}};
 const Vector3 Direction[6] = {
     {0, 0, 1},   // Front
     {0, 0, -1},  // Back
@@ -73,7 +73,7 @@ void PrintBufferSizes() {
 }
 
 Matrix Perspective(float fovRadians, float aspect, float Near, float Far) {
-    float f = 1 / fovRadians;
+    const float f = 1.0f / std::tan(fovRadians * 0.5f);
     Matrix m(4, 4, 0.0f);
     m(0, 0) = f / aspect;
     m(1, 1) = f;
@@ -290,8 +290,6 @@ void Renderer::DrawFace(Player& player, Vector3 blocks, int blockID, int Side, M
 }
 void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChunk) {
     // Vector3 Radiants = player.Rotation.AngleToRadians(); // TODO: Use for rotation calculations
-    std::cout << "Rendering chunk with " << chunk.allFaces.size() << " faces" << std::endl;
-
     auto* mesh = &this->Terrain[NumChunk];
     mesh->faces = 0;
 
@@ -299,7 +297,9 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
 
     for (const auto& face : chunk.allFaces) {
         // std::cout << face << std::endl;
-        if (player.Rotation.Forward().Dot(Direction[face.side]) > 0.4) continue;
+        // Only backface-cull slightly; keep conservative to ensure something draws
+        // Face normal points out of the block; if dot with view dir > 0, it's facing away
+        if (player.Rotation.Forward().Dot(Direction[face.side]) > 0.0f) continue;
         Vector3 local[4];
         for (int j = 0; j < 4; j++) {
             Vector3 worldFacePos = face.blockPos + Verts[face.side][j];
@@ -358,24 +358,19 @@ void Renderer::RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChun
     SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
 }
 void Renderer::DrawTerrain(Player& player) {
-    std::vector<std::thread> threads;
-
-    int threadIndex = 0;
     Vector3 PlayerChunk = (player.Position / 32).Truncate();
+    const int side = (RenderDistance * 2) + 1;
     for (int i = -RenderDistance; i <= RenderDistance; i++) {
         for (int j = -RenderDistance; j <= RenderDistance; j++) {
             Vector3 Chunk = {(float)i, 0, (float)j};
             Chunk += PlayerChunk;
 
-            threads.emplace_back(&Renderer::RenderChunk, this,
-                                 std::ref(chunkManager.get_chunk(Chunk)), std::ref(player), 0);
-
-            threadIndex++;
+            // Map (i,j) to mesh index in Terrain vector
+            const int meshIndex = (i + RenderDistance) * side + (j + RenderDistance);
+            if (meshIndex >= 0 && meshIndex < (int)this->Terrain.size()) {
+                RenderChunk(std::ref(chunkManager.get_chunk(Chunk)), std::ref(player), meshIndex);
+            }
         }
-    }
-
-    for (auto& t : threads) {
-        if (t.joinable()) t.join();
     }
 }
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range,
@@ -544,26 +539,41 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
 
             case SDL_EVENT_MOUSE_BUTTON_DOWN: {
                 if (this->event.button.button == SDL_BUTTON_LEFT) {
-                    // Handle block breaking
-                    //                    short Type = 0;
-                    if (false /*ChunckManager::PlaceBlock(...)*/) {
-                        // short Slot = FindSlot(inventory, Type);
-                        // inventory[Slot].Amount++;
-                        // inventory[Slot].Type = Type;
-                        // ChunckManager::SimulateWater(...);
+                    // Break block: raycast to hit and set to AIR
+                    Vector3 hit, place;
+                    if (RaycastBlock(players[0], 6.0f, hit, place)) {
+                        Vector3 chunkKey = {(float)floorf(hit.x / 32.0f), 0, (float)floorf(hit.z / 32.0f)};
+                        ChunkPrefab& chunk = chunkManager.get_chunk(chunkKey);
+                        Vector3 local = {hit.x - chunk.xPos, hit.y, hit.z - chunk.zPos};
+                        auto it = chunk.Blocks.find(local);
+                        if (it != chunk.Blocks.end()) {
+                            it->second = (int)BlockType::AIR;
+                            chunk.VisableFaces();
+                        }
                     }
                 } else if (this->event.button.button == SDL_BUTTON_RIGHT &&
                            inventory[inventorySlot].Amount > 0) {
-                    // Handle block placing
-                    //                   short Type = 0;
-                    if (false /*ChunckManager::PlaceBlock(...)*/) {
-                        inventory[inventorySlot].Amount--;
-
-                        if (inventory[inventorySlot].Amount == 0) inventory[inventorySlot].Type = 0;
-
-                        // ChunckManager::SimulateWater(...);
+                    // Place block at placePos using current slot Type
+                    Vector3 hit, place;
+                    if (RaycastBlock(players[0], 6.0f, hit, place)) {
+                        short type = inventory[inventorySlot].Type;
+                        if (type != 0) {
+                            Vector3 chunkKey = {(float)floorf(place.x / 32.0f), 0, (float)floorf(place.z / 32.0f)};
+                            ChunkPrefab& chunk = chunkManager.get_chunk(chunkKey);
+                            Vector3 local = {place.x - chunk.xPos, place.y, place.z - chunk.zPos};
+                            chunk.Blocks[local] = (int)type;
+                            chunk.VisableFaces();
+                            inventory[inventorySlot].Amount--;
+                            if (inventory[inventorySlot].Amount == 0) inventory[inventorySlot].Type = 0;
+                        }
                     }
                 }
+                break;
+            }
+            case SDL_EVENT_MOUSE_WHEEL: {
+                // Scroll inventory slot 0..7
+                int delta = (int)this->event.wheel.y;
+                inventorySlot = (inventorySlot - delta) & 7;
                 break;
             }
         }
@@ -653,6 +663,125 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
     if (!SDL_SubmitGPUCommandBuffer(this->cmdRender)) {
         std::cout << "Heil el render de Puigdemont\n";
     }
+
+    // After 3D pass is submitted, start a UI pass: acquire new cmd buffer and draw bar with ortho
+    this->cmdRender = SDL_AcquireGPUCommandBuffer(this->GPU);
+    SDL_GPUColorTargetInfo uiColorInfo = {};
+    uiColorInfo.clear_color = SDL_FColor{0,0,0,0};
+    uiColorInfo.load_op = SDL_GPU_LOADOP_LOAD; // keep the 3D image
+    uiColorInfo.store_op = SDL_GPU_STOREOP_STORE;
+    uiColorInfo.texture = swap_texture;
+    this->pass = SDL_BeginGPURenderPass(this->cmdRender, &uiColorInfo, 1, NULL);
+    SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
+    DrawInventoryBar(inventory, inventorySlot);
+    SDL_EndGPURenderPass(this->pass);
+    SDL_SubmitGPUCommandBuffer(this->cmdRender);
+}
+
+bool Renderer::RaycastBlock(const Player& player, float maxDistance, Vector3& hitBlock, Vector3& placePos) {
+    // Step along the view ray in small increments
+    Vector3 dir = player.Rotation.Forward();
+    const float step = 0.25f;
+    Vector3 pos = player.Position;
+    Vector3 lastEmpty = pos;
+
+    for (float t = 0.0f; t <= maxDistance; t += step) {
+        Vector3 p = pos + dir * t;
+        Vector3 block = { floorf(p.x), floorf(p.y), floorf(p.z) };
+
+        // Determine which chunk the block belongs to
+        Vector3 chunkKey = { (float)floorf(block.x / 32.0f), 0, (float)floorf(block.z / 32.0f) };
+        ChunkPrefab& chunk = chunkManager.get_chunk(chunkKey);
+        Vector3 local = { block.x - chunk.xPos, block.y, block.z - chunk.zPos };
+
+        auto it = chunk.Blocks.find(local);
+        if (it != chunk.Blocks.end() && it->second != (int)BlockType::AIR) {
+            hitBlock = { (float)block.x, (float)block.y, (float)block.z };
+            placePos = { floorf(lastEmpty.x), floorf(lastEmpty.y), floorf(lastEmpty.z) };
+            return true;
+        }
+
+        lastEmpty = block;
+    }
+    return false;
+}
+
+void Renderer::DrawInventoryBar(std::vector<Slot>& inventory, int inventorySlot) {
+    // Build a simple screen-space quad strip for 8 slots (no textures, colored faces)
+    // We'll draw in NDC by pre-transforming vertices with an orthographic mapping via MVP slot
+    // Simpler: render as world-space quads anchored to camera with large negative z to avoid depth conflicts
+    const float barWidth = 0.8f * (float)this->Width;
+    const float barHeight = 50.0f;
+    const float x0 = ((float)this->Width - barWidth) * 0.5f;
+    const float y0 = (float)this->Height - barHeight - 10.0f;
+    const float slotW = barWidth / 8.0f;
+    const float pad = 6.0f;
+
+    // Prepare UI mesh transfer buffers (reuse uiMesh)
+    uiMesh.faces = 0;
+    Vertex* vdata = (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, uiMesh.VertextransferBuffer, true);
+    Uint32* idata = (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, uiMesh.IndextransferBuffer, true);
+    if (!vdata || !idata) return;
+
+    auto push_rect = [&](float x, float y, float w, float h, const Color& col) {
+        int baseVertex = uiMesh.faces * 4;
+        int baseIndex = uiMesh.faces * 6;
+        Vector3 c = col.ToFloat();
+        vdata[baseVertex + 0] = { {x,     y,     0}, c };
+        vdata[baseVertex + 1] = { {x + w, y,     0}, c };
+        vdata[baseVertex + 2] = { {x,     y + h, 0}, c };
+        vdata[baseVertex + 3] = { {x + w, y + h, 0}, c };
+        idata[baseIndex + 0] = baseVertex + 0;
+        idata[baseIndex + 1] = baseVertex + 1;
+        idata[baseIndex + 2] = baseVertex + 2;
+        idata[baseIndex + 3] = baseVertex + 2;
+        idata[baseIndex + 4] = baseVertex + 1;
+        idata[baseIndex + 5] = baseVertex + 3;
+        uiMesh.faces++;
+    };
+
+    // Bar background
+    push_rect(x0, y0, barWidth, barHeight, {50, 25, 0});
+    // Slots
+    for (int i = 0; i < 8; ++i) {
+        Color slotColor = (i == inventorySlot) ? Color{255, 180, 80} : Color{160, 80, 0};
+        float sx = x0 + i * slotW + pad * 0.5f;
+        float sy = y0 + pad * 0.5f;
+        float sw = slotW - pad;
+        float sh = barHeight - pad;
+        push_rect(sx, sy, sw, sh, slotColor);
+
+        if (inventory[i].Type != 0) {
+            const BlockDefinition& def = g_BlockRegistry.getBlock((int)inventory[i].Type);
+            Color blockColor = def.color;
+            push_rect(sx + sw * 0.2f, sy + sh * 0.2f, sw * 0.6f, sh * 0.6f, blockColor);
+        }
+    }
+
+    SDL_UnmapGPUTransferBuffer(this->GPU, uiMesh.VertextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->GPU, uiMesh.IndextransferBuffer);
+
+    SDL_GPUTransferBufferLocation vloc{}; vloc.transfer_buffer = uiMesh.VertextransferBuffer; vloc.offset = 0;
+    SDL_GPUBufferRegion vreg{}; vreg.buffer = uiMesh.VertexBuffer.buffer; vreg.size = vertexSize; vreg.offset = 0;
+    SDL_UploadToGPUBuffer(this->copyPass, &vloc, &vreg, true);
+
+    SDL_GPUTransferBufferLocation iloc{}; iloc.transfer_buffer = uiMesh.IndextransferBuffer; iloc.offset = 0;
+    SDL_GPUBufferRegion ireg{}; ireg.buffer = uiMesh.IndexBuffer.buffer; ireg.size = indexSize; ireg.offset = 0;
+    SDL_UploadToGPUBuffer(this->copyPass, &iloc, &ireg, true);
+
+    // Create an orthographic MVP for screen space
+    Matrix ortho = Matrix::Identity(4);
+    // Map x:[0..W] -> [-1..1], y:[0..H] -> [-1..1]
+    ortho(0,0) =  2.0f / (float)this->Width;  ortho(0,3) = -1.0f;
+    ortho(1,1) = -2.0f / (float)this->Height; ortho(1,3) =  1.0f;
+    ortho(2,2) = 1.0f; ortho(3,3) = 1.0f;
+
+    SDL_PushGPUVertexUniformData(this->cmdRender, 0, ortho.data.data(), sizeof(float) * ortho.data.size());
+    SDL_BindGPUVertexBuffers(this->pass, 0, &uiMesh.VertexBuffer, 1);
+    SDL_BindGPUIndexBuffer(this->pass, &uiMesh.IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    SDL_DrawGPUIndexedPrimitives(this->pass, uiMesh.faces * 6, 1, 0, 0, 0);
+
+    // Restore 3D MVP will be set on next frame; current draw call order draws UI last
 }
 SDL_GPUShader* LoadShader(SDL_GPUDevice* device, const char* filename, Uint32 sampler_count,
                           Uint32 uniform_buffer_count, Uint32 storage_buffer_count,
@@ -779,7 +908,8 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
         assert(false);
     }
     this->event = {};
-    SDL_SetWindowRelativeMouseMode(window, true);
+    // Show OS cursor so the user can see it in the window
+    SDL_SetWindowRelativeMouseMode(window, false);
 
     float aspect = (float)this->Width / (float)this->Height;
     this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
@@ -1012,6 +1142,29 @@ Renderer::Renderer(GameClient& gameClient) : gameClient(gameClient), chunkManage
 
         this->Terrain.push_back(mesh);
         std::cout << "Mesh " << i << " created successfully." << std::endl;
+    }
+
+    // Create UI mesh buffers
+    {
+        SDL_GPUBufferCreateInfo vertexInfo = {};
+        vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+        vertexInfo.size = vertexSize;
+        vertexInfo.props = 0;
+        uiMesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
+        uiMesh.VertexBuffer.offset = 0;
+
+        SDL_GPUBufferCreateInfo indexInfo = {};
+        indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+        indexInfo.size = indexSize;
+        indexInfo.props = 0;
+        uiMesh.IndexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
+        uiMesh.IndexBuffer.offset = 0;
+
+        SDL_GPUTransferBufferCreateInfo vti{}; vti.size = vertexSize; vti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD; vti.props = 0;
+        uiMesh.VertextransferBuffer = SDL_CreateGPUTransferBuffer(this->GPU, &vti);
+
+        SDL_GPUTransferBufferCreateInfo iti{}; iti.size = indexSize; iti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD; iti.props = 0;
+        uiMesh.IndextransferBuffer = SDL_CreateGPUTransferBuffer(this->GPU, &iti);
     }
 
     std::cout << "Setting up graphics pipeline..." << std::endl;

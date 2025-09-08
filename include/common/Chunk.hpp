@@ -26,11 +26,11 @@ class ChunkPrefab {
 
     ChunkPrefab() = default;
     void GenerateChunk();
+    void VisableFaces();
 
    private:
     void GenerateChunkSurface();
     void GenerateChunkCaves();
-    void VisableFaces();
 };
 
 #endif

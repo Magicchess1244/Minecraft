@@ -40,6 +40,28 @@ public:
 public:
     NetworkProtocol() = default;
     
+    static bool parse_ipv4(const std::string& host, in_addr* out) {
+        // Try inet_pton if available, otherwise fallback to inet_addr
+        #ifdef _WIN32
+        unsigned long addr = inet_addr(host.c_str());
+        if (addr == INADDR_NONE) return false;
+        out->s_addr = addr;
+        return true;
+        #else
+        return inet_pton(AF_INET, host.c_str(), out) == 1;
+        #endif
+    }
+
+    static bool recv_all(sock_t s, uint8_t* buf, size_t total) {
+        size_t received_total = 0;
+        while (received_total < total) {
+            int r = recv(s, reinterpret_cast<char*>(buf + received_total), (int)(total - received_total), 0);
+            if (r <= 0) return false;
+            received_total += (size_t)r;
+        }
+        return true;
+    }
+
     bool connect_to_server(const std::string& host, int port) {
         if (!socket_init.is_initialized()) {
             std::cerr << "Failed to initialize sockets" << std::endl;
@@ -56,7 +78,7 @@ public:
         serverAddr.sin_family = AF_INET;
         serverAddr.sin_port = htons(port);
         
-        if (inet_pton(AF_INET, host.c_str(), &serverAddr.sin_addr) <= 0) {
+        if (!parse_ipv4(host, &serverAddr.sin_addr)) {
             std::cerr << "Invalid address: " << host << std::endl;
             CLOSESOCKET(serverSocket);
             return false;
@@ -79,7 +101,8 @@ public:
         // Send header (type + length)
         uint8_t header[5];
         header[0] = static_cast<uint8_t>(message.type);
-        *reinterpret_cast<uint32_t*>(&header[1]) = htonl(message.length);
+        uint32_t len_n = htonl(message.length);
+        std::memcpy(&header[1], &len_n, sizeof(uint32_t));
 
         if (send(socket.get(), reinterpret_cast<const char*>(header), 5, 0) != 5) {
             std::cerr << "Failed to send message header: " << GET_LAST_ERROR << std::endl;
@@ -88,7 +111,7 @@ public:
 
         // Send data if any
         if (message.length > 0) {
-            if (send(socket.get(), reinterpret_cast<const char*>(message.data.data()), message.length, 0) != static_cast<int>(message.length)) {
+            if (send(socket.get(), reinterpret_cast<const char*>(message.data.data()), (int)message.length, 0) != static_cast<int>(message.length)) {
                 std::cerr << "Failed to send message data: " << GET_LAST_ERROR << std::endl;
                 return false;
             }
@@ -102,24 +125,21 @@ public:
 
         // Receive header
         uint8_t header[5];
-        int received = recv(socket.get(), reinterpret_cast<char*>(header), 5, MSG_WAITALL);
-        if (received != 5) {
-            if (received == 0) {
+        if (!recv_all(socket.get(), header, 5)) {
+            // cannot differentiate cleanly, treat as failure
                 std::cout << "Server disconnected" << std::endl;
-            } else {
-                std::cerr << "Failed to receive message header: " << GET_LAST_ERROR << std::endl;
-            }
             return false;
         }
 
         message.type = static_cast<MessageType>(header[0]);
-        message.length = ntohl(*reinterpret_cast<uint32_t*>(&header[1]));
+        uint32_t len_n;
+        std::memcpy(&len_n, &header[1], sizeof(uint32_t));
+        message.length = ntohl(len_n);
 
         // Receive data if any
         if (message.length > 0) {
             message.data.resize(message.length);
-            received = recv(socket.get(), reinterpret_cast<char*>(message.data.data()), message.length, MSG_WAITALL);
-            if (received != static_cast<int>(message.length)) {
+            if (!recv_all(socket.get(), message.data.data(), message.length)) {
                 std::cerr << "Failed to receive message data: " << GET_LAST_ERROR << std::endl;
                 return false;
             }

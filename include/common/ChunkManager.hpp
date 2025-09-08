@@ -2,8 +2,7 @@
 #define __CHUNKMANAGER_HPP__
 
 #include "common.hpp"
-
-class ChunkPrefab;
+#include "Chunk.hpp"
 
 struct Block {
     char Name[20];

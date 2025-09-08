@@ -83,6 +83,8 @@ void ChunkPrefab::GenerateChunkCaves() {
 }
 
 void ChunkPrefab::VisableFaces() {
+    // Rebuild the list of visible faces from current Blocks
+    this->allFaces.clear();
     this->allFaces.reserve(7000);
 
     for (int y = 0; y < this->ySize; y++) {

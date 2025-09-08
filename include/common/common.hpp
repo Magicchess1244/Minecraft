@@ -175,14 +175,20 @@ struct Matrix {
 struct Color {
     unsigned int r, g, b;
 
-    Color operator+(const Color& other) {
-        return {SDL_clamp(r + other.r, 0u, 255u), SDL_clamp(g + other.g, 0u, 255u),
-                SDL_clamp(b + other.b, 0u, 255u)};
+    Color operator+(const Color& other) const {
+        return {
+            static_cast<Uint8>(SDL_clamp(static_cast<int>(r) + static_cast<int>(other.r), 0, 255)),
+            static_cast<Uint8>(SDL_clamp(static_cast<int>(g) + static_cast<int>(other.g), 0, 255)),
+            static_cast<Uint8>(SDL_clamp(static_cast<int>(b) + static_cast<int>(other.b), 0, 255))
+        };
     }
 
-    Color operator-(const Color& other) {
-        return {SDL_clamp(r - other.r, 0u, 255u), SDL_clamp(g - other.g, 0u, 255u),
-                SDL_clamp(b - other.b, 0u, 255u)};
+    Color operator-(const Color& other) const {
+        return {
+            static_cast<Uint8>(SDL_clamp(static_cast<int>(r) - static_cast<int>(other.r), 0, 255)),
+            static_cast<Uint8>(SDL_clamp(static_cast<int>(g) - static_cast<int>(other.g), 0, 255)),
+            static_cast<Uint8>(SDL_clamp(static_cast<int>(b) - static_cast<int>(other.b), 0, 255))
+        };
     }
 
     bool operator==(const Color& other) const {
