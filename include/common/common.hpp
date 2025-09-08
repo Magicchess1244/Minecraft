@@ -1,5 +1,4 @@
-#ifndef COMMON_HPP
-#define COMMON_HPP
+#pragma once
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
@@ -8,8 +7,16 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <functional>
+#include <iostream>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
 
+#include "network.hpp"
+
+constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;
 
 struct Vector3 {
@@ -52,9 +59,27 @@ struct Vector3 {
         return x == other.x && y == other.y && z == other.z;
     }
 
-    bool operator>(const Vector3& other) const { return x > other.x && y > other.y && z > other.z; }
+    bool operator!=(const Vector3& other) const {
+        return x != other.x && y != other.y && z != other.z;
+    }
 
-    float Dot(const Vector3& other) const { return x * other.x + y * other.y + z * other.z; }
+    bool operator>(const Vector3& other) const { return x > other.x && y > other.y && z > other.z; }
+    float operator[](int i) const {
+        switch (i) {
+            case 0:
+                return x;
+            case 1:
+                return y;
+            case 2:
+                return z;
+            default:
+                throw std::out_of_range("Vector3 index out of range");
+        }
+    }
+
+    float Dot(const Vector3& other) const {
+        return x * other.x + y * other.y + z * other.z; 
+    }
 
     Vector3 Cross(const Vector3& other) const {
         return {y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x};
@@ -84,41 +109,71 @@ struct Vector3 {
 
         Vector3 forward;
         forward.x = cos(pitch) * sin(yaw);
-        forward.y = -sin(pitch);
-        forward.z = -cos(pitch) * cos(yaw);
+        forward.y = 0;
+        forward.z = cos(pitch) * cos(yaw);
         return forward.Normalized();
     }
 
     Vector3 Right() const {
-        Vector3 rotationRadians = AngleToRadians();
-
-        float yaw = rotationRadians.y;
-
-        Vector3 right;
-        right.x = cos(yaw);
-        right.y = 0;
-        right.z = sin(yaw);
-        return right.Normalized();
+        return Forward().Cross(Vector3{0, 1, 0});
     }
 
     Vector3 Up() const {
-        Vector3 up = Right().Cross(Forward()).Normalized();
-        return up;
+        return Right().Cross(Forward());
     }
 
     Vector3 Max(const Vector3& a) const {
-        return {std::max(x, a.x), std::max(y, a.y), std::max(z, a.z)};
+        return { std::max(x, a.x), std::max(y, a.y), std::max(z, a.z)};
     }
 
     Vector3 Min(const Vector3& a) const {
         return {std::min(x, a.x), std::min(y, a.y), std::min(z, a.z)};
     }
 };
+struct Matrix {
+    size_t rows, cols;
+    std::vector<float> data;  // row-major
 
+    Matrix(size_t r, size_t c, float val = 0.0f) : rows(r), cols(c), data(r * c, val) {}
+
+    float& operator()(size_t r, size_t c) { return data[r * cols + c]; }
+    float operator()(size_t r, size_t c) const { return data[r * cols + c]; }
+
+    // Matrix multiplication
+    Matrix operator*(const Matrix& other) const {
+        if (cols != other.rows) {
+            throw std::invalid_argument("Matrix dimensions do not match for multiplication");
+        }
+        Matrix result(rows, other.cols, 0.0f);
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < other.cols; ++j) {
+                float sum = 0.0f;
+                for (size_t k = 0; k < cols; ++k) {
+                    sum += (*this)(i, k) * other(k, j);
+                }
+                result(i, j) = sum;
+            }
+        }
+        return result;
+    }
+
+    static Matrix Identity(size_t n) {
+        Matrix I(n, n, 0.0f);
+        for (size_t i = 0; i < n; ++i) I(i, i) = 1.0f;
+        return I;
+    }
+
+    void print() const {
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                std::cout << (*this)(i, j) << " ";
+            }
+            std::cout << "\n";
+        }
+    }
+};
 struct Color {
     unsigned int r, g, b;
-
-    Color(unsigned int r, unsigned int g, unsigned int b) : r(r), g(g), b(b) {}
 
     Color operator+(const Color& other) {
         return {SDL_clamp(r + other.r, 0u, 255u), SDL_clamp(g + other.g, 0u, 255u),
@@ -146,18 +201,11 @@ struct Color {
         };
     }
 };
-
 struct Player {
     Vector3 Position;
     Vector3 Rotation;
     Color color;
-    bool connected;
-
-    Player(const Vector3& pos = Vector3(), const Vector3& rot = Vector3(),
-           const Color& col = Color(255, 0, 0))
-        : Position(pos), Rotation(rot), color(col), connected(true) {}
 };
-
 struct Slot {
     short Amount;
     short Type;
@@ -177,4 +225,3 @@ struct hash<Vector3> {
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }
 
-#endif

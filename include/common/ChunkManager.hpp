@@ -1,9 +1,6 @@
 #ifndef __CHUNKMANAGER_HPP__
 #define __CHUNKMANAGER_HPP__
 
-#include <iostream>
-#include <unordered_map>
-
 #include "common.hpp"
 
 class ChunkPrefab;
@@ -59,4 +56,14 @@ class ChunkManager {
         return BlockDef[BlockId];
     }
 };
+/*
+namespace ChunckManager {
+        bool Collition(Vector3& PlayerPos, int FullRange, int yRange, bool Swim, bool Block);
+        bool PlaceBlock(int BlockType, Vector3 Position, int yRange, Vector3 PlayerPosition, short&
+Type); void Size(int PixelSizeX, int PixelSizeY, int yRange, int FullRange); void
+ShowInventor(SDL_Renderer* Renderer, int width, int height, std::vector<Slot>& Inventory, int
+InventorySlot, TTF_Font* font); void SimulateWater(int chunkIndex);
+};
+*/
 #endif
+

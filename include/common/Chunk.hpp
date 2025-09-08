@@ -1,16 +1,12 @@
 #ifndef __CHUNK__
 #define __CHUNK__
 
-#include <unordered_map>
-#include <vector>
-
 #include "common.hpp"
 
 struct DrawnFace {
     Vector3 blockPos;
     int side;
     int blockID;
-    float maxZ;
     bool Transparent;
 };
 
@@ -38,3 +34,4 @@ class ChunkPrefab {
 };
 
 #endif
+

@@ -1,7 +1,4 @@
 #include "ChunkManager.hpp"
-
-#include <iostream>
-
 #include "Chunk.hpp"
 
 constexpr int ySize = 64;
