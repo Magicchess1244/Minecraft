@@ -1,21 +1,14 @@
-## MinGW Makefile for Windows (SDL3 static/dynamic)
-SHELL := cmd
-
 # Compiler and flags
 CXX := g++
+CXXFLAGS := -std=c++17 -O2 -g3 -pthread -gdwarf-4 -fPIC -Wno-deprecated -pipe \
+            -fno-elide-type -fdiagnostics-show-template-tree -Wall -Werror \
+            -Wextra -Wpedantic -Wvla -Wextra-semi -Wnull-dereference \
+            -Wswitch-enum -fvar-tracking-assignments -Wduplicated-cond \
+            -Wduplicated-branches -rdynamic -Wsuggest-override
+LDFLAGS := -lSDL3 -lSDL3_ttf
 
-# SDL root (adjust if installed elsewhere)
-SDL_DIR := C:\Users\pumu\CLionProjects\Minecraft3D
-
-# Library directories and includes
-LIBDIRS := -L"$(SDL_DIR)" -L.
-INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server -I"$(SDL_DIR)\include"
-
-# Compiler flags
-CXXFLAGS := -std=c++17 -O2 -g3 -gdwarf-4 -pipe -Wall -Wextra -Wno-unused-parameter
-
-# Note: link ws2_32 for WinSock. Requires MinGW import libs: libSDL3.dll.a, libSDL3_ttf.dll.a in LIBDIRS
-LDFLAGS := $(LIBDIRS) -lSDL3 -lSDL3_ttf -lws2_32 -static-libgcc -static-libstdc++
+# Include directories
+INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server
 
 # Targets
 CLIENT_TARGET := minecraft3d-client
@@ -70,9 +63,7 @@ $(SERVER_TARGET): $(SERVER_OBJS) $(COMMON_OBJS)
 
 # Compile shaders
 assets/shaders/%.spv: assets/shaders/%.glsl
-	where glslc >NUL 2>NUL && glslc -fshader-stage=$(if $(findstring vert,$*),vertex,fragment) $< -o $@ || echo Using precompiled shader $@
+	glslc -fshader-stage=$(if $(findstring vert,$*),vertex,fragment) $< -o $@
 
 clean:
-	-del /Q $(subst /,\\,$(ALL_OBJS)) 2>NUL || exit 0
-	-del /Q $(CLIENT_TARGET) $(SERVER_TARGET) 2>NUL || exit 0
-	-del /Q $(subst /,\\,$(SHADER_SPV)) 2>NUL || exit 0
+	rm -f $(ALL_OBJS) $(CLIENT_TARGET) $(SERVER_TARGET) $(SHADER_SPV)
