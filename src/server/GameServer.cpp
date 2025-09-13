@@ -1,4 +1,5 @@
-#include "GameServer.hpp"
+#include "../../include/server/GameServer.hpp"
+
 
 void GameServer::handle_client(std::unique_ptr<NetworkProtocol> client, int player_id) {
     std::cout << "Handling client " << player_id << std::endl;

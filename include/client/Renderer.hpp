@@ -164,7 +164,7 @@ class Renderer {
     void RenderChunk(const ChunkPrefab& chunk, Player& player, int NumChunk);
     void DrawTerrain(Player& player);
     void DrawPlayer(SDL_Renderer* Renderer, Vector3 Range, const std::vector<Player>& PlayerPos);
-    void MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot,
+    void MainRenderLoop(
                         std::vector<Player>& players);
     
     // Simple raycast for interaction (returns hit position and previous empty position)

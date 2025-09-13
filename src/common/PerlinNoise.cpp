@@ -1,4 +1,5 @@
-#include "PerlinNoise.hpp"
+#include "../../include/common/PerlinNoise.hpp"
+
 
 int seed = 0;
 

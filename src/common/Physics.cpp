@@ -1,6 +1,6 @@
-#include "Physics.hpp"
-#include "ChunkManager.hpp"
-#include "Chunk.hpp"
+#include "../../include/common/Physics.hpp"
+#include "../../include/common/ChunkManager.hpp"
+#include "../../include/common/Chunk.hpp"
 
 RayHit Physics::RaycastVoxel(const Vector3& rayOrigin, const Vector3& rayDir, float maxDistance) {
     RayHit result{false, 0, 0, 0, 0.0f};

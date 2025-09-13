@@ -1,4 +1,4 @@
-#include "GameServer.hpp"
+#include "../../include/server/GameServer.hpp"
 #include <iostream>
 #include <cstdlib>
 #include <ctime>

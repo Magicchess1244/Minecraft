@@ -1,4 +1,4 @@
-#include "GameClient.hpp"
+#include "../../include/client/GameClient.hpp"
 #include <iostream>
 #include <cstdlib>
 #include <ctime>

@@ -1,6 +1,5 @@
-#include "Chunk.hpp"
-#include "PerlinNoise.hpp"
-#include "BlockTypes.hpp"
+#include "../../include/common/Chunk.hpp"
+#include "../../include/common/PerlinNoise.hpp"
 
 const Vector3 Direction[6] = {
     {0, 0, -1},  // Front
@@ -30,31 +29,17 @@ void ChunkPrefab::GenerateChunkSurface() {
             heightNoise += PerlinNoise({worldX, 0, worldZ}, 2, 0.25f) * 16.0f; // Medium features
             heightNoise += PerlinNoise({worldX, 0, worldZ}, 4, 0.125f) * 8.0f; // Small features
             
-            int surfaceHeight = static_cast<int>(heightNoise + 64.0f); // Base height at 64
-            surfaceHeight = std::max(1, std::min(surfaceHeight, 128)); // Clamp between 1 and 128
-            
+            //float surfaceHeight = heightNoise;
+            if(heightNoise < 30) heightNoise = 30;
+
             // Generate terrain layers
-            for (int y = 0; y < this->ySize; y++) {
+            for (int y = (int)heightNoise; y > 0; y--) {
                 Vector3 BlockPos = {(float)x, (float)y, (float)z};
-                int worldY = y;
-                
-                if (worldY == 0) {
-                    // Bedrock layer at bottom
-                    Blocks[BlockPos] = static_cast<int>(BlockType::BEDROCK);
-                } else if (worldY < surfaceHeight - 4) {
-                    // Stone layer
-                    Blocks[BlockPos] = static_cast<int>(BlockType::STONE);
-                } else if (worldY < surfaceHeight - 1) {
-                    // Dirt layer
-                    Blocks[BlockPos] = static_cast<int>(BlockType::DIRT);
-                } else if (worldY == surfaceHeight - 1) {
-                    // Grass layer
-                    Blocks[BlockPos] = static_cast<int>(BlockType::GRASS);
-                } else if (worldY < 64) {
-                    // Water level (sea level at 64)
-                    Blocks[BlockPos] = static_cast<int>(BlockType::WATER);
+                if (y > heightNoise){
+                    Blocks[BlockPos] = 1;               
+                } else {
+                    Blocks[BlockPos] = 5;               
                 }
-                // Air above surface and water
             }
         }
     }
@@ -97,33 +82,17 @@ void ChunkPrefab::VisableFaces() {
 
                 int blockID = it->second;
                 
-                // Skip air blocks
-                if (blockID == static_cast<int>(BlockType::AIR)) continue;
-
                 for (int i = 0; i < 6; i++) {
                     Vector3 NextBlockPos = blockPos + Direction[i];
                     auto blockIt = Blocks.find(NextBlockPos);
                     
-                    bool shouldDrawFace = false;
                     
                     if (blockIt == Blocks.end()) {
-                        // Block is outside chunk bounds, draw face
-                        shouldDrawFace = true;
-                    } else {
-                        int neighborBlockID = blockIt->second;
-                        
-                        // Draw face if neighbor is air or transparent
-                        if (neighborBlockID == static_cast<int>(BlockType::AIR) || 
-                            g_BlockRegistry.isTransparent(neighborBlockID)) {
-                            shouldDrawFace = true;
-                        }
-                    }
-                    
-                    if (shouldDrawFace) {
                         Vector3 ChunkWorldPos = {(float)this->xPos, 0, (float)this->zPos};
                         Vector3 world = blockPos + ChunkWorldPos;
                         DrawnFace face = {world, i, blockID, false};
                         this->allFaces.push_back(face);
+                    
                     }
                 }
             }

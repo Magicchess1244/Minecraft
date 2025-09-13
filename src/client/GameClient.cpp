@@ -1,5 +1,5 @@
-#include "GameClient.hpp"
-#include "../common/PerlinNoise.hpp"
+#include "../../include/client/GameClient.hpp"
+#include "../../include/common/PerlinNoise.hpp"
 
 constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 2.0f;
@@ -224,7 +224,7 @@ void GameLoop(GameClient& game) {
 
     while (game.GetRunning()) {
         PlayerMovement(p[0], inventorySlot);
-        RendererObject.MainRenderLoop(inventory, inventorySlot, p);
+        RendererObject.MainRenderLoop(p);
     }
 
     std::cout << "Exiting game..." << std::endl;
