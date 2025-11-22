@@ -152,7 +152,7 @@
   <ItemGroup>
     <ClInclude Include="Chunck.h" />
     <ClInclude Include="ChunkManager.h" />
-    <ClInclude Include="common.hpp" />
+    <ClInclude Include="Common.hpp" />
     <ClInclude Include="GameClient.h" />
     <ClInclude Include="GameServer.h" />
     <ClInclude Include="PerlinNoise.h" />

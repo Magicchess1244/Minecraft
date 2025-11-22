@@ -1,7 +1,8 @@
-#include "GameServer.h"
+#include "../../include/server/GameServer.hpp"
 
-void GameServer::handlePlayers(SOCKET player, int Id)
+void GameServer::handlePlayers(int player, int Id)
 {
+	/*
 	char buf[16] = {};
 	int res = 0;
 	//std::cout << player << std::endl;
@@ -36,7 +37,7 @@ void GameServer::handlePlayers(SOCKET player, int Id)
 
 			std::cout << "Color: " << color_str[0] <<  std::endl;
 		}
-	}
+	}*/
 }
 
 void GameServer::AcceptClients()
@@ -53,7 +54,7 @@ void GameServer::AcceptClients()
 	};
 	this->MakeServer();
 	std::cout << "Listener: " << listener << "\n";
-
+/*
 	while (player_count < MAX_PLAYERS) {
 		SOCKET clientSocket = accept(this->listener, NULL, NULL);
 
@@ -71,5 +72,5 @@ void GameServer::AcceptClients()
 
 		handlePlayers(clientSocket, player_count - 1);
 		//std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count - 1).detach();
-	}
+	}*/
 }

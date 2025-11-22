@@ -1,17 +1,17 @@
 #pragma once
 
-#include "common.hpp"
+#include "../common/Common.hpp"
 
 class GameServer
 {
 private:
 	unsigned int seed;
 	unsigned int player_count = 0;
-	SOCKET listener;
-	std::vector<SOCKET> sockets;
+	int listener;
+	std::vector<int> sockets;
 	std::vector<Player> players;
 	void MakeServer()
-	{
+	{/*
 		WSADATA wsaData;
 		if (WSAStartup(WINSOCK_VERSION, &wsaData) != 0) {
 			std::cerr << "Failed to initialize WinSock\n";
@@ -50,11 +50,11 @@ private:
 		}
 
 		std::cout << "Server listening on port " << PORT << "...\n";
-		this->listener = hostSocket;
+		this->listener = hostSocket;*/
 	}
 
 public:
-	GameServer() : seed(0), player_count(0), listener(INVALID_SOCKET) {}
+	GameServer() : seed(0), player_count(0), listener(0) {}
 	void set_seed(unsigned int new_seed) {
 		std::cout << "seed: " << new_seed << std::endl;
 		seed = new_seed;
@@ -64,30 +64,29 @@ public:
 		return seed;
 	}
 
-	void add_socket(SOCKET socket, Player player) {
+	void add_socket(int socket, Player player) {
 		if (sockets.size() < MAX_PLAYERS) {
 			sockets.push_back(socket);
 			players.push_back(player);
 			player_count++;
 		}
 	}
-	const std::vector<SOCKET>& get_sockets() const {
+	const std::vector<int>& get_sockets() const {
 		return sockets;
 	}
 
-	void handlePlayers(SOCKET player, int Id);
-
+	void handlePlayers(int, int);
 	void AcceptClients();
 
 	~GameServer()
 	{
-		for (SOCKET socket : sockets)
+/*		for (SOCKET socket : sockets)
 		{
 			closesocket(socket);
 		}
 		WSACleanup();
 		std::cout << "2. Server closed.\n";
+	*/
 	}
-
 };
 

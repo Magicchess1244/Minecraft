@@ -1,8 +1,8 @@
 #ifndef __GAME_CLIENT_H
 #define __GAME_CLIENT_H
 
-#include "common.hpp"
-#include "Renderer.h"
+#include "../common/Common.hpp"
+#include "Renderer.hpp"
 
 typedef enum
 {
@@ -16,15 +16,14 @@ private:
 	unsigned int seed;
 	unsigned int player_count = 0;
 	std::vector<Player> players;
-	SOCKET server;
+	//SOCKET server;
+	int server = 0;
 	bool running = true;
 
 public:
-	GameClient() : seed(0), player_count(0), server(INVALID_SOCKET) {} 
+	GameClient() : seed(0), player_count(0) {}
 	~GameClient() {
 		std::cout << "closing conn" << std::endl;
-		closesocket(server);
-		WSACleanup();
 	}
 
 	void set_seed();
@@ -32,8 +31,8 @@ public:
 		return seed;
 	}
 
-	SOCKET get_socket() const {
-		return server;
+	void get_socket() const {
+	//	return this->server;
 	}
 
 	void add_player(Player player) {
@@ -57,6 +56,7 @@ public:
 	}
 
 	void MakeClient() {
+		/*
 		WSADATA wsaData;
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 			std::cerr << "WSAStartup failed.\n";
@@ -84,7 +84,7 @@ public:
 		}
 
 		std::cout << "Connected to the server.\n";
-		this->server = serverSocket;
+		this->server = serverSocket;*/
 	}
 
 	bool GetRunning() const {

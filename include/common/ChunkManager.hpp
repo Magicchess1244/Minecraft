@@ -1,14 +1,15 @@
 #ifndef	__CHUNKMANAGER_HPP__
 #define __CHUNKMANAGER_HPP__
 
-#include "common.hpp"
+#include "Common.hpp"
+#include <cstddef>
 
 class ChunkPrefab;
 
 typedef struct {
 	char Name[20];
 	short BlockId;
-	Color Color;
+	Color color;
 	short SpawningLayer[2];
 	bool Top;
 	bool Water;
@@ -28,12 +29,12 @@ typedef struct {
 
 constexpr int BlockNum = 6;
 const Block BlockDef[BlockNum] = {
-		{"Air",      0, {255, 178, 255},       NULL,             false, false},
-		{"Grass",    1, {  0, 166,   0},       {0, 0},              true,  false},
+		{"Air",      0, {255, 178, 255},       {0, 0},             false, false},
+		{"Grass",    1, { 0, 166,   0},       {0, 0},              true,  false},
 		{"Dirt",     2, {153,  76,  25},       {1, 3},              true,  false},
 		{"Stone",    3, {128, 128, 128},       {4, 64},             false, false},
-		{"Bedrock",  4, { 51,  51,  51},       {0, 3},              false, false},
-		{"Water",    5, {  0, 102, 204},       NULL,             false, true }
+		{"Bedrock",  4, {51,  51,  51},       {0, 3},              false, false},
+		{"Water",    5, {0, 102, 204},       {0, 0},             false, true }
 };
 
 class ChunkManager {

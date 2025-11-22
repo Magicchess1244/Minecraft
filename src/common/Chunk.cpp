@@ -1,5 +1,5 @@
-#include "Chunck.h"
-#include "PerlinNoise.h"
+#include "../../include/common/Chunck.hpp"
+#include "../../include/common/PerlinNoise.hpp"
 
 const Vector3 Direction[6] = {
 	{ 0, 0, -1 }, // Front
@@ -21,7 +21,7 @@ void ChunkPrefab::GenerateChunkSurface()
 {
 	for (int x = 0; x < this->xSize; x++) {
 		for (int z = 0; z < this->zSize; z++) {
-			int Height = (int)(35 + ( PerlinNoise({ (float)xPos + x, 0, (float)zPos + z }, 4, 0.1f) * 25));
+			int Height = (int)(35 );//+ ( PerlinNoise({ (float)xPos + x, 0, (float)zPos + z }, 4, 0.1f) * 25));
 			int ActualHeight = Height;
 			if (Height < 35) {
 				Height = 35;

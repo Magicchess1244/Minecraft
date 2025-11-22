@@ -1,11 +1,12 @@
-#include "GameClient.h"
-#include "PerlinNoise.h"
+#include "../../include/client/GameClient.hpp"
+#include "../../include/common/PerlinNoise.hpp"
+#include <ostream>
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 1.0f;
+constexpr float playerSpeed = 0.1f;
 
 void GameClient::set_seed() {
-	int res;
+	/*int res;
 	char buf[16];
 	unsigned int server_seed = 0;
 	const char* command = "seed";
@@ -18,10 +19,10 @@ void GameClient::set_seed() {
 	server_seed = static_cast<unsigned int>(std::stoi(std::string(buf)));
 	std::cout << "New client seed: " << server_seed << std::endl;
 	srand(server_seed);
-	this->seed = server_seed;
+	this->seed = server_seed;*/
 }
 void GameClient::set_color() {
-	int res;
+/*	int res;
 	char buf[11];
 	unsigned int server_color[3] = {};
 	const char* command = "getColor";
@@ -45,7 +46,7 @@ void GameClient::set_color() {
 	std::cout << "niggas online: " << this->players.size() << std::endl;
 	if (this->players.size() > 0) {
 		this->players[0].color = Color{ server_color[0], server_color[1], server_color[2] };
-	}
+	}*/
 }
 
 //UI function
@@ -60,6 +61,8 @@ namespace BitMiner {
 			index++;
 		}
 		std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
+		// FIXME: return Option<int>
+		return 0;
 	}
 	void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerRot) {
 		const bool* KeyboardState = SDL_GetKeyboardState(NULL);
@@ -113,39 +116,28 @@ namespace BitMiner {
 
 			player.Rotation.y += RotationDir.y * mouseSensitivity;
 			player.Rotation.x += RotationDir.x * mouseSensitivity;
-			player.Rotation.x = SDL_clamp(player.Rotation.x, -89.0f, 89.0f);
+			player.Rotation.x = SDL_clamp(player.Rotation.x, -90.0f, 90.0f);
 			if (player.Rotation.y > 360.0f) player.Rotation.y -= 360.0f;
 			if (player.Rotation.y < 0.0f) player.Rotation.y += 360.0f;
 		}
 
 		// Handle movement
 		if (playerDirection.x != 0 || playerDirection.y != 0 || playerDirection.z != 0) {
-			// Move in Y first (e.g. jumping or flying)
-			//std::cout << "Player Direction: " << playerDirection.x << ", " << playerDirection.y << ", " << playerDirection.z << std::endl;
-			player.Position.y += playerDirection.y;
-			playerDirection.y = 0;
-
-			playerDirection = playerDirection.Normalized();
-			// Rotate the horizontal movement by player rotation (Y-axis)
-			Vector3 Radiants = player.Rotation.AngleToRadians();
-
-			float cosY = cosf(Radiants.y);
-			float sinY = sinf(Radiants.y);
-
-			Vector3 rotatedDirection = {
-				playerDirection.x * cosY - playerDirection.z * sinY,
-				0,
-				playerDirection.x * sinY + playerDirection.z * cosY
-			};
-
-			// Apply movement
-			player.Position.x += rotatedDirection.x * playerSpeed;
-			player.Position.z += rotatedDirection.z * playerSpeed;
+			float deltaTime = 1.0f;
+	   	 	player.Position.y += playerDirection.y * playerSpeed * deltaTime;
+    
+			Vector3 Dir = player.Rotation.Forward() * playerDirection.z + 
+                  player.Rotation.Right() * playerDirection.x;
+    
+    		Dir = Dir.Normalized();
+    
+	    	player.Position.x += Dir.x * playerSpeed * deltaTime;
+    		player.Position.z += Dir.z * playerSpeed * deltaTime;
 		}
 	}
 	void GameLoop(GameClient& game)
 	{
-		game.add_player({ {100, 66, 100}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}, });
+		game.add_player({ {0, 0, 0}, {0.0f, 0.0f, 0.0f}, {255, 0, 0}, });
 		auto p = game.get_players();
 
 		//game.MakeClient();
@@ -153,13 +145,6 @@ namespace BitMiner {
 		//game.set_color();
 		SetSeed(game.get_seed());
 
-		int width = 600;
-		int height = 400;
-
-		SDL_Window* window = nullptr;
-		SDL_Renderer* renderer = nullptr;
-
-		bool fullScreen = false;
 		Vector3 playerDirection = { 0, 0 };
 
 		std::vector<Slot> inventory;

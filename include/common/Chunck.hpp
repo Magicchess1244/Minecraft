@@ -1,7 +1,7 @@
 #ifndef __CHUNK__
 #define __CHUNK__
 
-#include "common.hpp"
+#include "Common.hpp"
 
 struct DrawnFace {
     Vector3 blockPos;

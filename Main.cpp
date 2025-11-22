@@ -1,6 +1,6 @@
-#include "common.hpp"
-#include "GameServer.h"
-#include "GameClient.h"
+#include "Common.hpp"
+#include "GameServer.hpp"
+#include "GameClient.hpp"
 
 int main(int argc, char* argv[])
 {

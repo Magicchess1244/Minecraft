@@ -1,4 +1,4 @@
-#include "PerlinNoise.h"
+#include "PerlinNoise.hpp"
 
 int seed;
 

@@ -1,5 +1,5 @@
-#include "ChunkManager.h"
-#include "Chunck.h"
+#include "ChunkManager.hpp"
+#include "Chunck.hpp"
 
 constexpr int ySize = 64;
 constexpr Biome Biomes[11] = {
