@@ -213,7 +213,7 @@ SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
 }
 Vector3 Renderer::rotate(const Vector3& pos, const Vector3& Angle)
 {
-    Vector3 angleRadians = Angle.AngleToRadians();
+    Vector3 angleRadians = Angle;
     float cx = cos(angleRadians.x), sx = sin(angleRadians.x);
     float cy = cos(angleRadians.y), sy = sin(angleRadians.y);
     float cz = cos(angleRadians.z), sz = sin(angleRadians.z);
@@ -271,33 +271,33 @@ void Renderer::DrawFace(Player& player, Vector3 blocks, int blockID, int Side, M
 
     for (int i = 0; i < 4; i++) {
         // 1. Transform to camera space (relative to player)
-        Vector3 worldPos = (verts[i] + blocks);// - player.Position;
+        Vector3 worldPos = (verts[i] + blocks) - player.Position;
         
         // 2. Apply camera rotation (IMPORTANT - you need this!)
-        //worldPos = rotate(worldPos, player.Rotation);
+        worldPos = rotate(worldPos, player.Rotation * -1);
         
         // 3. Check if vertex is behind camera
         //if (worldPos.z <= Znear) {
             // Clamp to near plane to avoid division by zero
-        //    worldPos.z = Znear;
+            //worldPos.z = Znear;
         //}
         // 4. Manual perspective projection
-        //float projectedX = worldPos.x / (worldPos.z * FOV);
-        //float projectedY = worldPos.y / (worldPos.z * FOV);
+        float projectedX = worldPos.x / (worldPos.z * FOV);
+        float projectedY = worldPos.y / (worldPos.z * FOV);
         
         // 5. Proper depth calculation (don't set to 1!)
-        //float projectedZ = (worldPos.z - Znear) / (Zfar - Znear);
+        float projectedZ = (worldPos.z - Znear) / (Zfar - Znear);
         // Clamp to valid depth range [0, 1]
-        //Vector3 finalPos = {
-        //    projectedX,   // -1 to 1 (left to right)
-        //    projectedY,   // -1 to 1 (bottom to top)
-        //    projectedZ    // 0 to 1 (near to far)
-        //};
+        Vector3 finalPos = {
+            projectedX,   // -1 to 1 (left to right)
+            projectedY,   // -1 to 1 (bottom to top)
+            projectedZ    // 0 to 1 (near to far)
+        };
         
         Vector3 Color = BlockDef[blockID].color.ToFloat() - Colors[(int)(Side/2)].ToFloat();
         Vertex vertex = {worldPos, Color};
         Vertexdata[baseVertex + i] = vertex;
-    	std::cout << "Point pos,  x: " << worldPos.x << "; y: " << worldPos.y << "; z: " << worldPos.z << std::endl;
+    	//std::cout << "Point pos,  x: " << worldPos.x << "; y: " << worldPos.y << "; z: " << worldPos.z << std::endl;
         // Debug output
 		/*
         if (finalPos.x > -1 && finalPos.x < 1 && finalPos.y > -1 && finalPos.y < 1) {
@@ -347,19 +347,19 @@ void Renderer::RenderChunk(ChunkPrefab& chunk, Player& player, int NumChunk)
 		//if (!isFaceInFrustum(this->frustum, local)) continue;
 		//std::cout << Max.x << std::endl;
 		
-		Faces.push_back({ face->blockPos, face->side, face->blockID, 1, face->blockID == 5 });
+		//Faces.push_back({ face->blockPos, face->side, face->blockID, 1, face->blockID == 5 });
 	}
 	std::cout << "faces: " << Faces.size() << std::endl;
 	Vertex* Vertexdata = (Vertex*)SDL_MapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer, false);
 	Uint32* Indexdata = (Uint32*)SDL_MapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer, false);
 
-	for (auto& Face : Faces) {
-		DrawFace(player, Face.blockPos, Face.blockID, Face.side, mesh, Vertexdata, Indexdata);
-	}
+	//for (auto& Face : Faces) {
+	//	DrawFace(player, Face.blockPos, Face.blockID, Face.side, mesh, Vertexdata, Indexdata);
+	//}
 	
 
     //DrawTestTriangle(mesh, Vertexdata, Indexdata);
-	//DrawFace(player, {0,0,0}, 0, 1, mesh, Vertexdata, Indexdata);
+	DrawFace(player, {0,0,0}, 0, 1, mesh, Vertexdata, Indexdata);
 	//---------------Vertex-----------------
 
 	SDL_UnmapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
@@ -613,8 +613,8 @@ void Renderer::MainRenderLoop(std::vector<Slot>& inventory, int inventorySlot, s
     Matrix mvp = proj * view * model;
 	
 	mvp.print();
-    SDL_PushGPUVertexUniformData(this->cmdRender, 0, mvp.getColumnMajorData().data(),
-                                 sizeof(float) * mvp.getColumnMajorData().size());
+    //SDL_PushGPUVertexUniformData(this->cmdRender, 0, mvp.getColumnMajorData().data(),
+    //                             sizeof(float) * mvp.getColumnMajorData().size());
 	
 	this->pass = SDL_BeginGPURenderPass(this->cmdRender, &color_target_info, 1, NULL);
 	SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
@@ -804,7 +804,7 @@ Renderer::Renderer(GameClient& gameClient): gameClient(gameClient), chunkManager
 	// load the vertex shader code
 
 	SDL_GPUShader *vertex_shader =
-		LoadShader(this->GPU, "Shader.vert", 0, 1, 0, 0);
+		LoadShader(this->GPU, "Shader.vert", 0, 0, 0, 0);
 	if (!vertex_shader)
 	{
 		SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
