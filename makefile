@@ -5,6 +5,10 @@ CXXFLAGS := -std=c++17 -O2 # -g3 -pthread -gdwarf-4 -fPIC -Wno-deprecated -pipe 
             -Wextra -Wpedantic -Wvla -Wextra-semi -Wnull-dereference \
             -Wswitch-enum -fvar-tracking-assignments -Wduplicated-cond \
             -Wduplicated-branches -rdynamic -Wsuggest-override
+
+# Debug flags
+DEBUG_FLAGS := -DDEBUG -g
+
 LDFLAGS := -lSDL3 -lSDL3_ttf
 
 # Include directories
@@ -41,9 +45,14 @@ ALL_OBJS := $(COMMON_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS)
 SHADER_SRCS := assets/shaders/Shader.vert.glsl assets/shaders/Shader.frag.glsl
 SHADER_SPV := assets/shaders/Shader.vert.spv assets/shaders/Shader.frag.spv
 
-.PHONY: all shaders client server clean
+.PHONY: all shaders client server clean debug release
 
 all: shaders client server
+
+debug: CXXFLAGS += $(DEBUG_FLAGS)
+debug: all
+
+release: all
 
 client: shaders $(CLIENT_TARGET)
 
