@@ -5,12 +5,12 @@ layout (location = 1) in vec4 a_color;
 layout (location = 0) out vec4 v_color;
 
 // Define a uniform block
-//layout(std140, binding = 0) uniform MatrixBlock {
-//    mat4 projection;
-//} matrices;
+layout(set = 1, binding = 0, std140) uniform MatrixBlock {
+    mat4 projection;
+} matrices;
 
 // Use it in your shader
 void main() {
-    gl_Position = vec4(a_position, 1.0);
+    gl_Position = matrices.projection * vec4(a_position, 1.0);
     v_color = a_color;
 }
