@@ -8,16 +8,16 @@ const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
 constexpr float Zfar = 50.0f;
 constexpr int RenderDistance = 0;
-const Vector3 Verts[6][4] = {{// Front (-Z)
-                              {-0.5, -0.5, -0.5},
-                              {0.5, -0.5, -0.5},
-                              {-0.5, 0.5, -0.5},
-                              {0.5, 0.5, -0.5}},
-                             {// Back (+Z)
+const Vector3 Verts[6][4] = {{// Front (+Z)
                               {0.5, -0.5, 0.5},
                               {-0.5, -0.5, 0.5},
                               {0.5, 0.5, 0.5},
                               {-0.5, 0.5, 0.5}},
+                             {// Back (-Z)
+                              {-0.5, -0.5, -0.5},
+                              {0.5, -0.5, -0.5},
+                              {-0.5, 0.5, -0.5},
+                              {0.5, 0.5, -0.5}},
                              {// Right (+X)
                               {0.5, -0.5, -0.5},
                               {0.5, -0.5, 0.5},
@@ -53,12 +53,13 @@ const Color Colors[3] = {
 };
 Matrix Perspective(float tanHalfFov, float aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
+  float f = 1 / FOV;
 
-  m(0, 0) = 1.0f / (aspect * tanHalfFov);
-  m(1, 1) = -1.0f / tanHalfFov; // Negative for Vulkan Y-flip
-  m(2, 2) = Far / (Near - Far);
-  m(2, 3) = -(Far * Near) / (Far - Near);
-  m(3, 2) = -1.0f;
+  m(0, 0) = f / aspect;
+  m(1, 1) = f;
+  m(2, 2) = (Near + Far) / (Near - Far);
+  m(3, 2) = 1.0f;
+  m(2, 3) = (2.0f * Near * Far) / (Near - Far);
   m(3, 3) = 0.0f;
 
   return m;
@@ -69,6 +70,7 @@ Matrix RotationX(float angleRad) {
   Matrix m = Matrix::Identity(4);
   float c = std::cos(angleRad);
   float s = std::sin(angleRad);
+  m(0, 0) = 1;
   m(1, 1) = c;
   m(1, 2) = -s;
   m(2, 1) = s;
@@ -82,6 +84,7 @@ Matrix RotationY(float angleRad) {
   float s = std::sin(angleRad);
   m(0, 0) = c;
   m(0, 2) = s;
+  m(1, 1) = 1;
   m(2, 0) = -s;
   m(2, 2) = c;
   return m;
@@ -98,10 +101,11 @@ Matrix RotationZ(float angleRad) {
   return m;
 }
 
-Matrix Rotation(float x, float y, float z) {
-  return RotationY(y) * RotationX(x) * RotationZ(z);
+Matrix Rotation(Vector3 Rotation) {
+  return RotationZ(Rotation.AngleToRadians().z) *
+         RotationY(Rotation.AngleToRadians().y);
+         RotationX(Rotation.AngleToRadians().x);
 }
-
 Matrix Translation(float x, float y, float z) {
   Matrix m = Matrix::Identity(4);
   m(0, 3) = x;
@@ -109,41 +113,16 @@ Matrix Translation(float x, float y, float z) {
   m(2, 3) = z;
   return m;
 }
-
-Matrix Scale(float x, float y, float z) {
-  Matrix m = Matrix::Identity(4);
-  m(0, 0) = x;
-  m(1, 1) = y;
-  m(2, 2) = z;
-  return m;
-}
 Matrix LookAt(const Vector3 &Rotation, const Vector3 &Position) {
-  // Build camera basis vectors
-  Vector3 f = Rotation.Forward().Normalized();
-  Vector3 r = Rotation.Right().Normalized();
-  Vector3 u = Rotation.Up().Normalized();
-
-  Matrix m = Matrix::Identity(4);
-
-  // Rotation part (transpose of camera basis)
-  m(0, 0) = r.x;
-  m(1, 0) = r.y;
-  m(2, 0) = r.z;
-
-  m(0, 1) = u.x;
-  m(1, 1) = u.y;
-  m(2, 1) = u.z;
-
-  m(0, 2) = -f.x; // Negative because camera looks down -Z
-  m(1, 2) = -f.y;
-  m(2, 2) = -f.z;
-
-  // Translation part (negative dot product with position)
-  m(0, 3) = -r.Dot(Position);
-  m(1, 3) = -u.Dot(Position);
-  m(2, 3) = f.Dot(Position);
-
-  return m;
+  Matrix rotation = RotationY(Rotation.y * -1) * RotationX(Rotation.x * -1);
+  Matrix viewRotation = Matrix::Identity(4);
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      viewRotation(i, j) = rotation(j, i);
+    }
+  }
+  Matrix translation = Translation(-Position.x, -Position.y, -Position.z);
+  return viewRotation * translation;
 }
 bool isFaceInFrustum(const Frustum &frustum, const Vector3 faceVerts[4]) {
   const Plane planes[6] = {frustum.nearFace,  frustum.farFace,
@@ -185,7 +164,7 @@ SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
   return point;
 }
 Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
-  Vector3 angleRadians = Angle;
+  Vector3 angleRadians = Angle.AngleToRadians();
   float cx = cos(angleRadians.x), sx = sin(angleRadians.x);
   float cy = cos(angleRadians.y), sy = sin(angleRadians.y);
   float cz = cos(angleRadians.z), sz = sin(angleRadians.z);
@@ -266,25 +245,11 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int NumChunk) {
 
   for (int i = 0; i < chunk.allFaces.size(); i++) {
     auto *face = &chunk.allFaces[i];
-    if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3)
-      continue;
+    // if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3)
+    // continue;
 
-    Vector3 Max, Min;
-    Vector3 local[4];
-    for (int j = 0; j < 4; j++) {
-      Vector3 worldFacePos = face->blockPos + Verts[face->side][j];
-      local[j] = rotate((worldFacePos - player.Position), player.Rotation);
-      if (j == 0) {
-        Max = Min = local[j];
-      } else {
-        Max = Max.Max(local[j]);
-        Min = Min.Min(local[j]);
-      }
-    }
-    if (Max.z < Znear)
-      continue;
-    if (!isFaceInFrustum(this->frustum, local))
-      continue;
+    // if (!isFaceInFrustum(this->frustum, local))
+    //   continue;
 
     Faces.push_back(
         {face->blockPos, face->side, face->blockID, 1, face->blockID == 5});
@@ -548,7 +513,9 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   color_target_info.texture = swap_texture;
 
   Player player = players[0];
-  Matrix model = Rotation(0, 0, 0);
+  Matrix model = Rotation({0, 0, 0});
+  // Matrix model = Rotation(player.Rotation.x, player.Rotation.y,
+  // player.Rotation.z);
 
   Matrix view = LookAt(player.Rotation, player.Position);
 
