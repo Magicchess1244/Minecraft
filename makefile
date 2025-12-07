@@ -1,11 +1,7 @@
 # Compiler and flags
 CXX := g++
-CXXFLAGS := -std=c++17 -O2 # -g3 -pthread -gdwarf-4 -fPIC -Wno-deprecated -pipe \
-            -fno-elide-type -fdiagnostics-show-template-tree -Wall -Werror \
-            -Wextra -Wpedantic -Wvla -Wextra-semi -Wnull-dereference \
-            -Wswitch-enum -fvar-tracking-assignments -Wduplicated-cond \
-            -Wduplicated-branches -rdynamic -Wsuggest-override
-LDFLAGS := -lSDL3 -lSDL3_ttf
+CXXFLAGS := -std=c++17 -O3 -pthread # Optimized build with threading support
+LDFLAGS := -lSDL3 -lSDL3_ttf -pthread
 
 # Include directories
 INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server
@@ -21,7 +17,7 @@ SRC_SERVER := src/server
 
 # Common source files
 COMMON_SRCS := $(SRC_COMMON)/Chunk.cpp $(SRC_COMMON)/ChunkManager.cpp \
-               $(SRC_COMMON)/PerlinNoise.cpp
+               $(SRC_COMMON)/PerlinNoise.cpp $(SRC_COMMON)/ChunkCache.cpp
 COMMON_OBJS := $(COMMON_SRCS:.cpp=.o)
 
 # Client source files

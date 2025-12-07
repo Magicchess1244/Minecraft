@@ -277,12 +277,28 @@ struct Slot {
 namespace std {
 template <> struct hash<Vector3> {
   std::size_t operator()(const Vector3 &v) const {
-    std::size_t h1 = std::hash<int>{}((int)v.x);
-    std::size_t h2 = std::hash<int>{}((int)v.y);
-    std::size_t h3 = std::hash<int>{}((int)v.z);
-    return h1 ^ (h2 << 1) ^ (h3 << 2);
+    // FNV-1a hash for better performance and distribution
+    constexpr std::size_t FNV_prime = 1099511628211ULL;
+    constexpr std::size_t FNV_offset = 14695981039346656037ULL;
+
+    std::size_t hash = FNV_offset;
+    hash ^= static_cast<std::size_t>(v.x);
+    hash *= FNV_prime;
+    hash ^= static_cast<std::size_t>(v.y);
+    hash *= FNV_prime;
+    hash ^= static_cast<std::size_t>(v.z);
+    hash *= FNV_prime;
+
+    return hash;
   }
 };
 } // namespace std
+
+// Debug logging macros - only enabled in debug builds
+#ifdef DEBUG_CHUNKS
+#define CHUNK_LOG(msg) std::cout << msg << std::endl
+#else
+#define CHUNK_LOG(msg) ((void)0)
+#endif
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }

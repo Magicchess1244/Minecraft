@@ -2,7 +2,7 @@
 #include "../../include/common/PerlinNoise.hpp"
 #include <ostream>
 
-constexpr float mouseSensitivity = 0.005f;
+constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 0.2f;
 
 void GameClient::set_seed() {

@@ -1,6 +1,8 @@
 #include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameClient.hpp"
 #include <SDL3/SDL_gpu.h>
+#include <iostream>
+#include <future>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 16000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 16000;
@@ -114,7 +116,7 @@ Matrix Translation(float x, float y, float z) {
   return m;
 }
 Matrix LookAt(const Vector3 &Rotation, const Vector3 &Position) {
-  Matrix rotation = RotationY(Rotation.y * -1) * RotationX(Rotation.x * -1);
+  Matrix rotation = RotationY(Rotation.AngleToRadians().y * -1) * RotationX(Rotation.AngleToRadians().x * -1);
   Matrix viewRotation = Matrix::Identity(4);
   for (int i = 0; i < 3; ++i) {
     for (int j = 0; j < 3; ++j) {
@@ -245,16 +247,14 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int NumChunk) {
 
   for (int i = 0; i < chunk.allFaces.size(); i++) {
     auto *face = &chunk.allFaces[i];
-    // if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3)
-    // continue;
+    if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3) continue;
 
-    // if (!isFaceInFrustum(this->frustum, local))
-    //   continue;
+    //if (!isFaceInFrustum(this->frustum, local))continue;
 
     Faces.push_back(
         {face->blockPos, face->side, face->blockID, 1, face->blockID == 5});
   }
-  std::cout << "faces: " << Faces.size() << std::endl;
+  //std::cout << "faces: " << Faces.size() << std::endl;
   Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
       this->GPU, mesh->VertextransferBuffer, false);
   Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
@@ -304,9 +304,7 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int NumChunk) {
   SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
 }
 void Renderer::DrawTerrain(Player &player) {
-  /*
-  std::vector<std::thread> threads;
-  std::cout << "Nigga" << std::endl;
+  std::vector<std::future<void>> tasks;
 
   int threadIndex = 0;
   Vector3 PlayerChunk = (player.Position / 32).Truncate();
@@ -315,24 +313,22 @@ void Renderer::DrawTerrain(Player &player) {
                   Vector3 Chunk = { (float)i, 0, (float)j };
                   Chunk += PlayerChunk;
 
-                  threads.emplace_back(
+                  tasks.push_back(std::async(std::launch::async,
                           &Renderer::RenderChunk,
                           this,
                           std::ref(chunkManager.get_chunk(Chunk)),
                           std::ref(player),
-                          0
+                          0)
                   );
-
                   threadIndex++;
           }
   }
 
-  for (auto& t : threads) {
-          if (t.joinable()) t.join();
+  for (auto& t : tasks) {
+      t.get();
   }
-  */
-  Vector3 Pos;
-  RenderChunk(std::ref(chunkManager.get_chunk(Pos)), std::ref(player), 0);
+  //Vector3 Pos = (player.Position / 32).Truncate();
+  //RenderChunk(std::ref(chunkManager.get_chunk(Pos)), std::ref(player), 0);
 }
 /*
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range,
@@ -513,9 +509,8 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   color_target_info.texture = swap_texture;
 
   Player player = players[0];
+  //std::cout << "Camera Rotation: " << player.Rotation.x << "; " << player.Rotation.y << "; " << player.Rotation.z << "; ";
   Matrix model = Rotation({0, 0, 0});
-  // Matrix model = Rotation(player.Rotation.x, player.Rotation.y,
-  // player.Rotation.z);
 
   Matrix view = LookAt(player.Rotation, player.Position);
 
@@ -525,7 +520,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   // Final MVP matrix
   Matrix mvp = proj * view * model;
 
-  mvp.print();
+  //mvp.print();
   SDL_PushGPUVertexUniformData(this->cmdRender, 0,
                                mvp.getColumnMajorData().data(),
                                sizeof(float) * mvp.getColumnMajorData().size());

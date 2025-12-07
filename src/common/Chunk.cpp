@@ -1,108 +1,147 @@
 #include "../../include/common/Chunck.hpp"
 #include "../../include/common/PerlinNoise.hpp"
+#include <fstream>
+#include <future>
 
 const Vector3 Direction[6] = {
-	{ 0, 0, -1 }, // Front
-	{ 0, 0, 1 },  // Back
-	{ 1, 0, 0 },  // Right
-	{ -1, 0, 0 }, // Left
-	{ 0, 1, 0 },  // Top
-	{ 0, -1, 0 }   // Bottom
+    {0, 0, -1}, // Front
+    {0, 0, 1},  // Back
+    {1, 0, 0},  // Right
+    {-1, 0, 0}, // Left
+    {0, 1, 0},  // Top
+    {0, -1, 0}  // Bottom
 };
 
-void ChunkPrefab::GenerateChunk()
-{
-	this->GenerateChunkSurface();
-	//this->GenerateChunkCaves();
-	this->VisableFaces();
+// Serialization implementation
+bool ChunkPrefab::saveToFile(const std::string &path) {
+  std::ofstream file(path, std::ios::binary);
+  if (!file)
+    return false;
+
+  file.write(reinterpret_cast<const char *>(&xPos), sizeof(xPos));
+  file.write(reinterpret_cast<const char *>(&zPos), sizeof(zPos));
+  file.write(reinterpret_cast<const char *>(blocks.data()),
+             blocks.size() * sizeof(int));
+
+  return file.good();
 }
 
-void ChunkPrefab::GenerateChunkSurface()
-{
-	for (int x = 0; x < this->xSize; x++) {
-		for (int z = 0; z < this->zSize; z++) {
-			int Height = (int)(35 );//+ ( PerlinNoise({ (float)xPos + x, 0, (float)zPos + z }, 4, 0.1f) * 25));
-			int ActualHeight = Height;
-			if (Height < 35) {
-				Height = 35;
-			}
+bool ChunkPrefab::loadFromFile(const std::string &path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file)
+    return false;
 
-			for (int y = Height; y > -1; y--) {
-				Vector3 BlockPos = { (float)x, (float)y, (float)z };
-				if (y <= ActualHeight) {
-					Blocks[BlockPos] = 3;
-					/*
-					for (int i = 0; i < BlockNum; i++)
-					{
-						if (BlockDef[i].Top && Height - y >= BlockDef[i].SpawningLayer[0] && Height - y <= BlockDef[i].SpawningLayer[1]) {
-							Blocks[{x, y, z}] = BlockDef[i].BlockId;
-							break;
-						}
-						else if (!BlockDef[i].Top && y >= BlockDef[i].SpawningLayer[0] && y <= BlockDef[i].SpawningLayer[1])
-						{
-							Blocks[{x, y, z}] = BlockDef[i].BlockId;
-							break;
-						}
-					}
-					*/
-				}
-				else {
-					Blocks[BlockPos] = 5;
-				}
-			}
-		}
-	}
+  file.read(reinterpret_cast<char *>(&xPos), sizeof(xPos));
+  file.read(reinterpret_cast<char *>(&zPos), sizeof(zPos));
+  file.read(reinterpret_cast<char *>(blocks.data()),
+            blocks.size() * sizeof(int));
+
+  isDirty = false;
+  return file.good();
 }
 
-void ChunkPrefab::GenerateChunkCaves()
-{
+void ChunkPrefab::GenerateChunk() {
+  this->GenerateChunkSurface();
+  // this->GenerateChunkCaves();
+  this->VisableFaces();
+  this->isDirty = true; // Mark for saving
+}
 
-	for (int x = 0; x < this->xSize; x++) {
-		for (int z = 0; z < this->xSize; z++) {
-			for (int y = 2; y < this->ySize; y++)
-			{
-				Vector3 BlockPos = { (float)x, (float)y, (float)z };
-				auto it = Blocks.find(BlockPos);
-				if (it == Blocks.end()) continue;
-				int blockID = it->second;
+void ChunkPrefab::GenerateCollum(int x, int z) {
+  int Height = (int)(35); // + ( PerlinNoise({ (float)xPos + x, 0, (float)zPos +
+                          // z }, 4, 0.1f) * 25));
+  int ActualHeight = Height;
+  if (Height < 35) {
+    Height = 35;
+  }
 
-				float Hole = PerlinNoise({ (float)xPos + x, (float)y , (float) z}, 3, 0.1f);
+  for (int y = Height; y > -1; y--) {
+    if (y <= ActualHeight) {
+      getBlock(x, y, z) = 3; // Stone
+    } else {
+      getBlock(x, y, z) = 5; // Water
+    }
+  }
+}
 
-				bool CheeseCave = Hole <= -0.9f || Hole >= 0.9f;
-				bool NodleCave = (0.04f > Hole && Hole > -0.04f);
+void ChunkPrefab::GenerateChunkSurface() {
+  // Multi-threaded column generation for massive speedup
+  std::vector<std::future<void>> tasks;
+  tasks.reserve(xSize * zSize);
 
-				if ((CheeseCave || NodleCave) && (blockID != 4 && blockID != 5)) {
-					this->Blocks.erase(BlockPos);
-				}
-			}
-		}
-	}
+  for (int x = 0; x < xSize; x++) {
+    for (int z = 0; z < zSize; z++) {
+      // Launch async tasks for parallel generation
+      tasks.push_back(std::async(std::launch::async,
+                                 &ChunkPrefab::GenerateCollum, this, x, z));
+    }
+  }
+
+  // Wait for all columns to finish
+  for (auto &task : tasks) {
+    task.get();
+  }
+}
+
+void ChunkPrefab::GenerateChunkCaves() {
+  for (int x = 0; x < this->xSize; x++) {
+    for (int z = 0; z < this->zSize; z++) {
+      for (int y = 2; y < this->ySize; y++) {
+        int blockID = getBlock(x, y, z);
+        if (blockID == 0)
+          continue; // Skip air
+
+        float Hole =
+            PerlinNoise({(float)xPos + x, (float)y, (float)zPos + z}, 3, 0.1f);
+
+        bool CheeseCave = Hole <= -0.9f || Hole >= 0.9f;
+        bool NodleCave = (0.04f > Hole && Hole > -0.04f);
+
+        if ((CheeseCave || NodleCave) && (blockID != 4 && blockID != 5)) {
+          getBlock(x, y, z) = 0; // Remove block (make it air)
+        }
+      }
+    }
+  }
 }
 
 void ChunkPrefab::VisableFaces() {
-	this->allFaces.reserve(6000);
+  this->allFaces.reserve(6000);
 
-	for (int y = 0; y < this->ySize; y++) {
-		for (int x = 0; x < this->xSize; x++) {
-			for (int z = 0; z < this->zSize; z++) {
-				Vector3 blockPos = { (float)x, (float)y, (float)z };
+  for (int y = 0; y < this->ySize; y++) {
+    for (int x = 0; x < this->xSize; x++) {
+      for (int z = 0; z < this->zSize; z++) {
+        int blockID = getBlock(x, y, z);
 
-				auto it = Blocks.find(blockPos);
-				if (it == Blocks.end()) continue;
+        // Skip air blocks - major optimization
+        if (blockID == 0)
+          continue;
 
-				int blockID = it->second;
+        // Check all 6 faces
+        for (int i = 0; i < 6; i++) {
+          int nx = x + (int)Direction[i].x;
+          int ny = y + (int)Direction[i].y;
+          int nz = z + (int)Direction[i].z;
 
-				for (int i = 0; i < 6; i++) {
-					Vector3 NextBlockPos = blockPos + Direction[i];
-					auto blockIt = Blocks.find(NextBlockPos);
+          // Check if neighbor is outside chunk or is air/transparent
+          bool shouldDraw = false;
+          if (!isValidPos(nx, ny, nz)) {
+            shouldDraw = true; // Edge of chunk
+          } else {
+            int neighborID = getBlock(nx, ny, nz);
+            if (neighborID == 0 || (blockID != 5 && neighborID == 5)) {
+              shouldDraw = true; // Neighbor is air or water
+            }
+          }
 
-					if (blockIt == Blocks.end() || (blockID != 5 && blockIt->second == 5)) {
-						Vector3 ChunkWorldPos = { (float)this->xPos, 0, (float)this->zPos };
-						Vector3 world = blockPos + ChunkWorldPos;
-						this->allFaces.push_back({ world, i, blockID, 0 });
-					}
-				}
-			}
-		}
-	}
+          if (shouldDraw) {
+            Vector3 ChunkWorldPos = {(float)this->xPos, 0, (float)this->zPos};
+            Vector3 blockPos = {(float)x, (float)y, (float)z};
+            Vector3 world = blockPos + ChunkWorldPos;
+            this->allFaces.push_back({world, i, blockID, 0});
+          }
+        }
+      }
+    }
+  }
 }
