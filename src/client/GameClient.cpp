@@ -135,8 +135,11 @@ void PlayerMovement(Player &player, int &inventorySlot) {
     float deltaTime = 1.0f;
     player.Position.y += playerDirection.y * playerSpeed * deltaTime;
 
-    Vector3 Dir = player.Rotation.Forward() * playerDirection.z +
-                  player.Rotation.Right() * playerDirection.x;
+    Vector3 Rot = player.Rotation;
+    Rot.x = 0;
+
+    Vector3 Dir = Rot.Forward() * playerDirection.z +
+                  Rot.Right() * playerDirection.x;
 
     Dir = Dir.Normalized();
 

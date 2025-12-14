@@ -2,14 +2,13 @@
 #include "../../include/client/GameClient.hpp"
 #include <SDL3/SDL_gpu.h>
 #include <iostream>
-#include <future>
 
-constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 16000;
-constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 16000;
+constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
+constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
 constexpr float Zfar = 50.0f;
-constexpr int RenderDistance = 0;
+constexpr int RenderDistance = 1;
 const Vector3 Verts[6][4] = {{// Front (+Z)
                               {0.5, -0.5, 0.5},
                               {-0.5, -0.5, 0.5},
@@ -106,7 +105,7 @@ Matrix RotationZ(float angleRad) {
 Matrix Rotation(Vector3 Rotation) {
   return RotationZ(Rotation.AngleToRadians().z) *
          RotationY(Rotation.AngleToRadians().y);
-         RotationX(Rotation.AngleToRadians().x);
+  RotationX(Rotation.AngleToRadians().x);
 }
 Matrix Translation(float x, float y, float z) {
   Matrix m = Matrix::Identity(4);
@@ -116,7 +115,8 @@ Matrix Translation(float x, float y, float z) {
   return m;
 }
 Matrix LookAt(const Vector3 &Rotation, const Vector3 &Position) {
-  Matrix rotation = RotationY(Rotation.AngleToRadians().y * -1) * RotationX(Rotation.AngleToRadians().x * -1);
+  Matrix rotation = RotationY(Rotation.AngleToRadians().y * -1) *
+                    RotationX(Rotation.AngleToRadians().x * -1);
   Matrix viewRotation = Matrix::Identity(4);
   for (int i = 0; i < 3; ++i) {
     for (int j = 0; j < 3; ++j) {
@@ -238,97 +238,146 @@ void Renderer::DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
 
   mesh->faces++;
 }
-void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int NumChunk) {
-  auto *mesh = &this->Terrain[NumChunk];
-  mesh->faces = 0;
+void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
+                           int bufferIndex, int bufferOffset) {
+  auto *mesh = &this->Terrain[bufferIndex];
+
+  // Calculate offset within the buffer for this chunk
+  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
+  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
+  const int vertexElementOffset =
+      bufferOffset * 4 * 10000; // Offset in number of vertices
+  const int indexElementOffset =
+      bufferOffset * 6 * 10000; // Offset in number of indices
+
+  int localFaceCount = 0; // Track faces for this chunk only
 
   std::vector<DrawnFace> Faces;
-  int index = 0;
 
   for (int i = 0; i < chunk.allFaces.size(); i++) {
     auto *face = &chunk.allFaces[i];
-    if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3) continue;
-
-    //if (!isFaceInFrustum(this->frustum, local))continue;
+    if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3)
+      continue;
 
     Faces.push_back(
         {face->blockPos, face->side, face->blockID, 1, face->blockID == 5});
   }
-  //std::cout << "faces: " << Faces.size() << std::endl;
-  Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
-      this->GPU, mesh->VertextransferBuffer, false);
-  Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
-      this->GPU, mesh->IndextransferBuffer, false);
+
+  // Get pre-mapped buffers from mesh (mapped in DrawTerrain)
+  Vertex *Vertexdata = mesh->mappedVertexData;
+  Uint32 *Indexdata = mesh->mappedIndexData;
+
+  // Offset pointers to the correct position in the buffer
+  Vertex *ChunkVertexdata = Vertexdata + vertexElementOffset;
+  Uint32 *ChunkIndexdata = Indexdata + indexElementOffset;
 
   for (auto &Face : Faces) {
-    DrawFace(player, Face.blockPos, Face.blockID, Face.side, mesh, Vertexdata,
-             Indexdata);
+    const Vector3 *verts = Verts[Face.side];
+    const int baseVertex = localFaceCount * 4;
+    const int baseIndex = localFaceCount * 6;
+
+    for (int i = 0; i < 4; i++) {
+      Vector3 worldPos = (verts[i] + Face.blockPos);
+
+      Vector3 Color = BlockDef[Face.blockID].color.ToFloat() -
+                      Colors[(int)(Face.side / 2)].ToFloat();
+      Vertex vertex = {worldPos, Color};
+      ChunkVertexdata[baseVertex + i] = vertex;
+    }
+
+    // Indices are relative to this chunk's vertex offset
+    ChunkIndexdata[baseIndex] = baseVertex + 0;
+    ChunkIndexdata[baseIndex + 1] = baseVertex + 1;
+    ChunkIndexdata[baseIndex + 2] = baseVertex + 2;
+
+    ChunkIndexdata[baseIndex + 3] = baseVertex + 2;
+    ChunkIndexdata[baseIndex + 4] = baseVertex + 1;
+    ChunkIndexdata[baseIndex + 5] = baseVertex + 3;
+
+    localFaceCount++;
   }
 
-  // DrawTestTriangle(mesh, Vertexdata, Indexdata); Testing
-  // DrawFace(player, {0, 0, 0}, 0, 1, mesh, Vertexdata, Indexdata);
-  //---------------Vertex-----------------
-
-  SDL_UnmapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
-
-  // where is the data
-  SDL_GPUTransferBufferLocation Vertexlocation{};
-  Vertexlocation.transfer_buffer = mesh->VertextransferBuffer;
-  Vertexlocation.offset = 0; // start from the beginning
-
-  // where to upload the data
-  SDL_GPUBufferRegion Vertexregion{};
-  Vertexregion.buffer = mesh->VertexBuffer.buffer;
-  Vertexregion.size = vertexSize;
-  Vertexregion.offset = 0;
-
-  // upload the data
-  SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, true);
-
-  //---------------Index-----------------
-
-  SDL_UnmapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer);
-
-  // where is the data
-  SDL_GPUTransferBufferLocation Indexlocation{};
-  Indexlocation.transfer_buffer = mesh->IndextransferBuffer;
-  Indexlocation.offset = 0; // start from the beginning
-
-  // where to upload the data
-  SDL_GPUBufferRegion Indexregion{};
-  Indexregion.buffer = mesh->IndexBuffer.buffer;
-  Indexregion.size = indexSize;
-  Indexregion.offset = 0;
-
-  // upload the data
-  SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
+  // Store face count for this specific chunk in the buffer
+  if (mesh->chunkFaceCounts.size() <= bufferOffset) {
+    mesh->chunkFaceCounts.resize(bufferOffset + 1, 0);
+  }
+  mesh->chunkFaceCounts[bufferOffset] = localFaceCount;
 }
 void Renderer::DrawTerrain(Player &player) {
-  std::vector<std::future<void>> tasks;
-
-  int threadIndex = 0;
+  // Process chunks by buffer to avoid repeated map/unmap
+  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
   Vector3 PlayerChunk = (player.Position / 32).Truncate();
-  for (int i = -RenderDistance; i <= RenderDistance; i++) {
-          for (int j = -RenderDistance; j <= RenderDistance; j++) {
-                  Vector3 Chunk = { (float)i, 0, (float)j };
-                  Chunk += PlayerChunk;
 
-                  tasks.push_back(std::async(std::launch::async,
-                          &Renderer::RenderChunk,
-                          this,
-                          std::ref(chunkManager.get_chunk(Chunk)),
-                          std::ref(player),
-                          0)
-                  );
-                  threadIndex++;
-          }
-  }
+  // Group chunks by buffer
+  for (int bufferIdx = 0; bufferIdx < this->totalBuffers; bufferIdx++) {
+    auto *mesh = &this->Terrain[bufferIdx];
 
-  for (auto& t : tasks) {
-      t.get();
+    // Map buffers once for this buffer
+    Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
+        this->GPU, mesh->VertextransferBuffer, false);
+    Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
+        this->GPU, mesh->IndextransferBuffer, false);
+
+    // Store pointers in mesh for RenderChunk to use
+    mesh->mappedVertexData = Vertexdata;
+    mesh->mappedIndexData = Indexdata;
+
+    // Reset face counts for this buffer
+    mesh->chunkFaceCounts.clear();
+    mesh->chunkFaceCounts.resize(
+        chunksPerBuffer,
+        0); // Pre-allocate for all possible chunks in this buffer
+
+    // Process all chunks that belong to this buffer
+    int startChunkIdx = bufferIdx * chunksPerBuffer;
+    int endChunkIdx = std::min(startChunkIdx + chunksPerBuffer, totalChunks);
+
+    for (int chunkIdx = startChunkIdx; chunkIdx < endChunkIdx; chunkIdx++) {
+      // Calculate chunk position
+      int i_local = (chunkIdx / (RenderDistance * 2 + 1)) - RenderDistance;
+      int j_local = (chunkIdx % (RenderDistance * 2 + 1)) - RenderDistance;
+
+      Vector3 Chunk = {(float)i_local, 0, (float)j_local};
+      Chunk += PlayerChunk;
+
+      int bufferOffset = chunkIdx % chunksPerBuffer;
+      RenderChunk(chunkManager.get_chunk(Chunk), player, chunkIdx, bufferIdx,
+                  bufferOffset);
+    }
+
+    // Unmap and upload once for this buffer
+    SDL_UnmapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer);
+
+    // Upload vertex data
+    constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
+    constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
+    const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
+    const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
+
+    SDL_GPUTransferBufferLocation Vertexlocation{};
+    Vertexlocation.transfer_buffer = mesh->VertextransferBuffer;
+    Vertexlocation.offset = 0;
+
+    SDL_GPUBufferRegion Vertexregion{};
+    Vertexregion.buffer = mesh->VertexBuffer.buffer;
+    Vertexregion.size = packedVertexSize;
+    Vertexregion.offset = 0;
+
+    SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, true);
+
+    // Upload index data
+    SDL_GPUTransferBufferLocation Indexlocation{};
+    Indexlocation.transfer_buffer = mesh->IndextransferBuffer;
+    Indexlocation.offset = 0;
+
+    SDL_GPUBufferRegion Indexregion{};
+    Indexregion.buffer = mesh->IndexBuffer.buffer;
+    Indexregion.size = packedIndexSize;
+    Indexregion.offset = 0;
+
+    SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
   }
-  //Vector3 Pos = (player.Position / 32).Truncate();
-  //RenderChunk(std::ref(chunkManager.get_chunk(Pos)), std::ref(player), 0);
 }
 /*
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range,
@@ -509,7 +558,6 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   color_target_info.texture = swap_texture;
 
   Player player = players[0];
-  //std::cout << "Camera Rotation: " << player.Rotation.x << "; " << player.Rotation.y << "; " << player.Rotation.z << "; ";
   Matrix model = Rotation({0, 0, 0});
 
   Matrix view = LookAt(player.Rotation, player.Position);
@@ -520,7 +568,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   // Final MVP matrix
   Matrix mvp = proj * view * model;
 
-  //mvp.print();
+  // mvp.print();
   SDL_PushGPUVertexUniformData(this->cmdRender, 0,
                                mvp.getColumnMajorData().data(),
                                sizeof(float) * mvp.getColumnMajorData().size());
@@ -529,18 +577,29 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
       SDL_BeginGPURenderPass(this->cmdRender, &color_target_info, 1, NULL);
   SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
 
-  for (int i = 0; i < this->Terrain.size(); i++) {
-    auto *mesh = &this->Terrain[i];
-    // std::cout << "Mesh pointer: " << mesh << "\tVertexBuffer pointer: " <<
-    // &mesh->VertexBuffer << "\t Index Buffer pointer: " << &mesh->IndexBuffer
-    // << std::endl; std::cout << "Pass pointer: " << this->pass << "\t Index
-    // size: " << SDL_GPU_INDEXELEMENTSIZE_32BIT << "\t Amount of faces: " <<
-    // mesh->faces << std::endl; std::cout << "Terrain size: " <<
-    // this->Terrain.size() << "Drawing Chunk[" << i << "]\n" << std::endl;
+  // Draw each buffer's chunks
+  for (int bufferIdx = 0; bufferIdx < this->Terrain.size(); bufferIdx++) {
+    auto *mesh = &this->Terrain[bufferIdx];
     SDL_BindGPUVertexBuffers(this->pass, 0, &mesh->VertexBuffer, 1);
     SDL_BindGPUIndexBuffer(this->pass, &mesh->IndexBuffer,
                            SDL_GPU_INDEXELEMENTSIZE_32BIT);
-    SDL_DrawGPUIndexedPrimitives(this->pass, mesh->faces * 6, 1, 0, 0, 0);
+
+    // Draw each chunk in this buffer
+    for (int chunkOffset = 0; chunkOffset < mesh->chunkFaceCounts.size();
+         chunkOffset++) {
+      int faceCount = mesh->chunkFaceCounts[chunkOffset];
+      if (faceCount == 0)
+        continue; // Skip empty chunks
+
+      // Calculate offsets for this chunk within the buffer
+      int vertexOffset =
+          chunkOffset * 4 * 10000; // 4 vertices per face, max 10000 faces
+      int indexOffset =
+          chunkOffset * 6 * 10000; // 6 indices per face, max 10000 faces
+
+      SDL_DrawGPUIndexedPrimitives(this->pass, faceCount * 6, 1, indexOffset,
+                                   vertexOffset, 0);
+    }
   }
 
   SDL_EndGPURenderPass(this->pass);
@@ -667,43 +726,52 @@ Renderer::Renderer(GameClient &gameClient)
   this->event = {};
   SDL_SetWindowRelativeMouseMode(window, true);
 
-  // Fix
-  // float aspect = (float)this->Width / (float)this->Height;
-  // this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear,
-  // Zfar);
+  // Calculate buffer packing
+  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
+  this->chunksPerBuffer = 3; // Pack 3 chunks per buffer
+  this->totalBuffers =
+      (totalChunks + chunksPerBuffer - 1) / chunksPerBuffer; // Ceiling division
 
-  std::cout << "Vertex size: " << vertexSize << "\t Index Size: " << indexSize
-            << std::endl;
-  for (int i = 0; i < (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
-       i++) {
+  // Each buffer now holds multiple chunks
+  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
+  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
+  const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
+  const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
+
+  std::cout << "Vertex size per buffer: " << packedVertexSize
+            << "\t Index Size per buffer: " << packedIndexSize
+            << "\n Total buffers: " << this->totalBuffers
+            << "\t Chunks per buffer: " << this->chunksPerBuffer << std::endl;
+
+  for (int i = 0; i < this->totalBuffers; i++) {
     Mesh mesh{};
     SDL_GPUBufferCreateInfo vertexInfo = {};
-    vertexInfo.size = vertexSize;
+    vertexInfo.size = packedVertexSize;
     vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
     mesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
     mesh.VertexBuffer.offset = 0;
 
     SDL_GPUBufferCreateInfo indexInfo = {};
-    indexInfo.size = indexSize;
+    indexInfo.size = packedIndexSize;
     indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
     mesh.IndexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
     mesh.IndexBuffer.offset = 0;
 
     SDL_GPUTransferBufferCreateInfo VertextransferInfo{};
-    VertextransferInfo.size = vertexSize;
+    VertextransferInfo.size = packedVertexSize;
     VertextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     mesh.VertextransferBuffer =
         SDL_CreateGPUTransferBuffer(this->GPU, &VertextransferInfo);
 
     SDL_GPUTransferBufferCreateInfo IndextransferInfo{};
-    IndextransferInfo.size = indexSize;
+    IndextransferInfo.size = packedIndexSize;
     IndextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     mesh.IndextransferBuffer =
         SDL_CreateGPUTransferBuffer(this->GPU, &IndextransferInfo);
 
     this->Terrain.push_back(mesh);
   }
-
+  std::cout << "shaders";
   // load the vertex shader code
 
   SDL_GPUShader *vertex_shader =
@@ -762,7 +830,7 @@ Renderer::Renderer(GameClient &gameClient)
   vertex_attributes[1].offset = sizeof(float) * 3;
 
   pipeline_desc.vertex_input_state.num_vertex_buffers =
-      (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
+      1; // We only bind one buffer at a time
   pipeline_desc.vertex_input_state.vertex_buffer_descriptions =
       &vertex_buffer_desc;
   pipeline_desc.vertex_input_state.num_vertex_attributes = 2;
