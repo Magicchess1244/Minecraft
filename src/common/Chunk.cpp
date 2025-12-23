@@ -114,8 +114,7 @@ void ChunkPrefab::VisableFaces() {
         int blockID = getBlock(x, y, z);
 
         // Skip air blocks - major optimization
-        if (blockID == 0)
-          continue;
+        if (blockID == 0) continue;
 
         // Check all 6 faces
         for (int i = 0; i < 6; i++) {

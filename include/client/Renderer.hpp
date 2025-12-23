@@ -98,6 +98,106 @@ struct Mesh {
   Uint32 *mappedIndexData = nullptr;
 };
 class GameClient;
+class SpiralIterator {
+private:
+    int size;
+    std::vector<std::pair<int, int>> path;
+    int currentIndex;
+    
+    void generatePath() {
+        path.clear();
+        
+        int halfSize = size / 2;
+        int x = -halfSize;
+        int y = -halfSize;
+        
+        path.push_back({x, y});
+        
+        int n = size - 1;
+        
+        // Right n steps
+        for (int i = 0; i < n; i++) {
+            x++;
+            path.push_back({x, y});
+        }
+        
+        // Up n steps
+        for (int i = 0; i < n; i++) {
+            y++;
+            path.push_back({x, y});
+        }
+        
+        // Left n steps
+        for (int i = 0; i < n; i++) {
+            x--;
+            path.push_back({x, y});
+        }
+        
+        // Down n-1 steps
+        for (int i = 0; i < n - 1; i++) {
+            y--;
+            path.push_back({x, y});
+        }
+        
+        // Continue spiraling inward
+        n -= 2;
+        
+        while (n > 0) {
+            // Right n steps
+            for (int i = 0; i < n; i++) {
+                x++;
+                path.push_back({x, y});
+            }
+            
+            // Up n steps
+            for (int i = 0; i < n; i++) {
+                y++;
+                path.push_back({x, y});
+            }
+            
+            // Left n steps
+            for (int i = 0; i < n; i++) {
+                x--;
+                path.push_back({x, y});
+            }
+            
+            // Down n steps
+            for (int i = 0; i < n; i++) {
+                y--;
+                path.push_back({x, y});
+            }
+            
+            n -= 2;
+        }
+        
+        // Final step to center if needed
+        if (path.size() < size * size) {
+            x++;
+            path.push_back({x, y});
+        }
+    }
+    
+public:
+    SpiralIterator(int gridSize) : size(gridSize), currentIndex(0) {
+        generatePath();
+    }
+    
+    void reset() {
+        currentIndex = 0;
+    }
+    
+    std::pair<int, int> next() {
+        if (currentIndex < path.size()) {
+            return path[currentIndex++];
+        }
+        return {0, 0};
+    }
+    
+    bool hasNext() {
+        return currentIndex < path.size();
+    }
+};
+
 
 class Renderer {
 private:

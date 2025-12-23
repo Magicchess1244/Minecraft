@@ -2,13 +2,14 @@
 #include "../../include/client/GameClient.hpp"
 #include <SDL3/SDL_gpu.h>
 #include <iostream>
+#include <ostream>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
-constexpr float Zfar = 50.0f;
-constexpr int RenderDistance = 1;
+constexpr float Zfar = 100.0f;
+constexpr int RenderDistance = 0;
 const Vector3 Verts[6][4] = {{// Front (+Z)
                               {0.5, -0.5, 0.5},
                               {-0.5, -0.5, 0.5},
@@ -256,12 +257,32 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
 
   for (int i = 0; i < chunk.allFaces.size(); i++) {
     auto *face = &chunk.allFaces[i];
-    if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3)
-      continue;
+
+    // Backface culling
+    if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3) continue;
+
+    // Frustum culling - check if face is inside frustum
+    const Vector3 *verts = Verts[face->side];
+    Vector3 faceVerts[4];
+    for (int j = 0; j < 4; j++) {
+      faceVerts[j] = verts[j] + face->blockPos;
+      faceVerts[j] = rotate(faceVerts[j] - player.Position, player.Rotation);
+    }
+
+    if (!isFaceInFrustum(this->frustum, faceVerts)) continue;
 
     Faces.push_back(
         {face->blockPos, face->side, face->blockID, 1, face->blockID == 5});
   }
+
+  // Sort faces back-to-front based on distance from camera
+  std::sort(Faces.begin(), Faces.end(),
+            [&player](const DrawnFace &a, const DrawnFace &b) {
+              float distA = (a.blockPos - player.Position).LengthSquared();
+              float distB = (b.blockPos - player.Position).LengthSquared();
+              return distA >
+                     distB; // Sort from farthest to nearest (back-to-front)
+            });
 
   // Get pre-mapped buffers from mesh (mapped in DrawTerrain)
   Vertex *Vertexdata = mesh->mappedVertexData;
@@ -306,6 +327,7 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
 void Renderer::DrawTerrain(Player &player) {
   // Process chunks by buffer to avoid repeated map/unmap
   int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
+  SpiralIterator spiral(RenderDistance * 2 + 1);
   Vector3 PlayerChunk = (player.Position / 32).Truncate();
 
   // Group chunks by buffer
@@ -334,10 +356,8 @@ void Renderer::DrawTerrain(Player &player) {
 
     for (int chunkIdx = startChunkIdx; chunkIdx < endChunkIdx; chunkIdx++) {
       // Calculate chunk position
-      int i_local = (chunkIdx / (RenderDistance * 2 + 1)) - RenderDistance;
-      int j_local = (chunkIdx % (RenderDistance * 2 + 1)) - RenderDistance;
-
-      Vector3 Chunk = {(float)i_local, 0, (float)j_local};
+      std::pair<int,int> Pos = spiral.next();
+      Vector3 Chunk = {(float)Pos.first, 0, (float)Pos.second};
       Chunk += PlayerChunk;
 
       int bufferOffset = chunkIdx % chunksPerBuffer;
@@ -568,7 +588,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   // Final MVP matrix
   Matrix mvp = proj * view * model;
 
-  // mvp.print();
+  // Push MVP matrix to GPU
   SDL_PushGPUVertexUniformData(this->cmdRender, 0,
                                mvp.getColumnMajorData().data(),
                                sizeof(float) * mvp.getColumnMajorData().size());

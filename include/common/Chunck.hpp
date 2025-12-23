@@ -24,7 +24,7 @@ public:
   int zPos = -1;
 
   // Flat 3D array for much faster access (10-100x faster than unordered_map)
-  std::array<int, totalBlocks> blocks;
+  std::array<int, totalBlocks> blocks{};
   std::vector<DrawnFace> allFaces;
 
   bool isDirty = false; // Track if chunk needs saving
