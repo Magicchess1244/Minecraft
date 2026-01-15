@@ -311,7 +311,7 @@ void Renderer::DrawTerrain(Player &player) {
   Vertexregion.size = singleChunkVertexSize;
   Vertexregion.offset = 0;
 
-  SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, true);
+  SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Vertexlocation, &Vertexregion, true);
 
   // Upload index data
   SDL_GPUTransferBufferLocation Indexlocation{};
@@ -323,7 +323,7 @@ void Renderer::DrawTerrain(Player &player) {
   Indexregion.size = singleChunkIndexSize;
   Indexregion.offset = 0;
 
-  SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
+  SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Indexlocation, &Indexregion, true);
 }
 /*
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range,
@@ -464,27 +464,27 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
     }
   }
 
-  this->cmdCopy = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  this->runTimeRenderVars.cmdCopy = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
-  this->copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
+  this->runTimeRenderVars.copyPass = SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdCopy);
   DrawTerrain(players[0]);
 
-  SDL_EndGPUCopyPass(this->copyPass);
-  if (!SDL_SubmitGPUCommandBuffer(this->cmdCopy)) {
+  SDL_EndGPUCopyPass(this->runTimeRenderVars.copyPass);
+  if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdCopy)) {
     std::cout << "Heil la memoria de Puigdemont\n";
     return;
   }
 
-  this->cmdRender = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  this->runTimeRenderVars.cmdRender = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
   SDL_GPUTexture *swap_texture;
-  SDL_WaitAndAcquireGPUSwapchainTexture(this->cmdRender, this->basicInitVars.window,
+  SDL_WaitAndAcquireGPUSwapchainTexture(this->runTimeRenderVars.cmdRender, this->basicInitVars.window,
                                         &swap_texture, &this->basicInitVars.Width,
                                         &this->basicInitVars.Height);
 
   if (swap_texture == NULL) {
     std::cout << "La swap_texture no s'ha fet be\n";
-    SDL_SubmitGPUCommandBuffer(this->cmdRender);
+    SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender);
     return; // CRITICAL: Must return here!
   }
   SDL_GPUColorTargetInfo color_target_info;
@@ -517,30 +517,30 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   Matrix mvp = proj * view * model;
 
   // mvp.print();
-  SDL_PushGPUVertexUniformData(this->cmdRender, 0,
+  SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 0,
                                mvp.getColumnMajorData().data(),
                                sizeof(float) * mvp.getColumnMajorData().size());
 
-  this->pass = SDL_BeginGPURenderPass(this->cmdRender, &color_target_info, 1,
+  this->runTimeRenderVars.pass = SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender, &color_target_info, 1,
                                       &depth_target_info);
-  SDL_BindGPUGraphicsPipeline(this->pass, this->pipelineInitVars.graphicsPipeline);
+  SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass, this->pipelineInitVars.graphicsPipeline);
 
   // Draw the tesseract from first mesh
   auto *mesh = &this->Terrain[0];
-  SDL_BindGPUVertexBuffers(this->pass, 0, &mesh->VertexBuffer, 1);
-  SDL_BindGPUIndexBuffer(this->pass, &mesh->IndexBuffer,
+  SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &mesh->VertexBuffer, 1);
+  SDL_BindGPUIndexBuffer(this->runTimeRenderVars.pass, &mesh->IndexBuffer,
                          SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
   if (mesh->chunkFaceCounts.size() > 0) {
     int faceCount = mesh->chunkFaceCounts[0];
     if (faceCount > 0) {
-      SDL_DrawGPUIndexedPrimitives(this->pass, faceCount * 6, 1, 0, 0, 0);
+      SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, faceCount * 6, 1, 0, 0, 0);
     }
   }
 
-  SDL_EndGPURenderPass(this->pass);
+  SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
 
-  if (!SDL_SubmitGPUCommandBuffer(this->cmdRender)) {
+  if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
     std::cout << "Failed to submit render command buffer\n";
     return;
   }
