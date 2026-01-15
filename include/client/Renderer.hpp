@@ -5,6 +5,10 @@
 #include "../common/Chunck.hpp"
 #include "../common/ChunkManager.hpp"
 #include <SDL3/SDL_gpu.h>
+#include <fstream>
+#include "json.hpp"
+
+using json = nlohmann::json;
 
 struct Plane {
   Vector3 normal{0.f, 1.f, 0.f}; // must be normalized
@@ -119,6 +123,12 @@ private:
   std::vector<Mesh> Terrain;
   SDL_GPUGraphicsPipeline *graphicsPipeline = nullptr;
   SDL_GPUCopyPass *copyPass = nullptr;
+  json ModelAtlas;
+  SDL_GPUVertexBufferDescription vertex_buffer_desc;
+  SDL_GPUVertexAttribute vertex_attributes[2];
+  SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
+  SDL_GPUShader *vertex_shader;
+   SDL_GPUShader *fragment_shader;
 
   // Buffer packing optimization
   int chunksPerBuffer = 3; // How many chunks fit in one buffer
@@ -126,11 +136,16 @@ private:
 
   SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
   Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);
-  void DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
+  void DrawFace(Player &player, Vector4 blocks, int blockID, int Side,
                 Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();
   void DrawTestTriangle(Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata);
+  void Init();
+  void GenerateBuffer();
+  void VertexGPUInit();
+  void PipelineInit();
+  SDL_GPUColorTargetDescription* ColorTargetDes();
 
 public:
   Renderer(GameClient &gameClient);

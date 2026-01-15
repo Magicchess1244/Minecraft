@@ -144,6 +144,10 @@ struct Vector3 {
     return {std::min(x, a.x), std::min(y, a.y), std::min(z, a.z)};
   }
 };
+struct Vector4{
+  float x,y,z,w;
+  Vector4(float x = 0, float y = 0, float z = 0, float w = 0) : x(x), y(y), z(z), w(w) {}
+};
 struct Matrix {
   size_t rows, cols;
   std::vector<float> data; // row-major storage
@@ -293,12 +297,5 @@ template <> struct hash<Vector3> {
   }
 };
 } // namespace std
-
-// Debug logging macros - only enabled in debug builds
-#ifdef DEBUG_CHUNKS
-#define CHUNK_LOG(msg) std::cout << msg << std::endl
-#else
-#define CHUNK_LOG(msg) ((void)0)
-#endif
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }

@@ -1,44 +1,30 @@
 #include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameClient.hpp"
 #include <SDL3/SDL_gpu.h>
+#include <cstdio>
 #include <iostream>
+#include <ostream>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
 constexpr float Zfar = 50.0f;
-constexpr int RenderDistance = 1;
-const Vector3 Verts[6][4] = {{// Front (+Z)
-                              {0.5, -0.5, 0.5},
-                              {-0.5, -0.5, 0.5},
-                              {0.5, 0.5, 0.5},
-                              {-0.5, 0.5, 0.5}},
-                             {// Back (-Z)
-                              {-0.5, -0.5, -0.5},
-                              {0.5, -0.5, -0.5},
-                              {-0.5, 0.5, -0.5},
-                              {0.5, 0.5, -0.5}},
-                             {// Right (+X)
-                              {0.5, -0.5, -0.5},
-                              {0.5, -0.5, 0.5},
-                              {0.5, 0.5, -0.5},
-                              {0.5, 0.5, 0.5}},
-                             {// Left (-X)
-                              {-0.5, -0.5, 0.5},
-                              {-0.5, -0.5, -0.5},
-                              {-0.5, 0.5, 0.5},
-                              {-0.5, 0.5, -0.5}},
-                             {// Top (+Y)
-                              {-0.5, 0.5, -0.5},
-                              {0.5, 0.5, -0.5},
-                              {-0.5, 0.5, 0.5},
-                              {0.5, 0.5, 0.5}},
-                             {// Bottom (-Y)
-                              {-0.5, -0.5, -0.5},
-                              {0.5, -0.5, -0.5},
-                              {-0.5, -0.5, 0.5},
-                              {0.5, -0.5, 0.5}}};
+constexpr int RenderDistance = 0;
+const Vector4 Verts[16] = {
+    {-1, -1, -1, 1},  {1, -1, -1, 1},  {-1, 1, -1, 1},  {1, 1, -1, 1},
+    {-1, -1, 1, 1},   {1, -1, 1, 1},   {-1, 1, 1, 1},   {1, 1, 1, 1},
+    {-1, -1, -1, -1}, {1, -1, -1, -1}, {-1, 1, -1, -1}, {1, 1, -1, -1},
+    {-1, -1, 1, -1},  {1, -1, 1, -1},  {-1, 1, 1, -1},  {1, 1, 1, -1}};
+constexpr int HyperCubeVertsOrder[8][8]{
+    {0, 1, 2, 3, 4, 5, 6, 7},     {8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 3, 5, 7, 10, 11, 14, 15}, {0, 2, 4, 6, 8, 10, 12, 14},
+    {2, 3, 6, 7, 10, 11, 14, 15}, {0, 1, 4, 5, 8, 9, 12, 13},
+    {0, 1, 2, 3, 8, 9, 10, 11},   {4, 5, 6, 7, 12, 13, 14, 15}};
+constexpr int CubeVertOrder[6][4]{
+    {0, 1, 2, 3}, {4, 5, 6, 7}, {1, 3, 5, 7},
+    {0, 2, 4, 6}, {0, 1, 4, 5}, {4, 5, 6, 7},
+};
 const Vector3 Direction[6] = {
     {0, 0, -1}, // Front
     {0, 0, 1},  // Back
@@ -47,11 +33,12 @@ const Vector3 Direction[6] = {
     {0, -1, 0}, // Top
     {0, 1, 0}   // Bottom
 };
-const Color Colors[3] = {
+constexpr Color Colors[3] = {
     {0, 0, 0},    // Front / Back
     {5, 5, 5},    // Right / Left
     {10, 10, 10}, // Top / Bottom
 };
+
 Matrix Perspective(float tanHalfFov, float aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
   float f = 1 / FOV;
@@ -213,171 +200,129 @@ void Renderer::DrawTestTriangle(Mesh *mesh, Vertex *Vertexdata,
 
   mesh->faces = 1; // One triangle = 1 face
 }
-void Renderer::DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
-                        Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata) {
-  const Vector3 *verts = Verts[Side];
-  const int baseVertex = mesh->faces * 4;
-  const int baseIndex = mesh->faces * 6;
+void DrawCube(Vector3 CubeVerts[8], Vertex *Vertexdata, Uint32 *Indexdata,
+              int BlockId, Mesh *mesh) {
+  for (int FaceNum = 0; FaceNum < 6; FaceNum++) {
+    const int baseVertex = mesh->faces * 4;
+    const int baseIndex = mesh->faces * 6;
 
-  for (int i = 0; i < 4; i++) {
-    Vector3 worldPos = (verts[i] + blocks);
+    for (int FaceVertNum = 0; FaceVertNum < 4; FaceVertNum++) {
+      Vector3 worldPos = CubeVerts[CubeVertOrder[FaceNum][FaceVertNum]];
 
-    Vector3 Color =
-        BlockDef[blockID].color.ToFloat() - Colors[(int)(Side / 2)].ToFloat();
-    Vertex vertex = {worldPos, Color};
-    Vertexdata[baseVertex + i] = vertex;
+      Vector3 Color = BlockDef[BlockId].color.ToFloat() -
+                      Colors[(int)(FaceNum / 2)].ToFloat();
+      Vertex vertex = {worldPos, Color};
+      Vertexdata[baseVertex + FaceVertNum] = vertex;
+
+      Indexdata[baseIndex] = baseVertex + 0;
+      Indexdata[baseIndex + 1] = baseVertex + 1;
+      Indexdata[baseIndex + 2] = baseVertex + 2;
+
+      Indexdata[baseIndex + 3] = baseVertex + 2;
+      Indexdata[baseIndex + 4] = baseVertex + 1;
+      Indexdata[baseIndex + 5] = baseVertex + 3;
+
+      mesh->faces++;
+    }
   }
+}
+void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
+                   Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata) {
+  Vector3 projectedVerts[16];
 
-  Indexdata[baseIndex] = baseVertex + 0;
-  Indexdata[baseIndex + 1] = baseVertex + 1;
-  Indexdata[baseIndex + 2] = baseVertex + 2;
+  for (int i = 0; i < 16; i++) {
+    int Distance = 2;
+    float w = 1.0f / (Distance - Verts[i].w);
+    Matrix m(4, 4);
+    for (int x = 0; x < 3; x++) {
+      m(x, x) = w;
+    }
+    Matrix DPos(1, 4);
+    DPos(0, 0) = Verts[i].x + blocks.x;
+    DPos(0, 1) = Verts[i].y + blocks.y;
+    DPos(0, 2) = Verts[i].z + blocks.z;
+    DPos(0, 3) = Verts[i].w + blocks.w;
 
-  Indexdata[baseIndex + 3] = baseVertex + 2;
-  Indexdata[baseIndex + 4] = baseVertex + 1;
-  Indexdata[baseIndex + 5] = baseVertex + 3;
+    Matrix Rotation(4,4);
+    //DPos();
 
-  mesh->faces++;
+    DPos = DPos * m;
+    projectedVerts[i] = {DPos(0, 0), DPos(0, 1), DPos(0, 2)};
+    // std::cout << "x: " << projectedVerts[i].x << "y: " <<
+    // projectedVerts[i].y<< "z: " << projectedVerts[i].z << std::endl;
+  }
+  // std::cout << std::endl << std::endl << std::endl;
+
+  for (int i = 0; i < 8; i++) {
+    Vector3 ProjectedCubeVerts[8];
+    for (int x = 0; x < 8; x++) {
+      ProjectedCubeVerts[x] = projectedVerts[HyperCubeVertsOrder[i][x]];
+    };
+    DrawCube(ProjectedCubeVerts, Vertexdata, Indexdata, i, mesh);
+  };
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
                            int bufferIndex, int bufferOffset) {
-  auto *mesh = &this->Terrain[bufferIndex];
-
-  // Calculate offset within the buffer for this chunk
-  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
-  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
-  const int vertexElementOffset =
-      bufferOffset * 4 * 10000; // Offset in number of vertices
-  const int indexElementOffset =
-      bufferOffset * 6 * 10000; // Offset in number of indices
-
-  int localFaceCount = 0; // Track faces for this chunk only
-
-  std::vector<DrawnFace> Faces;
-
-  for (int i = 0; i < chunk.allFaces.size(); i++) {
-    auto *face = &chunk.allFaces[i];
-    if (player.Rotation.Forward().Dot(Direction[face->side]) >= 0.3)
-      continue;
-
-    Faces.push_back(
-        {face->blockPos, face->side, face->blockID, 1, face->blockID == 5});
-  }
-
-  // Get pre-mapped buffers from mesh (mapped in DrawTerrain)
+  auto *mesh = &this->Terrain[0]; // Just use the first mesh
   Vertex *Vertexdata = mesh->mappedVertexData;
   Uint32 *Indexdata = mesh->mappedIndexData;
+  DrawHypercube(player, {0, 0, 0, 0}, 0, 0, mesh, Vertexdata, Indexdata);
 
-  // Offset pointers to the correct position in the buffer
-  Vertex *ChunkVertexdata = Vertexdata + vertexElementOffset;
-  Uint32 *ChunkIndexdata = Indexdata + indexElementOffset;
-
-  for (auto &Face : Faces) {
-    const Vector3 *verts = Verts[Face.side];
-    const int baseVertex = localFaceCount * 4;
-    const int baseIndex = localFaceCount * 6;
-
-    for (int i = 0; i < 4; i++) {
-      Vector3 worldPos = (verts[i] + Face.blockPos);
-
-      Vector3 Color = BlockDef[Face.blockID].color.ToFloat() -
-                      Colors[(int)(Face.side / 2)].ToFloat();
-      Vertex vertex = {worldPos, Color};
-      ChunkVertexdata[baseVertex + i] = vertex;
-    }
-
-    // Indices are relative to this chunk's vertex offset
-    ChunkIndexdata[baseIndex] = baseVertex + 0;
-    ChunkIndexdata[baseIndex + 1] = baseVertex + 1;
-    ChunkIndexdata[baseIndex + 2] = baseVertex + 2;
-
-    ChunkIndexdata[baseIndex + 3] = baseVertex + 2;
-    ChunkIndexdata[baseIndex + 4] = baseVertex + 1;
-    ChunkIndexdata[baseIndex + 5] = baseVertex + 3;
-
-    localFaceCount++;
-  }
-
-  // Store face count for this specific chunk in the buffer
-  if (mesh->chunkFaceCounts.size() <= bufferOffset) {
-    mesh->chunkFaceCounts.resize(bufferOffset + 1, 0);
-  }
-  mesh->chunkFaceCounts[bufferOffset] = localFaceCount;
+  mesh->chunkFaceCounts[0] = mesh->faces;
 }
 void Renderer::DrawTerrain(Player &player) {
-  // Process chunks by buffer to avoid repeated map/unmap
-  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
+  auto *mesh = &this->Terrain[0]; // Just use first mesh
+
+  // Map buffers
+  Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
+      this->GPU, mesh->VertextransferBuffer, false);
+  Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
+      this->GPU, mesh->IndextransferBuffer, false);
+
+  // Store pointers in mesh for RenderChunk to use
+  mesh->mappedVertexData = Vertexdata;
+  mesh->mappedIndexData = Indexdata;
+
+  // Reset face counts
+  mesh->chunkFaceCounts.clear();
+  mesh->chunkFaceCounts.resize(1, 0);
+
+  // Just render one tesseract
   Vector3 PlayerChunk = (player.Position / 32).Truncate();
+  Vector3 Chunk = {0, 0, 0};
+  Chunk += PlayerChunk;
+  RenderChunk(chunkManager.get_chunk(Chunk), player, 0, 0, 0);
 
-  // Group chunks by buffer
-  for (int bufferIdx = 0; bufferIdx < this->totalBuffers; bufferIdx++) {
-    auto *mesh = &this->Terrain[bufferIdx];
+  // Unmap and upload
+  SDL_UnmapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
+  SDL_UnmapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer);
 
-    // Map buffers once for this buffer
-    Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
-        this->GPU, mesh->VertextransferBuffer, false);
-    Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
-        this->GPU, mesh->IndextransferBuffer, false);
+  // Upload vertex data
+  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
+  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
 
-    // Store pointers in mesh for RenderChunk to use
-    mesh->mappedVertexData = Vertexdata;
-    mesh->mappedIndexData = Indexdata;
+  SDL_GPUTransferBufferLocation Vertexlocation{};
+  Vertexlocation.transfer_buffer = mesh->VertextransferBuffer;
+  Vertexlocation.offset = 0;
 
-    // Reset face counts for this buffer
-    mesh->chunkFaceCounts.clear();
-    mesh->chunkFaceCounts.resize(
-        chunksPerBuffer,
-        0); // Pre-allocate for all possible chunks in this buffer
+  SDL_GPUBufferRegion Vertexregion{};
+  Vertexregion.buffer = mesh->VertexBuffer.buffer;
+  Vertexregion.size = singleChunkVertexSize;
+  Vertexregion.offset = 0;
 
-    // Process all chunks that belong to this buffer
-    int startChunkIdx = bufferIdx * chunksPerBuffer;
-    int endChunkIdx = std::min(startChunkIdx + chunksPerBuffer, totalChunks);
+  SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, true);
 
-    for (int chunkIdx = startChunkIdx; chunkIdx < endChunkIdx; chunkIdx++) {
-      // Calculate chunk position
-      int i_local = (chunkIdx / (RenderDistance * 2 + 1)) - RenderDistance;
-      int j_local = (chunkIdx % (RenderDistance * 2 + 1)) - RenderDistance;
+  // Upload index data
+  SDL_GPUTransferBufferLocation Indexlocation{};
+  Indexlocation.transfer_buffer = mesh->IndextransferBuffer;
+  Indexlocation.offset = 0;
 
-      Vector3 Chunk = {(float)i_local, 0, (float)j_local};
-      Chunk += PlayerChunk;
+  SDL_GPUBufferRegion Indexregion{};
+  Indexregion.buffer = mesh->IndexBuffer.buffer;
+  Indexregion.size = singleChunkIndexSize;
+  Indexregion.offset = 0;
 
-      int bufferOffset = chunkIdx % chunksPerBuffer;
-      RenderChunk(chunkManager.get_chunk(Chunk), player, chunkIdx, bufferIdx,
-                  bufferOffset);
-    }
-
-    // Unmap and upload once for this buffer
-    SDL_UnmapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
-    SDL_UnmapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer);
-
-    // Upload vertex data
-    constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
-    constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
-    const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
-    const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
-
-    SDL_GPUTransferBufferLocation Vertexlocation{};
-    Vertexlocation.transfer_buffer = mesh->VertextransferBuffer;
-    Vertexlocation.offset = 0;
-
-    SDL_GPUBufferRegion Vertexregion{};
-    Vertexregion.buffer = mesh->VertexBuffer.buffer;
-    Vertexregion.size = packedVertexSize;
-    Vertexregion.offset = 0;
-
-    SDL_UploadToGPUBuffer(this->copyPass, &Vertexlocation, &Vertexregion, true);
-
-    // Upload index data
-    SDL_GPUTransferBufferLocation Indexlocation{};
-    Indexlocation.transfer_buffer = mesh->IndextransferBuffer;
-    Indexlocation.offset = 0;
-
-    SDL_GPUBufferRegion Indexregion{};
-    Indexregion.buffer = mesh->IndexBuffer.buffer;
-    Indexregion.size = packedIndexSize;
-    Indexregion.offset = 0;
-
-    SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
-  }
+  SDL_UploadToGPUBuffer(this->copyPass, &Indexlocation, &Indexregion, true);
 }
 /*
 void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range,
@@ -549,6 +494,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   if (swap_texture == NULL) {
     std::cout << "La swap_texture no s'ha fet be\n";
     SDL_SubmitGPUCommandBuffer(this->cmdRender);
+    return; // CRITICAL: Must return here!
   }
   SDL_GPUColorTargetInfo color_target_info;
   SDL_zero(color_target_info);
@@ -556,6 +502,17 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   color_target_info.load_op = SDL_GPU_LOADOP_CLEAR;
   color_target_info.store_op = SDL_GPU_STOREOP_STORE;
   color_target_info.texture = swap_texture;
+
+  // Setup depth buffer for proper depth testing
+  SDL_GPUDepthStencilTargetInfo depth_target_info;
+  SDL_zero(depth_target_info);
+  depth_target_info.texture = this->DepthTexture;
+  depth_target_info.clear_depth = 1.0f;
+  depth_target_info.load_op = SDL_GPU_LOADOP_CLEAR;
+  depth_target_info.store_op = SDL_GPU_STOREOP_DONT_CARE;
+  depth_target_info.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+  depth_target_info.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+  depth_target_info.cycle = false;
 
   Player player = players[0];
   Matrix model = Rotation({0, 0, 0});
@@ -573,39 +530,27 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                                mvp.getColumnMajorData().data(),
                                sizeof(float) * mvp.getColumnMajorData().size());
 
-  this->pass =
-      SDL_BeginGPURenderPass(this->cmdRender, &color_target_info, 1, NULL);
+  this->pass = SDL_BeginGPURenderPass(this->cmdRender, &color_target_info, 1,
+                                      &depth_target_info);
   SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
 
-  // Draw each buffer's chunks
-  for (int bufferIdx = 0; bufferIdx < this->Terrain.size(); bufferIdx++) {
-    auto *mesh = &this->Terrain[bufferIdx];
-    SDL_BindGPUVertexBuffers(this->pass, 0, &mesh->VertexBuffer, 1);
-    SDL_BindGPUIndexBuffer(this->pass, &mesh->IndexBuffer,
-                           SDL_GPU_INDEXELEMENTSIZE_32BIT);
+  // Draw the tesseract from first mesh
+  auto *mesh = &this->Terrain[0];
+  SDL_BindGPUVertexBuffers(this->pass, 0, &mesh->VertexBuffer, 1);
+  SDL_BindGPUIndexBuffer(this->pass, &mesh->IndexBuffer,
+                         SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
-    // Draw each chunk in this buffer
-    for (int chunkOffset = 0; chunkOffset < mesh->chunkFaceCounts.size();
-         chunkOffset++) {
-      int faceCount = mesh->chunkFaceCounts[chunkOffset];
-      if (faceCount == 0)
-        continue; // Skip empty chunks
-
-      // Calculate offsets for this chunk within the buffer
-      int vertexOffset =
-          chunkOffset * 4 * 10000; // 4 vertices per face, max 10000 faces
-      int indexOffset =
-          chunkOffset * 6 * 10000; // 6 indices per face, max 10000 faces
-
-      SDL_DrawGPUIndexedPrimitives(this->pass, faceCount * 6, 1, indexOffset,
-                                   vertexOffset, 0);
+  if (mesh->chunkFaceCounts.size() > 0) {
+    int faceCount = mesh->chunkFaceCounts[0];
+    if (faceCount > 0) {
+      SDL_DrawGPUIndexedPrimitives(this->pass, faceCount * 6, 1, 0, 0, 0);
     }
   }
 
   SDL_EndGPURenderPass(this->pass);
 
   if (!SDL_SubmitGPUCommandBuffer(this->cmdRender)) {
-    std::cout << "Heil el renderer de Puigdemont\n";
+    std::cout << "Failed to submit render command buffer\n";
     return;
   }
 }
@@ -702,8 +647,12 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
 
   return result;
 }
-Renderer::Renderer(GameClient &gameClient)
-    : gameClient(gameClient), chunkManager() {
+void LoadModelAtlas(const char Dir){
+  std::ifstream f("ModelAtlas.json");
+  json data = json::parse(f);
+};
+
+void Renderer::Init(){
   this->Width = 600;
   this->Height = 400;
 
@@ -725,8 +674,9 @@ Renderer::Renderer(GameClient &gameClient)
   }
   this->event = {};
   SDL_SetWindowRelativeMouseMode(window, true);
-
-  // Calculate buffer packing
+}
+void Renderer::GenerateBuffer(){
+    // Calculate buffer packing
   int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
   this->chunksPerBuffer = 3; // Pack 3 chunks per buffer
   this->totalBuffers =
@@ -771,19 +721,25 @@ Renderer::Renderer(GameClient &gameClient)
 
     this->Terrain.push_back(mesh);
   }
-  std::cout << "shaders";
-  // load the vertex shader code
+}
+void Renderer::VertexGPUInit(){
+  // describe the vertex attribute
+  this->vertex_buffer_desc.slot = 0;
+  this->vertex_buffer_desc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+  this->vertex_buffer_desc.instance_step_rate = 0;
+  this->vertex_buffer_desc.pitch = sizeof(Vertex);
 
-  SDL_GPUShader *vertex_shader =
-      LoadShader(this->GPU, "Shader.vert", 0, 1, 0, 0);
-  if (!vertex_shader) {
-    SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
-  }
-  SDL_GPUShader *fragment_shader =
-      LoadShader(this->GPU, "Shader.frag", 0, 0, 0, 0);
-  if (!fragment_shader) {
-    SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
-  }
+  this->vertex_attributes[0].buffer_slot = 0;
+  this->vertex_attributes[0].location = 0;
+  this->vertex_attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  this->vertex_attributes[0].offset = 0;
+
+  this->vertex_attributes[1].buffer_slot = 0;
+  this->vertex_attributes[1].location = 1;
+  this->vertex_attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  this->vertex_attributes[1].offset = sizeof(float) * 3;
+}
+SDL_GPUColorTargetDescription* Renderer::ColorTargetDes(){
   SDL_GPUColorTargetDescription colorTargetDescriptions[1];
   colorTargetDescriptions[0] = {};
   colorTargetDescriptions[0].blend_state.enable_blend = true;
@@ -798,55 +754,63 @@ Renderer::Renderer(GameClient &gameClient)
   colorTargetDescriptions[0].blend_state.dst_alpha_blendfactor =
       SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
   colorTargetDescriptions[0].format =
-      SDL_GetGPUSwapchainTextureFormat(this->GPU, window);
+      SDL_GetGPUSwapchainTextureFormat(this->GPU, this->window);
+  return colorTargetDescriptions;
+}
+void Renderer::PipelineInit(){
+    this->vertex_shader =
+      LoadShader(this->GPU, "Shader.vert", 0, 1, 0, 0);
+  if (!this->vertex_shader) {
+    SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
+  }
+  this->fragment_shader =
+      LoadShader(this->GPU, "Shader.frag", 0, 0, 0, 0);
+  if (this->fragment_shader) {
+    SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
+  }
+  
+  SDL_zero(this->pipeline_desc);
 
-  SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
+  // Setup depth stencil for proper depth testing
+  this->pipeline_desc.depth_stencil_state.enable_depth_test = true;
+  this->pipeline_desc.depth_stencil_state.enable_depth_write = true;
+  this->pipeline_desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS;
+  this->pipeline_desc.depth_stencil_state.enable_stencil_test = false;
 
-  pipeline_desc.target_info.num_color_targets = 1;
-  pipeline_desc.target_info.color_target_descriptions = colorTargetDescriptions;
-  pipeline_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-  pipeline_desc.vertex_shader = vertex_shader;
-  pipeline_desc.fragment_shader = fragment_shader;
+  this->pipeline_desc.target_info.num_color_targets = 1;
+  this->pipeline_desc.target_info.color_target_descriptions = ColorTargetDes();
+  this->pipeline_desc.target_info.has_depth_stencil_target = true;
+  this->pipeline_desc.target_info.depth_stencil_format =
+      SDL_GPU_TEXTUREFORMAT_D16_UNORM;
 
-  SDL_GPUVertexBufferDescription vertex_buffer_desc;
-  SDL_GPUVertexAttribute vertex_attributes[2];
-
-  // describe the vertex attribute
-  SDL_GPUVertexAttribute vertexAttributes[2];
-
-  vertex_buffer_desc.slot = 0;
-  vertex_buffer_desc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-  vertex_buffer_desc.instance_step_rate = 0;
-  vertex_buffer_desc.pitch = sizeof(Vertex);
-
-  vertex_attributes[0].buffer_slot = 0;
-  vertex_attributes[0].location = 0;
-  vertex_attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  vertex_attributes[0].offset = 0;
-
-  vertex_attributes[1].buffer_slot = 0;
-  vertex_attributes[1].location = 1;
-  vertex_attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  vertex_attributes[1].offset = sizeof(float) * 3;
+  this->pipeline_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+  this->pipeline_desc.vertex_shader = vertex_shader;
+  this->pipeline_desc.fragment_shader = fragment_shader;
+  
+  VertexGPUInit();
 
   pipeline_desc.vertex_input_state.num_vertex_buffers =
       1; // We only bind one buffer at a time
   pipeline_desc.vertex_input_state.vertex_buffer_descriptions =
-      &vertex_buffer_desc;
+      &this->vertex_buffer_desc;
   pipeline_desc.vertex_input_state.num_vertex_attributes = 2;
-  pipeline_desc.vertex_input_state.vertex_attributes = vertex_attributes;
+  pipeline_desc.vertex_input_state.vertex_attributes = this->vertex_attributes;
 
   pipeline_desc.props = 0;
-
-  this->graphicsPipeline =
-      SDL_CreateGPUGraphicsPipeline(this->GPU, &pipeline_desc);
+}
+Renderer::Renderer(GameClient &gameClient)
+    : gameClient(gameClient), chunkManager() {
+  
+  Init();
+  GenerateBuffer();
+  PipelineInit();
+  
+  this->graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &this->pipeline_desc);
   if (!this->graphicsPipeline) {
     SDL_Log("Failed to create pipeline: %s", SDL_GetError());
   }
-  std::cout << this->graphicsPipeline << std::endl;
-
-  SDL_ReleaseGPUShader(this->GPU, vertex_shader);
-  SDL_ReleaseGPUShader(this->GPU, fragment_shader);
+  SDL_ReleaseGPUShader(this->GPU, this->vertex_shader);
+  SDL_ReleaseGPUShader(this->GPU, this->fragment_shader);
 
   Uint32 drawablew, drawableh;
   SDL_GetWindowSizeInPixels(window, (int *)&drawablew, (int *)&drawableh);
