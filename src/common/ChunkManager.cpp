@@ -40,8 +40,6 @@ constexpr HeightsDif PeaksAndValiesHeight[6] = {
     {-0.9f, ySize * 0.1f},
 };
 
-int BlockSize = 50;
-
 ChunkManager::ChunkManager() {
   cache = new ChunkCache(); // Initialize cache system
 }
@@ -62,7 +60,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   // Check if chunk is already loaded
   if (this->Chunks.find(key) == this->Chunks.end()) {
     // REMOVED: std::cout - major performance killer!
-    CHUNK_LOG("Generating chunk at: " << key.x << ", " << key.z);
+    std::cout <<"Generating chunk at: " << key.x << ", " << key.z;
 
     ChunkPrefab newChunk;
     newChunk.xPos = (int)key.x * newChunk.xSize;
@@ -70,7 +68,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
 
     // Try to load from cache first
     if (cache->loadChunk(newChunk, (int)key.x, (int)key.z)) {
-      CHUNK_LOG("Loaded chunk from cache");
+      std::cout << "Loaded chunk from cache";
       // Need to regenerate faces after loading
       newChunk.VisableFaces();
     } else {

@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <iostream>
 #include <ostream>
+#include <fstream>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
@@ -275,9 +276,9 @@ void Renderer::DrawTerrain(Player &player) {
 
   // Map buffers
   Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
-      this->GPU, mesh->VertextransferBuffer, false);
+      this->basicInitVars.GPU, mesh->VertextransferBuffer, false);
   Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
-      this->GPU, mesh->IndextransferBuffer, false);
+      this->basicInitVars.GPU, mesh->IndextransferBuffer, false);
 
   // Store pointers in mesh for RenderChunk to use
   mesh->mappedVertexData = Vertexdata;
@@ -294,8 +295,8 @@ void Renderer::DrawTerrain(Player &player) {
   RenderChunk(chunkManager.get_chunk(Chunk), player, 0, 0, 0);
 
   // Unmap and upload
-  SDL_UnmapGPUTransferBuffer(this->GPU, mesh->VertextransferBuffer);
-  SDL_UnmapGPUTransferBuffer(this->GPU, mesh->IndextransferBuffer);
+  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->VertextransferBuffer);
+  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->IndextransferBuffer);
 
   // Upload vertex data
   constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
@@ -409,17 +410,17 @@ surface); if (!texture) { std::cerr << "SDL_CreateTextureFromSurface failed: "
 void Renderer::UpdateViewportAndProjection() {
   // Get the actual drawable size (important for high-DPI displays)
   int drawableWidth, drawableHeight;
-  SDL_GetWindowSizeInPixels(this->window, &drawableWidth, &drawableHeight);
+  SDL_GetWindowSizeInPixels(this->basicInitVars.window, &drawableWidth, &drawableHeight);
 
-  this->Width = drawableWidth;
-  this->Height = drawableHeight;
+  this->basicInitVars.Width = drawableWidth;
+  this->basicInitVars.Height = drawableHeight;
 
   std::cout << "Updating viewport to: " << drawableWidth << "x"
             << drawableHeight << std::endl;
 
   // Recreate depth texture with new size
   if (this->DepthTexture) {
-    SDL_ReleaseGPUTexture(this->GPU, this->DepthTexture);
+    SDL_ReleaseGPUTexture(this->basicInitVars.GPU, this->DepthTexture);
   }
   this->DepthTexture = CreateDepthTexture(drawableWidth, drawableHeight);
 
@@ -430,24 +431,19 @@ void Renderer::UpdateViewportAndProjection() {
 
 void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               std::vector<Player> &players) {
-  while (SDL_PollEvent(&this->event)) {
-    switch (this->event.type) {
+  while (SDL_PollEvent(&this->basicInitVars.event)) {
+    switch (this->basicInitVars.event.type) {
     case SDL_EVENT_QUIT:
       // Handle quitting the game
       this->gameClient.Quit();
       break;
 
     case SDL_EVENT_WINDOW_RESIZED: {
-
-      this->ScreenSize.x = this->event.window.data1;
-      this->ScreenSize.y = this->event.window.data2;
-      std::cout << "Window resized to: " << this->event.window.data1 << "x"
-                << this->event.window.data2 << std::endl;
       UpdateViewportAndProjection();
     }
 
     case SDL_EVENT_KEY_DOWN: {
-      SDL_Keycode key = this->event.key.scancode;
+      SDL_Keycode key = this->basicInitVars.event.key.scancode;
 
       if (key == SDL_SCANCODE_ESCAPE) {
         this->gameClient.Quit();
@@ -458,14 +454,9 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
         std::cout << "Toggling fullscreen: "
                   << (this->fullScreen ? "ON" : "OFF") << std::endl;
 
-        SDL_SetWindowFullscreen(this->window, this->fullScreen);
+        SDL_SetWindowFullscreen(this->basicInitVars.window, this->fullScreen);
 
         // Update screen size immediately
-        int w, h;
-        SDL_GetWindowSize(this->window, &w, &h);
-        this->ScreenSize.x = w;
-        this->ScreenSize.y = h;
-        std::cout << "New screen size: " << w << "x" << h << std::endl;
         UpdateViewportAndProjection();
       }
       break;
@@ -473,7 +464,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
     }
   }
 
-  this->cmdCopy = SDL_AcquireGPUCommandBuffer(this->GPU);
+  this->cmdCopy = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
   this->copyPass = SDL_BeginGPUCopyPass(this->cmdCopy);
   DrawTerrain(players[0]);
@@ -484,12 +475,12 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
     return;
   }
 
-  this->cmdRender = SDL_AcquireGPUCommandBuffer(this->GPU);
+  this->cmdRender = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
   SDL_GPUTexture *swap_texture;
-  SDL_WaitAndAcquireGPUSwapchainTexture(this->cmdRender, this->window,
-                                        &swap_texture, &this->Width,
-                                        &this->Height);
+  SDL_WaitAndAcquireGPUSwapchainTexture(this->cmdRender, this->basicInitVars.window,
+                                        &swap_texture, &this->basicInitVars.Width,
+                                        &this->basicInitVars.Height);
 
   if (swap_texture == NULL) {
     std::cout << "La swap_texture no s'ha fet be\n";
@@ -519,7 +510,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
 
   Matrix view = LookAt(player.Rotation, player.Position);
 
-  float aspect = (float)this->Width / (float)this->Height;
+  float aspect = (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
   Matrix proj = Perspective(FOV, aspect, Znear, Zfar);
 
   // Final MVP matrix
@@ -532,7 +523,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
 
   this->pass = SDL_BeginGPURenderPass(this->cmdRender, &color_target_info, 1,
                                       &depth_target_info);
-  SDL_BindGPUGraphicsPipeline(this->pass, this->graphicsPipeline);
+  SDL_BindGPUGraphicsPipeline(this->pass, this->pipelineInitVars.graphicsPipeline);
 
   // Draw the tesseract from first mesh
   auto *mesh = &this->Terrain[0];
@@ -639,7 +630,7 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
   createinfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
   createinfo.props = 0;
 
-  result = SDL_CreateGPUTexture(this->GPU, &createinfo);
+  result = SDL_CreateGPUTexture(this->basicInitVars.GPU, &createinfo);
   if (!result) {
     SDL_Log("Failed to create depth texture: %s", SDL_GetError());
     return NULL;
@@ -647,33 +638,33 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
 
   return result;
 }
-void LoadModelAtlas(const char Dir){
-  std::ifstream f("ModelAtlas.json");
+void LoadModelAtlas(const char* Dir){
+  std::ifstream f("example.json");
   json data = json::parse(f);
 };
 
 void Renderer::Init(){
-  this->Width = 600;
-  this->Height = 400;
+  this->basicInitVars.Width = 600;
+  this->basicInitVars.Height = 400;
 
-  this->window = SDL_CreateWindow("Bit Miner", this->Width, this->Height,
+  this->basicInitVars.window = SDL_CreateWindow("Bit Miner", this->basicInitVars.Width, this->basicInitVars.Height,
                                   SDL_WINDOW_RESIZABLE);
-  if (this->window == nullptr) {
+  if (this->basicInitVars.window == nullptr) {
     std::cout << "Error creating window: " << SDL_GetError();
     SDL_Quit();
     assert(false);
   }
 
-  this->GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, NULL);
-  if (this->GPU == nullptr) {
-    std::cout << "SDL GPU creation failed: \n" << SDL_GetError();
+  this->basicInitVars.GPU = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, NULL);
+  if (this->basicInitVars.GPU == nullptr) {
+    std::cout << "SDL basicInitVars.GPU creation failed: \n" << SDL_GetError();
   }
-  if (!SDL_ClaimWindowForGPUDevice(this->GPU, this->window)) {
-    std::cout << "Error claiming window for GPU device: " << SDL_GetError()
+  if (!SDL_ClaimWindowForGPUDevice(this->basicInitVars.GPU, this->basicInitVars.window)) {
+    std::cout << "Error claiming window for basicInitVars.GPU device: " << SDL_GetError()
               << std::endl;
   }
-  this->event = {};
-  SDL_SetWindowRelativeMouseMode(window, true);
+  this->basicInitVars.event = {};
+  SDL_SetWindowRelativeMouseMode(basicInitVars.window, true);
 }
 void Renderer::GenerateBuffer(){
     // Calculate buffer packing
@@ -698,122 +689,121 @@ void Renderer::GenerateBuffer(){
     SDL_GPUBufferCreateInfo vertexInfo = {};
     vertexInfo.size = packedVertexSize;
     vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    mesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &vertexInfo);
+    mesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &vertexInfo);
     mesh.VertexBuffer.offset = 0;
 
     SDL_GPUBufferCreateInfo indexInfo = {};
     indexInfo.size = packedIndexSize;
     indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
-    mesh.IndexBuffer.buffer = SDL_CreateGPUBuffer(this->GPU, &indexInfo);
+    mesh.IndexBuffer.buffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &indexInfo);
     mesh.IndexBuffer.offset = 0;
 
     SDL_GPUTransferBufferCreateInfo VertextransferInfo{};
     VertextransferInfo.size = packedVertexSize;
     VertextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     mesh.VertextransferBuffer =
-        SDL_CreateGPUTransferBuffer(this->GPU, &VertextransferInfo);
+        SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &VertextransferInfo);
 
     SDL_GPUTransferBufferCreateInfo IndextransferInfo{};
     IndextransferInfo.size = packedIndexSize;
     IndextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     mesh.IndextransferBuffer =
-        SDL_CreateGPUTransferBuffer(this->GPU, &IndextransferInfo);
+        SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &IndextransferInfo);
 
     this->Terrain.push_back(mesh);
   }
 }
 void Renderer::VertexGPUInit(){
   // describe the vertex attribute
-  this->vertex_buffer_desc.slot = 0;
-  this->vertex_buffer_desc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-  this->vertex_buffer_desc.instance_step_rate = 0;
-  this->vertex_buffer_desc.pitch = sizeof(Vertex);
+  this->pipelineInitVars.vertex_buffer_desc.slot = 0;
+  this->pipelineInitVars.vertex_buffer_desc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+  this->pipelineInitVars.vertex_buffer_desc.instance_step_rate = 0;
+  this->pipelineInitVars.vertex_buffer_desc.pitch = sizeof(Vertex);
 
-  this->vertex_attributes[0].buffer_slot = 0;
-  this->vertex_attributes[0].location = 0;
-  this->vertex_attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  this->vertex_attributes[0].offset = 0;
+  this->pipelineInitVars.vertex_attributes[0].buffer_slot = 0;
+  this->pipelineInitVars.vertex_attributes[0].location = 0;
+  this->pipelineInitVars.vertex_attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  this->pipelineInitVars.vertex_attributes[0].offset = 0;
 
-  this->vertex_attributes[1].buffer_slot = 0;
-  this->vertex_attributes[1].location = 1;
-  this->vertex_attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  this->vertex_attributes[1].offset = sizeof(float) * 3;
+  this->pipelineInitVars.vertex_attributes[1].buffer_slot = 0;
+  this->pipelineInitVars.vertex_attributes[1].location = 1;
+  this->pipelineInitVars.vertex_attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  this->pipelineInitVars.vertex_attributes[1].offset = sizeof(float) * 3;
 }
-SDL_GPUColorTargetDescription* Renderer::ColorTargetDes(){
-  SDL_GPUColorTargetDescription colorTargetDescriptions[1];
-  colorTargetDescriptions[0] = {};
-  colorTargetDescriptions[0].blend_state.enable_blend = true;
-  colorTargetDescriptions[0].blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-  colorTargetDescriptions[0].blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
-  colorTargetDescriptions[0].blend_state.src_color_blendfactor =
+void Renderer::ColorTargetDes(){
+  this->pipelineInitVars.colorTargetDescriptions[0] = {};
+  this->pipelineInitVars.colorTargetDescriptions[0].blend_state.enable_blend = true;
+  this->pipelineInitVars.colorTargetDescriptions[0].blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+  this->pipelineInitVars.colorTargetDescriptions[0].blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+  this->pipelineInitVars.colorTargetDescriptions[0].blend_state.src_color_blendfactor =
       SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-  colorTargetDescriptions[0].blend_state.dst_color_blendfactor =
+  this->pipelineInitVars.colorTargetDescriptions[0].blend_state.dst_color_blendfactor =
       SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-  colorTargetDescriptions[0].blend_state.src_alpha_blendfactor =
+  this->pipelineInitVars.colorTargetDescriptions[0].blend_state.src_alpha_blendfactor =
       SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-  colorTargetDescriptions[0].blend_state.dst_alpha_blendfactor =
+  this->pipelineInitVars.colorTargetDescriptions[0].blend_state.dst_alpha_blendfactor =
       SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-  colorTargetDescriptions[0].format =
-      SDL_GetGPUSwapchainTextureFormat(this->GPU, this->window);
-  return colorTargetDescriptions;
+  this->pipelineInitVars.colorTargetDescriptions[0].format =
+      SDL_GetGPUSwapchainTextureFormat(this->basicInitVars.GPU, this->basicInitVars.window);
 }
 void Renderer::PipelineInit(){
-    this->vertex_shader =
-      LoadShader(this->GPU, "Shader.vert", 0, 1, 0, 0);
-  if (!this->vertex_shader) {
+    this->pipelineInitVars.vertex_shader =
+      LoadShader(this->basicInitVars.GPU, "Shader.vert", 0, 1, 0, 0);
+  if (!this->pipelineInitVars.vertex_shader) {
     SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
   }
-  this->fragment_shader =
-      LoadShader(this->GPU, "Shader.frag", 0, 0, 0, 0);
-  if (this->fragment_shader) {
+  this->pipelineInitVars.fragment_shader =
+      LoadShader(this->basicInitVars.GPU, "Shader.frag", 0, 0, 0, 0);
+  if (this->pipelineInitVars.fragment_shader) {
     SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
   }
   
-  SDL_zero(this->pipeline_desc);
+  SDL_zero(this->pipelineInitVars.pipeline_desc);
 
   // Setup depth stencil for proper depth testing
-  this->pipeline_desc.depth_stencil_state.enable_depth_test = true;
-  this->pipeline_desc.depth_stencil_state.enable_depth_write = true;
-  this->pipeline_desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS;
-  this->pipeline_desc.depth_stencil_state.enable_stencil_test = false;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_test = true;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_write = true;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_stencil_test = false;
 
-  this->pipeline_desc.target_info.num_color_targets = 1;
-  this->pipeline_desc.target_info.color_target_descriptions = ColorTargetDes();
-  this->pipeline_desc.target_info.has_depth_stencil_target = true;
-  this->pipeline_desc.target_info.depth_stencil_format =
+  this->pipelineInitVars.pipeline_desc.target_info.num_color_targets = 1;
+  this->pipelineInitVars.pipeline_desc.target_info.color_target_descriptions = this->pipelineInitVars.colorTargetDescriptions;
+  this->pipelineInitVars.pipeline_desc.target_info.has_depth_stencil_target = true;
+  this->pipelineInitVars.pipeline_desc.target_info.depth_stencil_format =
       SDL_GPU_TEXTUREFORMAT_D16_UNORM;
 
-  this->pipeline_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-  this->pipeline_desc.vertex_shader = vertex_shader;
-  this->pipeline_desc.fragment_shader = fragment_shader;
+  this->pipelineInitVars.pipeline_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+  this->pipelineInitVars.pipeline_desc.vertex_shader = pipelineInitVars.vertex_shader;
+  this->pipelineInitVars.pipeline_desc.fragment_shader = pipelineInitVars.fragment_shader;
   
   VertexGPUInit();
 
-  pipeline_desc.vertex_input_state.num_vertex_buffers =
+  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =
       1; // We only bind one buffer at a time
-  pipeline_desc.vertex_input_state.vertex_buffer_descriptions =
-      &this->vertex_buffer_desc;
-  pipeline_desc.vertex_input_state.num_vertex_attributes = 2;
-  pipeline_desc.vertex_input_state.vertex_attributes = this->vertex_attributes;
+  pipelineInitVars.pipeline_desc.vertex_input_state.vertex_buffer_descriptions =
+      &this->pipelineInitVars.vertex_buffer_desc;
+  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_attributes = 2;
+  pipelineInitVars.pipeline_desc.vertex_input_state.vertex_attributes = this->pipelineInitVars.vertex_attributes;
 
-  pipeline_desc.props = 0;
+  pipelineInitVars.pipeline_desc.props = 0;
 }
 Renderer::Renderer(GameClient &gameClient)
     : gameClient(gameClient), chunkManager() {
   
   Init();
   GenerateBuffer();
+  ColorTargetDes();
   PipelineInit();
   
-  this->graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->GPU, &this->pipeline_desc);
-  if (!this->graphicsPipeline) {
+  this->pipelineInitVars.graphicsPipeline = SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &this->pipelineInitVars.pipeline_desc);
+  if (!this->pipelineInitVars.graphicsPipeline) {
     SDL_Log("Failed to create pipeline: %s", SDL_GetError());
   }
-  SDL_ReleaseGPUShader(this->GPU, this->vertex_shader);
-  SDL_ReleaseGPUShader(this->GPU, this->fragment_shader);
+  
+  SDL_ReleaseGPUShader(this->basicInitVars.GPU, this->pipelineInitVars.vertex_shader);
+  SDL_ReleaseGPUShader(this->basicInitVars.GPU, this->pipelineInitVars.fragment_shader);
 
-  Uint32 drawablew, drawableh;
-  SDL_GetWindowSizeInPixels(window, (int *)&drawablew, (int *)&drawableh);
-  this->DepthTexture = CreateDepthTexture(drawablew, drawableh);
   UpdateViewportAndProjection();
+
+  LoadModelAtlas("ModelAtlat.json");
 }

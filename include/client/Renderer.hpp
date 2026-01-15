@@ -5,7 +5,6 @@
 #include "../common/Chunck.hpp"
 #include "../common/ChunkManager.hpp"
 #include <SDL3/SDL_gpu.h>
-#include <fstream>
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -101,38 +100,42 @@ struct Mesh {
   Vertex *mappedVertexData = nullptr;
   Uint32 *mappedIndexData = nullptr;
 };
-class GameClient;
-
-class Renderer {
-private:
+struct BasicInitVars {
   SDL_Window *window = nullptr;
   SDL_GPUDevice *GPU = nullptr;
-  SDL_GPURenderPass *pass = nullptr;
   SDL_Event event;
-  TTF_Font *font = nullptr;
-  SDL_GPUTexture *DepthTexture = nullptr;
-  Vector3 ScreenSize = {0, 0, 0};
-  ChunkManager chunkManager;
-  GameClient &gameClient;
-  int BlockPixelSize = 50;
-  bool fullScreen = false;
-  Frustum frustum;
   unsigned int Width, Height;
-  SDL_GPUCommandBuffer *cmdRender = nullptr;
-  SDL_GPUCommandBuffer *cmdCopy = nullptr;
-  std::vector<Mesh> Terrain;
+};
+struct PipileInitVars {
   SDL_GPUGraphicsPipeline *graphicsPipeline = nullptr;
-  SDL_GPUCopyPass *copyPass = nullptr;
-  json ModelAtlas;
   SDL_GPUVertexBufferDescription vertex_buffer_desc;
   SDL_GPUVertexAttribute vertex_attributes[2];
   SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
   SDL_GPUShader *vertex_shader;
-   SDL_GPUShader *fragment_shader;
+  SDL_GPUShader *fragment_shader;
+  SDL_GPUColorTargetDescription colorTargetDescriptions[1];
+};
+struct RunTimeRenderVars{
+  SDL_GPURenderPass *pass = nullptr;
+  SDL_GPUCopyPass *copyPass = nullptr;
+  SDL_GPUCommandBuffer *cmdRender = nullptr;
+  SDL_GPUCommandBuffer *cmdCopy = nullptr;
+};
+class GameClient;
 
-  // Buffer packing optimization
-  int chunksPerBuffer = 3; // How many chunks fit in one buffer
-  int totalBuffers = 0;    // Total number of GPU buffers allocated
+class Renderer {
+private:
+  BasicInitVars basicInitVars;
+  PipileInitVars pipelineInitVars;
+  RunTimeRenderVars runTimeRenderVars;
+  SDL_GPUTexture *DepthTexture = nullptr;
+  ChunkManager chunkManager;
+  GameClient &gameClient;
+  bool fullScreen = false;
+  Frustum frustum;
+  std::vector<Mesh> Terrain;
+  json ModelAtlas;
+  int chunksPerBuffer = 3, totalBuffers = 0;
 
   SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
   Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);
@@ -145,40 +148,36 @@ private:
   void GenerateBuffer();
   void VertexGPUInit();
   void PipelineInit();
-  SDL_GPUColorTargetDescription* ColorTargetDes();
+  void ColorTargetDes();
 
 public:
   Renderer(GameClient &gameClient);
   ~Renderer() {
     for (auto &mesh : this->Terrain) {
-      SDL_ReleaseGPUBuffer(this->GPU, mesh.IndexBuffer.buffer);
-      SDL_ReleaseGPUBuffer(this->GPU, mesh.VertexBuffer.buffer);
-      SDL_ReleaseGPUTransferBuffer(this->GPU, mesh.IndextransferBuffer);
-      SDL_ReleaseGPUTransferBuffer(this->GPU, mesh.VertextransferBuffer);
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.IndexBuffer.buffer);
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.VertexBuffer.buffer);
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, mesh.IndextransferBuffer);
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, mesh.VertextransferBuffer);
     }
 
-    SDL_ReleaseGPUGraphicsPipeline(this->GPU, graphicsPipeline);
-    if (GPU) {
-      SDL_DestroyGPUDevice(GPU);
-      GPU = nullptr;
+    SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU, pipelineInitVars.graphicsPipeline);
+    if (basicInitVars.GPU) {
+      SDL_DestroyGPUDevice(basicInitVars.GPU);
+      basicInitVars.GPU = nullptr;
     }
-    if (pass) {
-      pass = nullptr;
+    if (runTimeRenderVars.pass) {
+      runTimeRenderVars.pass = nullptr;
     }
-    if (window) {
-      SDL_DestroyWindow(window);
-      window = nullptr;
-    }
-    if (font) {
-      TTF_CloseFont(font);
-      font = nullptr;
+    if (basicInitVars.window) {
+      SDL_DestroyWindow(basicInitVars.window);
+      basicInitVars.window = nullptr;
     }
     if (DepthTexture) {
       DepthTexture = nullptr;
     }
-    event = {};
-    cmdCopy = nullptr;
-    cmdRender = nullptr;
+    basicInitVars.event = {};
+    runTimeRenderVars.cmdCopy = nullptr;
+    runTimeRenderVars.cmdRender = nullptr;
   };
 
   void Stats(Player &player);
