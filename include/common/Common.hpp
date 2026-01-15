@@ -196,6 +196,14 @@ struct Matrix {
     }
     return result;
   }
+  void operator+=(const Matrix &other) const{
+    if(rows != other.rows || cols != other.cols) throw std::invalid_argument("Matrix dimensions do not match for addition");
+    for (int x = 0; x < rows; x++) {
+      for (int y = 0; y < cols; y++) {
+          (x, y) += other(x, y);
+      } 
+    }
+  }
 
   static Matrix Identity(size_t n) {
     Matrix I(n, n, 0.0f);

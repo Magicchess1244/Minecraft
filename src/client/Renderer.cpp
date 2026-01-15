@@ -638,9 +638,9 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
 
   return result;
 }
-void LoadModelAtlas(const char* Dir){
-  std::ifstream f("example.json");
-  json data = json::parse(f);
+void Renderer::LoadModelAtlas(const char* Dir){
+  std::ifstream f("ModelAtlas.json");
+  this->ModelAtlas = json::parse(f);
 };
 
 void Renderer::Init(){
@@ -754,7 +754,7 @@ void Renderer::PipelineInit(){
   }
   this->pipelineInitVars.fragment_shader =
       LoadShader(this->basicInitVars.GPU, "Shader.frag", 0, 0, 0, 0);
-  if (this->pipelineInitVars.fragment_shader) {
+  if (!this->pipelineInitVars.fragment_shader) {
     SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
   }
   

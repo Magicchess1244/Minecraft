@@ -149,6 +149,7 @@ private:
   void VertexGPUInit();
   void PipelineInit();
   void ColorTargetDes();
+  void LoadModelAtlas(const char* Dir);
 
 public:
   Renderer(GameClient &gameClient);
