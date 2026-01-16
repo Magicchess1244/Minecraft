@@ -90,8 +90,6 @@ struct Mesh {
   SDL_GPUBufferBinding VertexBuffer;
   SDL_GPUBufferBinding IndexBuffer;
   std::vector<DrawnFace> Faces;
-  std::vector<int> chunkFaceCounts; // Face count for each chunk in this buffer
-  int faces;                        // Total faces in buffer (for compatibility)
   int BaseVertex = 0, BaseIndex = 0;
 
   // Temporary pointers for mapped buffers during DrawTerrain
