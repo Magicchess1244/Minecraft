@@ -5,9 +5,6 @@
 #include "../common/Chunck.hpp"
 #include "../common/ChunkManager.hpp"
 #include <SDL3/SDL_gpu.h>
-#include "json.hpp"
-
-using json = nlohmann::json;
 
 struct Plane {
   Vector3 normal{0.f, 1.f, 0.f}; // must be normalized
@@ -95,6 +92,7 @@ struct Mesh {
   std::vector<DrawnFace> Faces;
   std::vector<int> chunkFaceCounts; // Face count for each chunk in this buffer
   int faces;                        // Total faces in buffer (for compatibility)
+  int BaseVertex = 0, BaseIndex = 0;
 
   // Temporary pointers for mapped buffers during DrawTerrain
   Vertex *mappedVertexData = nullptr;
@@ -134,7 +132,6 @@ private:
   bool fullScreen = false;
   Frustum frustum;
   std::vector<Mesh> Terrain;
-  json ModelAtlas;
   int chunksPerBuffer = 3, totalBuffers = 0;
 
   SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
@@ -149,8 +146,7 @@ private:
   void VertexGPUInit();
   void PipelineInit();
   void ColorTargetDes();
-  void LoadModelAtlas(const char* Dir);
-
+  
 public:
   Renderer(GameClient &gameClient);
   ~Renderer() {

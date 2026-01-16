@@ -1,10 +1,9 @@
-#include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameClient.hpp"
+#include "../../include/client/ModelAtlas.hpp"
 #include <SDL3/SDL_gpu.h>
 #include <cstdio>
 #include <iostream>
 #include <ostream>
-#include <fstream>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
@@ -12,20 +11,7 @@ const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
 constexpr float Zfar = 50.0f;
 constexpr int RenderDistance = 0;
-const Vector4 Verts[16] = {
-    {-1, -1, -1, 1},  {1, -1, -1, 1},  {-1, 1, -1, 1},  {1, 1, -1, 1},
-    {-1, -1, 1, 1},   {1, -1, 1, 1},   {-1, 1, 1, 1},   {1, 1, 1, 1},
-    {-1, -1, -1, -1}, {1, -1, -1, -1}, {-1, 1, -1, -1}, {1, 1, -1, -1},
-    {-1, -1, 1, -1},  {1, -1, 1, -1},  {-1, 1, 1, -1},  {1, 1, 1, -1}};
-constexpr int HyperCubeVertsOrder[8][8]{
-    {0, 1, 2, 3, 4, 5, 6, 7},     {8, 9, 10, 11, 12, 13, 14, 15},
-    {1, 3, 5, 7, 10, 11, 14, 15}, {0, 2, 4, 6, 8, 10, 12, 14},
-    {2, 3, 6, 7, 10, 11, 14, 15}, {0, 1, 4, 5, 8, 9, 12, 13},
-    {0, 1, 2, 3, 8, 9, 10, 11},   {4, 5, 6, 7, 12, 13, 14, 15}};
-constexpr int CubeVertOrder[6][4]{
-    {0, 1, 2, 3}, {4, 5, 6, 7}, {1, 3, 5, 7},
-    {0, 2, 4, 6}, {0, 1, 4, 5}, {4, 5, 6, 7},
-};
+
 const Vector3 Direction[6] = {
     {0, 0, -1}, // Front
     {0, 0, 1},  // Back
@@ -201,66 +187,33 @@ void Renderer::DrawTestTriangle(Mesh *mesh, Vertex *Vertexdata,
 
   mesh->faces = 1; // One triangle = 1 face
 }
-void DrawCube(Vector3 CubeVerts[8], Vertex *Vertexdata, Uint32 *Indexdata,
-              int BlockId, Mesh *mesh) {
-  for (int FaceNum = 0; FaceNum < 6; FaceNum++) {
-    const int baseVertex = mesh->faces * 4;
-    const int baseIndex = mesh->faces * 6;
-
-    for (int FaceVertNum = 0; FaceVertNum < 4; FaceVertNum++) {
-      Vector3 worldPos = CubeVerts[CubeVertOrder[FaceNum][FaceVertNum]];
-
-      Vector3 Color = BlockDef[BlockId].color.ToFloat() -
-                      Colors[(int)(FaceNum / 2)].ToFloat();
-      Vertex vertex = {worldPos, Color};
-      Vertexdata[baseVertex + FaceVertNum] = vertex;
-
-      Indexdata[baseIndex] = baseVertex + 0;
-      Indexdata[baseIndex + 1] = baseVertex + 1;
-      Indexdata[baseIndex + 2] = baseVertex + 2;
-
-      Indexdata[baseIndex + 3] = baseVertex + 2;
-      Indexdata[baseIndex + 4] = baseVertex + 1;
-      Indexdata[baseIndex + 5] = baseVertex + 3;
-
-      mesh->faces++;
-    }
-  }
-}
 void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
-                   Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata) {
-  Vector3 projectedVerts[16];
+                   Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata, int BlockModel = 0) {
 
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
     int Distance = 2;
-    float w = 1.0f / (Distance - Verts[i].w);
+    float w = 1.0f / (Distance - ModelAtlas[BlockModel].Vertex[i].w);
     Matrix m(4, 4);
     for (int x = 0; x < 3; x++) {
       m(x, x) = w;
     }
     Matrix DPos(1, 4);
-    DPos(0, 0) = Verts[i].x + blocks.x;
-    DPos(0, 1) = Verts[i].y + blocks.y;
-    DPos(0, 2) = Verts[i].z + blocks.z;
-    DPos(0, 3) = Verts[i].w + blocks.w;
+    DPos(0, 0) = ModelAtlas[BlockModel].Vertex[i].x + blocks.x;
+    DPos(0, 1) = ModelAtlas[BlockModel].Vertex[i].y + blocks.y;
+    DPos(0, 2) = ModelAtlas[BlockModel].Vertex[i].z + blocks.z;
+    DPos(0, 3) = ModelAtlas[BlockModel].Vertex[i].w + blocks.w;
 
-    Matrix Rotation(4,4);
-    //DPos();
-
+    //Matrix Rotation(4,4);
     DPos = DPos * m;
-    projectedVerts[i] = {DPos(0, 0), DPos(0, 1), DPos(0, 2)};
-    // std::cout << "x: " << projectedVerts[i].x << "y: " <<
-    // projectedVerts[i].y<< "z: " << projectedVerts[i].z << std::endl;
+    
+    Vector3 Color = BlockDef[blockID].color.ToFloat() - Colors[(int)(Side / 2)].ToFloat();
+    Vertex vertex = {{DPos(0, 0), DPos(0, 1), DPos(0, 2)}, Color};
+    Vertexdata[mesh->BaseVertex] = vertex;
+    mesh->BaseVertex++;
   }
-  // std::cout << std::endl << std::endl << std::endl;
-
-  for (int i = 0; i < 8; i++) {
-    Vector3 ProjectedCubeVerts[8];
-    for (int x = 0; x < 8; x++) {
-      ProjectedCubeVerts[x] = projectedVerts[HyperCubeVertsOrder[i][x]];
-    };
-    DrawCube(ProjectedCubeVerts, Vertexdata, Indexdata, i, mesh);
-  };
+  for(int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++){
+    Indexdata[mesh->BaseIndex] = ModelAtlas[BlockModel].Index[i];
+  }
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
                            int bufferIndex, int bufferOffset) {
@@ -638,11 +591,6 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
 
   return result;
 }
-void Renderer::LoadModelAtlas(const char* Dir){
-  std::ifstream f("ModelAtlas.json");
-  this->ModelAtlas = json::parse(f);
-};
-
 void Renderer::Init(){
   this->basicInitVars.Width = 600;
   this->basicInitVars.Height = 400;
@@ -804,6 +752,4 @@ Renderer::Renderer(GameClient &gameClient)
   SDL_ReleaseGPUShader(this->basicInitVars.GPU, this->pipelineInitVars.fragment_shader);
 
   UpdateViewportAndProjection();
-
-  LoadModelAtlas("ModelAtlat.json");
 }

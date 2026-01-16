@@ -22,7 +22,7 @@ COMMON_OBJS := $(COMMON_SRCS:.cpp=.o)
 
 # Client source files
 CLIENT_SRCS := $(SRC_CLIENT)/ClientMain.cpp $(SRC_CLIENT)/GameClient.cpp \
-               $(SRC_CLIENT)/Renderer.cpp
+               $(SRC_CLIENT)/Renderer.cpp 
 CLIENT_OBJS := $(CLIENT_SRCS:.cpp=.o)
 
 # Server source files
