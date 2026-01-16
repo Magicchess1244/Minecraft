@@ -196,7 +196,7 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
   auto *mesh = &this->Terrain[0]; // Just use the first mesh
   Vertex *Vertexdata = mesh->mappedVertexData;
   Uint32 *Indexdata = mesh->mappedIndexData;
-  DrawHypercube(player, {0, 0, 0, 0}, 0, 0, mesh, Vertexdata, Indexdata, 1);
+  DrawHypercube(player, {0, 0, 0, 0}, 0, 0, mesh, Vertexdata, Indexdata, 0);
 }
 void Renderer::DrawTerrain(Player &player) {
   auto *mesh = &this->Terrain[0]; // Just use first mesh
