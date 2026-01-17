@@ -1,9 +1,13 @@
 #include "../../include/client/GameClient.hpp"
 #include "../../include/client/ModelAtlas.hpp"
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_oldnames.h>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <ostream>
+#include <map>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
@@ -11,21 +15,6 @@ const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
 constexpr float Zfar = 50.0f;
 constexpr int RenderDistance = 0;
-
-const Vector3 Direction[6] = {
-    {0, 0, -1}, // Front
-    {0, 0, 1},  // Back
-    {-1, 0, 0}, // Right
-    {1, 0, 0},  // Left
-    {0, -1, 0}, // Top
-    {0, 1, 0}   // Bottom
-};
-constexpr Color Colors[3] = {
-    {0, 0, 0},    // Front / Back
-    {5, 5, 5},    // Right / Left
-    {10, 10, 10}, // Top / Bottom
-};
-
 Matrix Perspective(float tanHalfFov, float aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
   float f = 1 / FOV;
@@ -160,37 +149,130 @@ Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
 
   return result;
 }
+bool CalculateIntersectionPoint4D(const Vector4& p1, const Vector4& p2,
+                                  float axisValue, Vector4& intersectionPoint) {
+    // Get axis values for both points
+    float p1_axis = p1.w;
+    float p2_axis = p2.w;
+    
+    // Check if points are on opposite sides of the hyperplane
+    if ((p1_axis > axisValue) == (p2_axis > axisValue)) {
+        return false;  // No intersection
+    }
+    
+    // Calculate direction vector
+    Vector4 direction = p1 - p2;
+    
+    // Get direction component along the slicing axis
+    float dir_axis = direction.w;
+    
+    // Calculate parameter t (position along the line segment)
+    float t = (p1_axis - axisValue) / (dir_axis * -1.0f);
+    
+    // Calculate intersection point
+    intersectionPoint.x = p1.x + t * direction.x;
+    intersectionPoint.y = p1.y + t * direction.y;
+    intersectionPoint.z = p1.z + t * direction.z;
+    intersectionPoint.w = p1.w + t * direction.w;
+    
+    // Set the slicing axis to the exact value (correct for floating point errors)
+    intersectionPoint.w = axisValue;
+    
+    return true;
+}
+
 void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
                    Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata,
                    int BlockModel) {
+    std::unordered_map<int, int> oldToNew;
+    int newIndex = 0;
+    Matrix RotationXW = Matrix::Identity(4);
+    Matrix RotationZW = Matrix::Identity(4);
 
-  for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
-    int Distance = 2;
-    float w = 1.0f / (Distance - ModelAtlas[BlockModel].Vertex[i].w);
-    Matrix m(4, 4);
-    for (int x = 0; x < 3; x++) {
-      m(x, x) = w;
+    float Rot = (player.w - std::floor(player.w) )* 360  * PI / 180;
+    RotationXW(0, 0) = cos(Rot);   // X component
+    RotationXW(0, 3) = -sin(Rot);  // W affects X
+    RotationXW(3, 0) = sin(Rot);   // X affects W
+    RotationXW(3, 3) = cos(Rot);   // W component
+
+    // ZW rotation (rotates Z and W axes)
+    RotationZW(2, 2) = cos(Rot);   // Z component
+    RotationZW(2, 3) = -sin(Rot);  // W affects Z
+    RotationZW(3, 2) = sin(Rot);   // Z affects W
+    RotationZW(3, 3) = cos(Rot); 
+
+    // Process vertices - only include those that intersect or are on the slice plane
+    for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
+      Matrix DPos(4, 1);
+      DPos(0, 0) = ModelAtlas[BlockModel].Vertex[i].x + blocks.x;
+      DPos(1, 0) = ModelAtlas[BlockModel].Vertex[i].y + blocks.y;
+      DPos(2, 0) = ModelAtlas[BlockModel].Vertex[i].z + blocks.z;
+      DPos(3, 0) = ModelAtlas[BlockModel].Vertex[i].w + blocks.w;
+      
+      // Apply rotations: 4x4 * 4x1 = 4x1
+      DPos = RotationZW * DPos;
+      DPos = RotationXW * DPos;
+      
+      // Check if this vertex is close to the slicing plane
+      float threshold = 0.1f;
+      if (abs(DPos(3, 0) - player.w) > threshold) {
+          continue;
+      }
+      
+      // Map old index to new index in the sliced array
+      oldToNew[i] = newIndex;
+      float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 25;
+      Vector3 color = BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
+      Vertex vertex = {{DPos(0, 0), DPos(1, 0), DPos(2, 0)}, color};
+      Vertexdata[mesh->BaseVertex] = vertex;
+      mesh->BaseVertex++;
+      newIndex++;
     }
-    Matrix DPos(1, 4);
-    DPos(0, 0) = ModelAtlas[BlockModel].Vertex[i].x + blocks.x;
-    DPos(0, 1) = ModelAtlas[BlockModel].Vertex[i].y + blocks.y;
-    DPos(0, 2) = ModelAtlas[BlockModel].Vertex[i].z + blocks.z;
-    DPos(0, 3) = ModelAtlas[BlockModel].Vertex[i].w + blocks.w;
-
-    // Matrix Rotation(4,4);
-    DPos = DPos * m;
-
-    float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 100;
-    Vector3 color =
-        BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
-    Vertex vertex = {{DPos(0, 0), DPos(0, 1), DPos(0, 2)}, color};
-    Vertexdata[mesh->BaseVertex] = vertex;
-    mesh->BaseVertex++;
-  }
-  for (int i = 0; i < ModelAtlas[BlockModel].Index.size(); i++) {
-    Indexdata[mesh->BaseIndex] = ModelAtlas[BlockModel].Index[i];
-    mesh->BaseIndex++;
-  }
+    
+    // Process edges to find intersection points
+    for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
+        int nextIdx = (i + 1) % ModelAtlas[BlockModel].Vertex.size();
+        
+        Vector4 DPos = ModelAtlas[BlockModel].Vertex[i] + blocks;
+        Vector4 DPos1 = ModelAtlas[BlockModel].Vertex[nextIdx] + blocks;
+        
+        Vector4 intersectionPoint;
+        
+        // If there IS an intersection, add it
+        if (CalculateIntersectionPoint4D(DPos, DPos1, player.w, intersectionPoint)) {
+            // Only add if not already added (avoid duplicates)
+            bool alreadyAdded = false;
+            if (oldToNew.find(i) != oldToNew.end() && 
+                abs(ModelAtlas[BlockModel].Vertex[i].w + blocks.w - player.w) < 0.01f) {
+                alreadyAdded = true;
+            }
+            
+            if (!alreadyAdded) {
+                oldToNew[i] = newIndex;
+                
+                float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 25;
+                Vector3 color = BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
+                
+                Vertex vertex = {intersectionPoint.ToVec3(), color};
+                Vertexdata[mesh->BaseVertex] = vertex;
+                mesh->BaseVertex++;
+                newIndex++;
+            }
+        }
+    }
+    
+    // Process indices
+    for (int i = 0; i < ModelAtlas[BlockModel].Index.size(); i++) {
+        int oldIdx = ModelAtlas[BlockModel].Index[i];
+        
+        // Skip if vertex was not in slice
+        if (oldToNew.find(oldIdx) == oldToNew.end())
+            continue;
+        
+        // Use the new index for this vertex
+        Indexdata[mesh->BaseIndex] = oldToNew[oldIdx];
+        mesh->BaseIndex++;
+    }
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
                            int bufferIndex, int bufferOffset) {
@@ -357,7 +439,7 @@ void Renderer::UpdateViewportAndProjection() {
   float aspect = (float)drawableWidth / (float)drawableHeight;
   this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
 }
-void Renderer::EventManager(){
+void Renderer::EventManager(Player &player) {
   while (SDL_PollEvent(&this->basicInitVars.event)) {
     switch (this->basicInitVars.event.type) {
     case SDL_EVENT_QUIT:
@@ -368,7 +450,13 @@ void Renderer::EventManager(){
     case SDL_EVENT_WINDOW_RESIZED: {
       UpdateViewportAndProjection();
     }
+    case SDL_EVENT_MOUSE_WHEEL: {
+      const SDL_MouseWheelEvent &wheel = this->basicInitVars.event.wheel;
 
+      player.w += wheel.y / 10; // normal mouse wheel
+      std::cout << player.w / 4 << std::endl;
+      break;
+    }
     case SDL_EVENT_KEY_DOWN: {
       SDL_Keycode key = this->basicInitVars.event.key.scancode;
 
@@ -393,7 +481,7 @@ void Renderer::EventManager(){
 }
 void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               std::vector<Player> &players) {
-  EventManager();
+  EventManager(players[0]);
   this->runTimeRenderVars.cmdCopy =
       SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
@@ -462,15 +550,15 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               this->pipelineInitVars.graphicsPipeline);
 
   // Draw the tesseract from first mesh
-  for(auto& mesh : this->Terrain){
-    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &mesh.VertexBuffer,
-                            1);
+  for (auto &mesh : this->Terrain) {
+    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0,
+                             &mesh.VertexBuffer, 1);
     SDL_BindGPUIndexBuffer(this->runTimeRenderVars.pass, &mesh.IndexBuffer,
-                          SDL_GPU_INDEXELEMENTSIZE_32BIT);
+                           SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
     if (mesh.BaseVertex > 0) {
-        SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, mesh.BaseIndex, 1,
-                                    0, 0, 0);
+      SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, mesh.BaseIndex,
+                                   1, 0, 0, 0);
     }
     mesh.BaseIndex = 0;
     mesh.BaseVertex = 0;
@@ -708,24 +796,34 @@ void Renderer::PipelineInit() {
   SDL_zero(this->pipelineInitVars.pipeline_desc);
 
   // Setup depth stencil for proper depth testing
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_test = true;
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_write = true;
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS;
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_stencil_test = true;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_test =
+      true;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_write =
+      true;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.compare_op =
+      SDL_GPU_COMPAREOP_LESS;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_stencil_test =
+      false;
 
   this->pipelineInitVars.pipeline_desc.target_info.num_color_targets = 1;
-  this->pipelineInitVars.pipeline_desc.target_info.color_target_descriptions = this->pipelineInitVars.colorTargetDescriptions;
-  this->pipelineInitVars.pipeline_desc.target_info.has_depth_stencil_target = true;
-  this->pipelineInitVars.pipeline_desc.target_info.depth_stencil_format =SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+  this->pipelineInitVars.pipeline_desc.target_info.color_target_descriptions =
+      this->pipelineInitVars.colorTargetDescriptions;
+  this->pipelineInitVars.pipeline_desc.target_info.has_depth_stencil_target =
+      true;
+  this->pipelineInitVars.pipeline_desc.target_info.depth_stencil_format =
+      SDL_GPU_TEXTUREFORMAT_D16_UNORM;
 
-  this->pipelineInitVars.pipeline_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-  this->pipelineInitVars.pipeline_desc.vertex_shader = pipelineInitVars.vertex_shader;
-  this->pipelineInitVars.pipeline_desc.fragment_shader = pipelineInitVars.fragment_shader;
-  this->pipelineInitVars.pipeline_desc.rasterizer_state = {
-        .fill_mode = SDL_GPU_FILLMODE_FILL,
-        .cull_mode = SDL_GPU_CULLMODE_BACK,       // Enable back-face culling
-        .front_face = SDL_GPU_FRONTFACE_CLOCKWISE,
-    };
+  this->pipelineInitVars.pipeline_desc.primitive_type =
+      SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+  this->pipelineInitVars.pipeline_desc.vertex_shader =
+      pipelineInitVars.vertex_shader;
+  this->pipelineInitVars.pipeline_desc.fragment_shader =
+      pipelineInitVars.fragment_shader;
+  /*this->pipelineInitVars.pipeline_desc.rasterizer_state = {
+      .fill_mode = SDL_GPU_FILLMODE_FILL,
+      .cull_mode = SDL_GPU_CULLMODE_BACK, // Enable back-face culling
+      .front_face = SDL_GPU_FRONTFACE_CLOCKWISE};
+      */
   VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =

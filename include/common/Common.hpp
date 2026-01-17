@@ -144,9 +144,26 @@ struct Vector3 {
     return {std::min(x, a.x), std::min(y, a.y), std::min(z, a.z)};
   }
 };
-struct Vector4{
-  float x,y,z,w;
-  Vector4(float x = 0, float y = 0, float z = 0, float w = 0) : x(x), y(y), z(z), w(w) {}
+struct Vector4 {
+  float x, y, z, w;
+  Vector4(float x = 0, float y = 0, float z = 0, float w = 0)
+      : x(x), y(y), z(z), w(w) {}
+
+  Vector3 ToVec3() { return {x, y, z}; }
+  Vector4 operator+=(const Vector4 &other) {
+    x += other.x;
+    y += other.y;
+    z += other.z;
+    w += other.w;
+    return *this;
+  }
+  Vector4 operator+(const Vector4 &other) const {
+    return {x + other.x, y + other.y, z + other.z, w + other.w};
+  }
+
+    Vector4 operator-(const Vector4 &other) const {
+    return {x - other.x, y - other.y, z - other.z, w - other.w};
+  }
 };
 struct Matrix {
   size_t rows, cols;
@@ -196,12 +213,14 @@ struct Matrix {
     }
     return result;
   }
-  void operator+=(const Matrix &other) const{
-    if(rows != other.rows || cols != other.cols) throw std::invalid_argument("Matrix dimensions do not match for addition");
+  void operator+=(const Matrix &other) const {
+    if (rows != other.rows || cols != other.cols)
+      throw std::invalid_argument(
+          "Matrix dimensions do not match for addition");
     for (int x = 0; x < rows; x++) {
       for (int y = 0; y < cols; y++) {
-          (x, y) += other(x, y);
-      } 
+        (x, y) += other(x, y);
+      }
     }
   }
 
@@ -280,6 +299,7 @@ struct Player {
   Vector3 Position;
   Vector3 Rotation;
   Color color;
+  float w = 0.5f;
 };
 struct Slot {
   short Amount;

@@ -142,7 +142,7 @@ private:
   void VertexGPUInit();
   void PipelineInit();
   void ColorTargetDes();
-  void EventManager();
+  void EventManager(Player &player);
   
 public:
   Renderer(GameClient &gameClient);
