@@ -3,7 +3,7 @@
 #include <ostream>
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 0.2f;
+constexpr float playerSpeed = 0.05f;
 
 void GameClient::set_seed() {
   /*int res;

@@ -180,9 +180,10 @@ void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
     // Matrix Rotation(4,4);
     DPos = DPos * m;
 
-    Vector3 Color =
-        BlockDef[blockID].color.ToFloat() - Colors[(int)(Side / 2)].ToFloat();
-    Vertex vertex = {{DPos(0, 0), DPos(0, 1), DPos(0, 2)}, Color};
+    float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 100;
+    Vector3 color =
+        BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
+    Vertex vertex = {{DPos(0, 0), DPos(0, 1), DPos(0, 2)}, color};
     Vertexdata[mesh->BaseVertex] = vertex;
     mesh->BaseVertex++;
   }
@@ -356,9 +357,7 @@ void Renderer::UpdateViewportAndProjection() {
   float aspect = (float)drawableWidth / (float)drawableHeight;
   this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
 }
-
-void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
-                              std::vector<Player> &players) {
+void Renderer::EventManager(){
   while (SDL_PollEvent(&this->basicInitVars.event)) {
     switch (this->basicInitVars.event.type) {
     case SDL_EVENT_QUIT:
@@ -391,7 +390,10 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
     }
     }
   }
-
+}
+void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
+                              std::vector<Player> &players) {
+  EventManager();
   this->runTimeRenderVars.cmdCopy =
       SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
@@ -434,7 +436,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   depth_target_info.store_op = SDL_GPU_STOREOP_DONT_CARE;
   depth_target_info.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
   depth_target_info.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-  depth_target_info.cycle = false;
+  depth_target_info.cycle = true;
 
   Player player = players[0];
   Matrix model = Rotation({0, 0, 0});
@@ -706,30 +708,24 @@ void Renderer::PipelineInit() {
   SDL_zero(this->pipelineInitVars.pipeline_desc);
 
   // Setup depth stencil for proper depth testing
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_test =
-      true;
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_write =
-      true;
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.compare_op =
-      SDL_GPU_COMPAREOP_LESS;
-  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_stencil_test =
-      false;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_test = true;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_write = true;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS;
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_stencil_test = true;
 
   this->pipelineInitVars.pipeline_desc.target_info.num_color_targets = 1;
-  this->pipelineInitVars.pipeline_desc.target_info.color_target_descriptions =
-      this->pipelineInitVars.colorTargetDescriptions;
-  this->pipelineInitVars.pipeline_desc.target_info.has_depth_stencil_target =
-      true;
-  this->pipelineInitVars.pipeline_desc.target_info.depth_stencil_format =
-      SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+  this->pipelineInitVars.pipeline_desc.target_info.color_target_descriptions = this->pipelineInitVars.colorTargetDescriptions;
+  this->pipelineInitVars.pipeline_desc.target_info.has_depth_stencil_target = true;
+  this->pipelineInitVars.pipeline_desc.target_info.depth_stencil_format =SDL_GPU_TEXTUREFORMAT_D16_UNORM;
 
-  this->pipelineInitVars.pipeline_desc.primitive_type =
-      SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-  this->pipelineInitVars.pipeline_desc.vertex_shader =
-      pipelineInitVars.vertex_shader;
-  this->pipelineInitVars.pipeline_desc.fragment_shader =
-      pipelineInitVars.fragment_shader;
-
+  this->pipelineInitVars.pipeline_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+  this->pipelineInitVars.pipeline_desc.vertex_shader = pipelineInitVars.vertex_shader;
+  this->pipelineInitVars.pipeline_desc.fragment_shader = pipelineInitVars.fragment_shader;
+  this->pipelineInitVars.pipeline_desc.rasterizer_state = {
+        .fill_mode = SDL_GPU_FILLMODE_FILL,
+        .cull_mode = SDL_GPU_CULLMODE_BACK,       // Enable back-face culling
+        .front_face = SDL_GPU_FRONTFACE_CLOCKWISE,
+    };
   VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =

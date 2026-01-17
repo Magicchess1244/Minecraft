@@ -80,9 +80,7 @@ struct Frustum {
 };
 struct Vertex {
   Vector3 Position;
-  // float pad1;  // padding to 16 bytes
   Vector3 Color;
-  // float pad2;  // padding to 16 bytes
 };
 struct Mesh {
   SDL_GPUTransferBuffer *VertextransferBuffer = nullptr;
@@ -144,6 +142,7 @@ private:
   void VertexGPUInit();
   void PipelineInit();
   void ColorTargetDes();
+  void EventManager();
   
 public:
   Renderer(GameClient &gameClient);
