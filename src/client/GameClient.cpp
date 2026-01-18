@@ -91,8 +91,8 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   // Apply mouse movement to rotation
   // Mouse X controls yaw (Y-axis rotation)
   // Mouse Y controls pitch (X-axis rotation)
-  PlayerRot.y = -mouseX; // Yaw (left/right)
-  PlayerRot.x = -mouseY; // Pitch (up/down)
+  PlayerRot.y = mouseX; // Yaw (left/right)
+  PlayerRot.x = mouseY; // Pitch (up/down)
   PlayerRot.z = 0;       // Roll (not used for FPS camera)
 
   if (move_left || move_right) {

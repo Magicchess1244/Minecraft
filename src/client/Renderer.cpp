@@ -7,7 +7,6 @@
 #include <cstdio>
 #include <iostream>
 #include <ostream>
-#include <map>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
@@ -17,18 +16,15 @@ constexpr float Zfar = 50.0f;
 constexpr int RenderDistance = 0;
 Matrix Perspective(float tanHalfFov, float aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
-  float f = 1 / FOV;
-
-  m(0, 0) = f / aspect;
+  float f = 1 / tanHalfFov;
+  m(0, 0) = (f / aspect);  // Negated to flip x-axis
   m(1, 1) = f;
   m(2, 2) = (Near + Far) / (Near - Far);
   m(3, 2) = 1.0f;
   m(2, 3) = (2.0f * Near * Far) / (Near - Far);
   m(3, 3) = 0.0f;
-
   return m;
 }
-
 // Rotation matrices look correct
 Matrix RotationX(float angleRad) {
   Matrix m = Matrix::Identity(4);
@@ -78,8 +74,8 @@ Matrix Translation(float x, float y, float z) {
   return m;
 }
 Matrix LookAt(const Vector3 &Rotation, const Vector3 &Position) {
-  Matrix rotation = RotationY(Rotation.AngleToRadians().y * -1) *
-                    RotationX(Rotation.AngleToRadians().x * -1);
+  Matrix rotation = RotationY(Rotation.AngleToRadians().y * 1) *
+                    RotationX(Rotation.AngleToRadians().x * 1);
   Matrix viewRotation = Matrix::Identity(4);
   for (int i = 0; i < 3; ++i) {
     for (int j = 0; j < 3; ++j) {
@@ -151,6 +147,7 @@ Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
 }
 bool CalculateIntersectionPoint4D(const Vector4& p1, const Vector4& p2,
                                   float axisValue, Vector4& intersectionPoint) {
+    axisValue = 0;
     // Get axis values for both points
     float p1_axis = p1.w;
     float p2_axis = p2.w;
@@ -185,93 +182,167 @@ void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
                    Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata,
                    int BlockModel) {
     std::unordered_map<int, int> oldToNew;
+    std::vector<Vector4> transformedVertices;
     int newIndex = 0;
+    
     Matrix RotationXW = Matrix::Identity(4);
     Matrix RotationZW = Matrix::Identity(4);
 
-    float Rot = (player.w - std::floor(player.w) )* 360  * PI / 180;
-    RotationXW(0, 0) = cos(Rot);   // X component
-    RotationXW(0, 3) = -sin(Rot);  // W affects X
-    RotationXW(3, 0) = sin(Rot);   // X affects W
-    RotationXW(3, 3) = cos(Rot);   // W component
-
-    // ZW rotation (rotates Z and W axes)
-    RotationZW(2, 2) = cos(Rot);   // Z component
-    RotationZW(2, 3) = -sin(Rot);  // W affects Z
-    RotationZW(3, 2) = sin(Rot);   // Z affects W
-    RotationZW(3, 3) = cos(Rot); 
-
-    // Process vertices - only include those that intersect or are on the slice plane
-    for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
-      Matrix DPos(4, 1);
-      DPos(0, 0) = ModelAtlas[BlockModel].Vertex[i].x + blocks.x;
-      DPos(1, 0) = ModelAtlas[BlockModel].Vertex[i].y + blocks.y;
-      DPos(2, 0) = ModelAtlas[BlockModel].Vertex[i].z + blocks.z;
-      DPos(3, 0) = ModelAtlas[BlockModel].Vertex[i].w + blocks.w;
-      
-      // Apply rotations: 4x4 * 4x1 = 4x1
-      DPos = RotationZW * DPos;
-      DPos = RotationXW * DPos;
-      
-      // Check if this vertex is close to the slicing plane
-      float threshold = 0.1f;
-      if (abs(DPos(3, 0) - player.w) > threshold) {
-          continue;
-      }
-      
-      // Map old index to new index in the sliced array
-      oldToNew[i] = newIndex;
-      float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 25;
-      Vector3 color = BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
-      Vertex vertex = {{DPos(0, 0), DPos(1, 0), DPos(2, 0)}, color};
-      Vertexdata[mesh->BaseVertex] = vertex;
-      mesh->BaseVertex++;
-      newIndex++;
-    }
+    float Rot = (player.w - std::floor(player.w)) * 360 * PI / 180;
     
-    // Process edges to find intersection points
+    // XW rotation
+    RotationXW(0, 0) = cos(Rot);
+    RotationXW(0, 3) = -sin(Rot);
+    RotationXW(3, 0) = sin(Rot);
+    RotationXW(3, 3) = cos(Rot);
+
+    // ZW rotation
+    RotationZW(2, 2) = cos(Rot);
+    RotationZW(2, 3) = -sin(Rot);
+    RotationZW(3, 2) = sin(Rot);
+    RotationZW(3, 3) = cos(Rot);
+
+    // First pass: Transform all vertices and store them
     for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
-        int nextIdx = (i + 1) % ModelAtlas[BlockModel].Vertex.size();
+        Matrix DPos(4, 1);
+        DPos(0, 0) = ModelAtlas[BlockModel].Vertex[i].x + blocks.x;
+        DPos(1, 0) = ModelAtlas[BlockModel].Vertex[i].y + blocks.y;
+        DPos(2, 0) = ModelAtlas[BlockModel].Vertex[i].z + blocks.z;
+        DPos(3, 0) = ModelAtlas[BlockModel].Vertex[i].w + blocks.w;
         
-        Vector4 DPos = ModelAtlas[BlockModel].Vertex[i] + blocks;
-        Vector4 DPos1 = ModelAtlas[BlockModel].Vertex[nextIdx] + blocks;
+        DPos = RotationXW * DPos;
+        DPos = RotationZW * DPos;
         
-        Vector4 intersectionPoint;
+        transformedVertices.push_back({DPos(0, 0), DPos(1, 0), DPos(2, 0), DPos(3, 0)});
+    }
+
+    float threshold = 0.1f;
+    
+    // Second pass: Process faces by iterating through indices in groups of 3 (triangles)
+    for (int i = 0; i < ModelAtlas[BlockModel].Index.size(); i += 3) {
+        int idx0 = ModelAtlas[BlockModel].Index[i];
+        int idx1 = ModelAtlas[BlockModel].Index[i + 1];
+        int idx2 = ModelAtlas[BlockModel].Index[i + 2];
         
-        // If there IS an intersection, add it
-        if (CalculateIntersectionPoint4D(DPos, DPos1, player.w, intersectionPoint)) {
-            // Only add if not already added (avoid duplicates)
-            bool alreadyAdded = false;
-            if (oldToNew.find(i) != oldToNew.end() && 
-                abs(ModelAtlas[BlockModel].Vertex[i].w + blocks.w - player.w) < 0.01f) {
-                alreadyAdded = true;
+        Vector4 v0 = transformedVertices[idx0];
+        Vector4 v1 = transformedVertices[idx1];
+        Vector4 v2 = transformedVertices[idx2];
+        
+        // Check which vertices are near the slice plane
+        bool v0_near = abs(v0.w - player.w) <= threshold;
+        bool v1_near = abs(v1.w - player.w) <= threshold;
+        bool v2_near = abs(v2.w - player.w) <= threshold;
+        
+        // Skip if entire triangle is far from slice
+        if (!v0_near && !v1_near && !v2_near) {
+            bool crosses = false;
+            if ((v0.w < player.w && v1.w > player.w) || (v0.w > player.w && v1.w < player.w)) crosses = true;
+            if ((v1.w < player.w && v2.w > player.w) || (v1.w > player.w && v2.w < player.w)) crosses = true;
+            if ((v2.w < player.w && v0.w > player.w) || (v2.w > player.w && v0.w < player.w)) crosses = true;
+            if (!crosses) continue;
+        }
+        
+        // Add or reuse vertices
+        auto addVertex = [&](int origIdx, const Vector4& pos) -> int {
+            if (oldToNew.find(origIdx) != oldToNew.end()) {
+                return oldToNew[origIdx];
             }
             
-            if (!alreadyAdded) {
-                oldToNew[i] = newIndex;
+            float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * origIdx / 25;
+            Vector3 color = BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
+            Vertex vertex = {{pos.x, pos.y, pos.z}, color};
+            Vertexdata[mesh->BaseVertex] = vertex;
+            mesh->BaseVertex++;
+            oldToNew[origIdx] = newIndex;
+            return newIndex++;
+        };
+        
+        // Handle vertices on or near the slice
+        if (v0_near && v1_near && v2_near) {
+            // All three vertices on slice - draw the triangle
+            int new0 = addVertex(idx0, v0);
+            int new1 = addVertex(idx1, v1);
+            int new2 = addVertex(idx2, v2);
+            
+            Indexdata[mesh->BaseIndex++] = new0;
+            Indexdata[mesh->BaseIndex++] = new1;
+            Indexdata[mesh->BaseIndex++] = new2;
+        } else {
+            // Handle edge intersections for partially sliced triangles
+            std::vector<Vector4> clippedVerts;
+            std::vector<int> clippedOrigIdx;
+            
+            // Check each edge for intersection with the slice plane
+            auto processEdge = [&](int origIdx1, const Vector4& vert1, int origIdx2, const Vector4& vert2) {
+                bool v1_near = abs(vert1.w - player.w) <= threshold;
+                bool v2_near = abs(vert2.w - player.w) <= threshold;
                 
-                float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 25;
-                Vector3 color = BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
+                // Add first vertex if on slice
+                if (v1_near) {
+                    clippedVerts.push_back(vert1);
+                    clippedOrigIdx.push_back(origIdx1);
+                }
                 
-                Vertex vertex = {intersectionPoint.ToVec3(), color};
-                Vertexdata[mesh->BaseVertex] = vertex;
-                mesh->BaseVertex++;
-                newIndex++;
+                // Check if edge crosses the slice plane
+                if ((vert1.w < player.w && vert2.w > player.w) || 
+                    (vert1.w > player.w && vert2.w < player.w)) {
+                    // Calculate intersection point
+                    Vector4 intersection;
+                    if (CalculateIntersectionPoint4D(vert1, vert2, player.w, intersection)) {
+                        clippedVerts.push_back(intersection);
+                        // Use negative index to mark as intersection point
+                        clippedOrigIdx.push_back(-(mesh->BaseVertex + newIndex + clippedVerts.size()));
+                    }
+                }
+            };
+            
+            // Process all three edges
+            processEdge(idx0, v0, idx1, v1);
+            processEdge(idx1, v1, idx2, v2);
+            processEdge(idx2, v2, idx0, v0);
+            
+            // Draw the clipped polygon (3 or 4 vertices)
+            if (clippedVerts.size() >= 3) {
+                std::vector<int> newIndices;
+                
+                for (int j = 0; j < clippedVerts.size(); j++) {
+                    int origIdx = clippedOrigIdx[j];
+                    int vertIdx;
+                    
+                    // Check if this is an original vertex or intersection point
+                    if (origIdx >= 0) {
+                        // Original vertex - check if already added
+                        vertIdx = addVertex(origIdx, clippedVerts[j]);
+                    } else {
+                        // Intersection point - always add new vertex
+                        float Shade = 0.5f; // Mid-tone for intersection points
+                        Vector3 color = BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
+                        Vertex vertex = {{clippedVerts[j].x, clippedVerts[j].y, clippedVerts[j].z}, color};
+                        Vertexdata[mesh->BaseVertex] = vertex;
+                        mesh->BaseVertex++;
+                        vertIdx = newIndex++;
+                    }
+                    newIndices.push_back(vertIdx);
+                }
+                
+                // Triangulate the clipped polygon
+                if (newIndices.size() == 3) {
+                    // Simple triangle
+                    Indexdata[mesh->BaseIndex++] = newIndices[0];
+                    Indexdata[mesh->BaseIndex++] = newIndices[1];
+                    Indexdata[mesh->BaseIndex++] = newIndices[2];
+                } else if (newIndices.size() == 4) {
+                    // Quad - split into two triangles
+                    Indexdata[mesh->BaseIndex++] = newIndices[0];
+                    Indexdata[mesh->BaseIndex++] = newIndices[1];
+                    Indexdata[mesh->BaseIndex++] = newIndices[2];
+                    
+                    Indexdata[mesh->BaseIndex++] = newIndices[0];
+                    Indexdata[mesh->BaseIndex++] = newIndices[2];
+                    Indexdata[mesh->BaseIndex++] = newIndices[3];
+                }
             }
         }
-    }
-    
-    // Process indices
-    for (int i = 0; i < ModelAtlas[BlockModel].Index.size(); i++) {
-        int oldIdx = ModelAtlas[BlockModel].Index[i];
-        
-        // Skip if vertex was not in slice
-        if (oldToNew.find(oldIdx) == oldToNew.end())
-            continue;
-        
-        // Use the new index for this vertex
-        Indexdata[mesh->BaseIndex] = oldToNew[oldIdx];
-        mesh->BaseIndex++;
     }
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
@@ -819,11 +890,10 @@ void Renderer::PipelineInit() {
       pipelineInitVars.vertex_shader;
   this->pipelineInitVars.pipeline_desc.fragment_shader =
       pipelineInitVars.fragment_shader;
-  /*this->pipelineInitVars.pipeline_desc.rasterizer_state = {
+  this->pipelineInitVars.pipeline_desc.rasterizer_state = {
       .fill_mode = SDL_GPU_FILLMODE_FILL,
       .cull_mode = SDL_GPU_CULLMODE_BACK, // Enable back-face culling
       .front_face = SDL_GPU_FRONTFACE_CLOCKWISE};
-      */
   VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =
