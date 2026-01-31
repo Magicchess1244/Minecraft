@@ -7,7 +7,6 @@
 #include <cstdio>
 #include <iostream>
 #include <ostream>
-#include <set>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
@@ -228,7 +227,7 @@ void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
     RotationZW(3, 2) = sin(Rot);
     RotationZW(3, 3) = cos(Rot);
     
-    float threshold = 0.1f;
+    float threshold = 0.5f;
 
     for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
         Matrix DPos(4, 1);
@@ -241,9 +240,9 @@ void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
         DPos = RotationZW * DPos;
         
         if ((DPos(3,0) - player.w) > threshold) continue;
-
+        std::cout << "Nigga";
         float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 25;
-        Vector3 color = BlockDef[blockID].color.ToFloat() - (Vector3){Shade, Shade, Shade};
+        Vector3 color = BlockDef[blockID].color.ToFloat();// - (Vector3){Shade, Shade, Shade};
         Vertex vertex = {{DPos(0,0),DPos(1,0),DPos(2,0)}, color};
         Vertexdata[mesh->BaseVertex++] = vertex;
         vertices.push_back(vertex.Position);
@@ -260,7 +259,7 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
   auto *mesh = &this->Terrain[0]; // Just use the first mesh
   Vertex *Vertexdata = mesh->mappedVertexData;
   Uint32 *Indexdata = mesh->mappedIndexData;
-  DrawHypercube(player, {0, 0, 0, 0}, 0, 0, mesh, Vertexdata, Indexdata, 0);
+  DrawHypercube(player, {0, 0, 0, 0}, 0, 0, mesh, Vertexdata, Indexdata, 1);
 }
 void Renderer::DrawTerrain(Player &player) {
   auto *mesh = &this->Terrain[0]; // Just use first mesh
