@@ -109,7 +109,7 @@ struct PipileInitVars {
   SDL_GPUShader *fragment_shader;
   SDL_GPUColorTargetDescription colorTargetDescriptions[1];
 };
-struct RunTimeRenderVars{
+struct RunTimeRenderVars {
   SDL_GPURenderPass *pass = nullptr;
   SDL_GPUCopyPass *copyPass = nullptr;
   SDL_GPUCommandBuffer *cmdRender = nullptr;
@@ -143,18 +143,28 @@ private:
   void PipelineInit();
   void ColorTargetDes();
   void EventManager(Player &player);
-  
+
 public:
   Renderer(GameClient &gameClient);
   ~Renderer() {
     for (auto &mesh : this->Terrain) {
       SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.IndexBuffer.buffer);
       SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.VertexBuffer.buffer);
-      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, mesh.IndextransferBuffer);
-      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, mesh.VertextransferBuffer);
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   mesh.IndextransferBuffer);
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   mesh.VertextransferBuffer);
     }
 
-    SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU, pipelineInitVars.graphicsPipeline);
+    SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
+                                   pipelineInitVars.graphicsPipeline);
+
+    // Release DepthTexture before destroying GPU device
+    if (DepthTexture) {
+      SDL_ReleaseGPUTexture(this->basicInitVars.GPU, DepthTexture);
+      DepthTexture = nullptr;
+    }
+
     if (basicInitVars.GPU) {
       SDL_DestroyGPUDevice(basicInitVars.GPU);
       basicInitVars.GPU = nullptr;
@@ -165,9 +175,6 @@ public:
     if (basicInitVars.window) {
       SDL_DestroyWindow(basicInitVars.window);
       basicInitVars.window = nullptr;
-    }
-    if (DepthTexture) {
-      DepthTexture = nullptr;
     }
     basicInitVars.event = {};
     runTimeRenderVars.cmdCopy = nullptr;

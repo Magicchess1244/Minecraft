@@ -9,11 +9,10 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
-#include <string>
-#include <thread>
+#include <vector>
 #include <tuple>
 #include <unordered_map>
-#include <vector>
+
 constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;
 
@@ -163,6 +162,9 @@ struct Vector4 {
 
     Vector4 operator-(const Vector4 &other) const {
     return {x - other.x, y - other.y, z - other.z, w - other.w};
+  }
+  Vector3 To3D(){
+    return {this->x, this->y, this->z};
   }
 };
 struct Matrix {

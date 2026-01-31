@@ -17,7 +17,7 @@ constexpr int RenderDistance = 0;
 Matrix Perspective(float tanHalfFov, float aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
   float f = 1 / tanHalfFov;
-  m(0, 0) = (f / aspect);  // Negated to flip x-axis
+  m(0, 0) = (f / aspect); // Negated to flip x-axis
   m(1, 1) = f;
   m(2, 2) = (Near + Far) / (Near - Far);
   m(3, 2) = 1.0f;
@@ -63,8 +63,8 @@ Matrix RotationZ(float angleRad) {
 
 Matrix Rotation(Vector3 Rotation) {
   return RotationZ(Rotation.AngleToRadians().z) *
-         RotationY(Rotation.AngleToRadians().y);
-  RotationX(Rotation.AngleToRadians().x);
+         RotationY(Rotation.AngleToRadians().y) *
+         RotationX(Rotation.AngleToRadians().x);
 }
 Matrix Translation(float x, float y, float z) {
   Matrix m = Matrix::Identity(4);
@@ -145,121 +145,153 @@ Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
 
   return result;
 }
-float triangleArea(const Vector3& v0, const Vector3& v1, const Vector3& v2) {
-    Vector3 a = v1 - v0;
-    Vector3 b = v2 - v0;
-    Vector3 c = a.Cross(b);
-    return 0.5f * c.Length();
-}
+struct Triangle3D {
+  Vector3 vertices[3];
+};
 
-Vector3 calculateCentroid(const std::vector<Vector3>& vertices) {
-    Vector3 center(0, 0, 0);
-    for (const auto& v : vertices) {
-        center = center + v;
-    }
-    float n = static_cast<float>(vertices.size());
-    return center * (1.0f / n);
-}
+struct Triangle4D {
+  Vector4 vertices[3];
+};
 
-std::vector<unsigned int> generateTriangulationIndices(const std::vector<Vector3>& vertices) {
-    std::vector<unsigned int> indices;
-    size_t n = vertices.size();
-    
-    if (n < 3) return indices;
-    
-    Vector3 centroid = calculateCentroid(vertices);
-    
-    // Simple approach: connect every vertex to every other pair of vertices
-    // This ensures ALL vertices are included
-    for (size_t i = 0; i < n; i++) {
-        for (size_t j = i + 1; j < n; j++) {
-            for (size_t k = j + 1; k < n; k++) {
-                float area = triangleArea(vertices[i], vertices[j], vertices[k]);
-                
-                // Only add non-degenerate triangles
-                if (area > 0.0001f) {
-                    // Calculate winding order
-                    Vector3 edge1 = vertices[j] - vertices[i];
-                    Vector3 edge2 = vertices[k] - vertices[i];
-                    Vector3 normal = edge1.Cross(edge2);
-                    
-                    Vector3 triCenter = (vertices[i] + vertices[j] + vertices[k]) * (1.0f / 3.0f);
-                    Vector3 toCenter = triCenter - centroid;
-                    
-                    float dotProduct = normal.Dot(toCenter);
-                    
-                    // Add in clockwise order
-                    if (dotProduct > 0) {
-                        indices.push_back(static_cast<unsigned int>(i));
-                        indices.push_back(static_cast<unsigned int>(j));
-                        indices.push_back(static_cast<unsigned int>(k));
-                    } else {
-                        indices.push_back(static_cast<unsigned int>(i));
-                        indices.push_back(static_cast<unsigned int>(k));
-                        indices.push_back(static_cast<unsigned int>(j));
-                    }
-                }
-            }
+// Helper function for 4D linear interpolation
+Vector4 lerp4D(const Vector4 &p1, const Vector4 &p2, float t) {
+  return Vector4(p1.x + t * (p2.x - p1.x), p1.y + t * (p2.y - p1.y),
+                 p1.z + t * (p2.z - p1.z), p1.w + t * (p2.w - p1.w));
+}
+// Slice a 4D model at a specific w value
+std::vector<Triangle3D> slice4DModel(const std::vector<Triangle4D> &model,
+                                     float wSlice) {
+  std::vector<Triangle3D> slice;
+
+  for (const auto &tri : model) {
+    std::vector<Vector4> intersectionPoints;
+
+    // Check each edge of the triangle
+    for (int i = 0; i < 3; i++) {
+      const Vector4 &p1 = tri.vertices[i];
+      const Vector4 &p2 = tri.vertices[(i + 1) % 3];
+
+      // Check if edge crosses the w = wSlice plane
+      if ((p1.w <= wSlice && p2.w >= wSlice) ||
+          (p1.w >= wSlice && p2.w <= wSlice)) {
+
+        // Avoid division by zero
+        if (std::fabs(p2.w - p1.w) > 0.0001f) {
+          float t = (wSlice - p1.w) / (p2.w - p1.w);
+          intersectionPoints.push_back(lerp4D(p1, p2, t));
         }
+      }
     }
-    
-    return indices;
+
+    // Create triangles from intersection points (handles 3+ points)
+    if (intersectionPoints.size() >= 3) {
+      // Proper triangle from 3 points
+      Triangle3D sliceTri;
+      sliceTri.vertices[0] =
+          Vector3(intersectionPoints[0].x, intersectionPoints[0].y,
+                  intersectionPoints[0].z);
+      sliceTri.vertices[1] =
+          Vector3(intersectionPoints[1].x, intersectionPoints[1].y,
+                  intersectionPoints[1].z);
+      sliceTri.vertices[2] =
+          Vector3(intersectionPoints[2].x, intersectionPoints[2].y,
+                  intersectionPoints[2].z);
+      slice.push_back(sliceTri);
+    } else if (intersectionPoints.size() == 2) {
+      // Create a degenerate triangle (line segment)
+      Triangle3D sliceTri;
+      sliceTri.vertices[0] =
+          Vector3(intersectionPoints[0].x, intersectionPoints[0].y,
+                  intersectionPoints[0].z);
+      sliceTri.vertices[1] =
+          Vector3(intersectionPoints[1].x, intersectionPoints[1].y,
+                  intersectionPoints[1].z);
+      sliceTri.vertices[2] = sliceTri.vertices[1]; // Degenerate
+      slice.push_back(sliceTri);
+    }
+  }
+
+  return slice;
 }
+
 void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
                    Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata,
                    int BlockModel) {
-    std::vector<Vector3> vertices;
 
-    Matrix RotationXW = Matrix::Identity(4);
-    Matrix RotationZW = Matrix::Identity(4);
+  // Build 4D triangles from the model
+  std::vector<Triangle4D> model4D;
 
-    float Rot = (player.w - std::floor(player.w)) * 2 * PI;
-    
-    // XW rotation
-    RotationXW(0, 0) = cos(Rot);
-    RotationXW(0, 3) = -sin(Rot);
-    RotationXW(3, 0) = sin(Rot);
-    RotationXW(3, 3) = cos(Rot);
+  // Convert model vertices to 4D triangles
+  for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i += 3) {
+    if (i + 2 >= ModelAtlas[BlockModel].Vertex.size())
+      break;
 
-    // ZW rotation
-    RotationZW(2, 2) = cos(Rot);
-    RotationZW(2, 3) = -sin(Rot);
-    RotationZW(3, 2) = sin(Rot);
-    RotationZW(3, 3) = cos(Rot);
-    
-    float threshold = 0.5f;
-
-    for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i++) {
-        Matrix DPos(4, 1);
-        DPos(0, 0) = ModelAtlas[BlockModel].Vertex[i].x + blocks.x;
-        DPos(1, 0) = ModelAtlas[BlockModel].Vertex[i].y + blocks.y;
-        DPos(2, 0) = ModelAtlas[BlockModel].Vertex[i].z + blocks.z;
-        DPos(3, 0) = ModelAtlas[BlockModel].Vertex[i].w + blocks.w;
-        
-        DPos = RotationXW * DPos;
-        DPos = RotationZW * DPos;
-        
-        if ((DPos(3,0) - player.w) > threshold) continue;
-        std::cout << "Nigga";
-        float Shade = (25.0 / ModelAtlas[BlockModel].Vertex.size()) * i / 25;
-        Vector3 color = BlockDef[blockID].color.ToFloat();// - (Vector3){Shade, Shade, Shade};
-        Vertex vertex = {{DPos(0,0),DPos(1,0),DPos(2,0)}, color};
-        Vertexdata[mesh->BaseVertex++] = vertex;
-        vertices.push_back(vertex.Position);
+    Triangle4D tri;
+    for (int j = 0; j < 3; j++) {
+      tri.vertices[j] =
+          Vector4(ModelAtlas[BlockModel].Vertex[i + j].x + blocks.x,
+                  ModelAtlas[BlockModel].Vertex[i + j].y + blocks.y,
+                  ModelAtlas[BlockModel].Vertex[i + j].z + blocks.z,
+                  ModelAtlas[BlockModel].Vertex[i + j].w + blocks.w);
     }
+    model4D.push_back(tri);
+  }
 
-    std::vector<unsigned int> index = generateTriangulationIndices(vertices);
+  // Apply rotations to all vertices
+  Matrix RotationXW = Matrix::Identity(4);
+  Matrix RotationZW = Matrix::Identity(4);
+  float Rot = (player.w - std::floor(player.w)) * 2 * PI;
 
-    for (int i = 0; i < index.size(); i++) {
-      Indexdata[mesh->BaseIndex++] = index[i];
+  // XW rotation
+  RotationXW(0, 0) = cos(Rot);
+  RotationXW(0, 3) = -sin(Rot);
+  RotationXW(3, 0) = sin(Rot);
+  RotationXW(3, 3) = cos(Rot);
+
+  // ZW rotation
+  RotationZW(2, 2) = cos(Rot);
+  RotationZW(2, 3) = -sin(Rot);
+  RotationZW(3, 2) = sin(Rot);
+  RotationZW(3, 3) = cos(Rot);
+
+  // Apply rotations
+  for (auto &tri : model4D) {
+    for (int i = 0; i < 3; i++) {
+      Matrix DPos(4, 1);
+      DPos(0, 0) = tri.vertices[i].x;
+      DPos(1, 0) = tri.vertices[i].y;
+      DPos(2, 0) = tri.vertices[i].z;
+      DPos(3, 0) = tri.vertices[i].w;
+
+      DPos = RotationXW * DPos;
+      DPos = RotationZW * DPos;
+
+      tri.vertices[i] = Vector4(DPos(0, 0), DPos(1, 0), DPos(2, 0), DPos(3, 0));
     }
+  }
+
+  // Slice the 4D model at the player's w position
+  float wSlice = player.w;
+  std::vector<Triangle3D> slicedTriangles = slice4DModel(model4D, wSlice);
+
+  // Add sliced triangles to mesh
+  Vector3 color = BlockDef[blockID].color.ToFloat();
+  int baseVertex = mesh->BaseVertex;
+
+  for (const auto &tri : slicedTriangles) {
+    for (int i = 0; i < 3; i++) {
+      Vertex vertex = {tri.vertices[i], color};
+      Vertexdata[mesh->BaseVertex] = vertex;
+      Indexdata[mesh->BaseIndex++] = mesh->BaseVertex++;
+    }
+  }
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
                            int bufferIndex, int bufferOffset) {
   auto *mesh = &this->Terrain[0]; // Just use the first mesh
   Vertex *Vertexdata = mesh->mappedVertexData;
   Uint32 *Indexdata = mesh->mappedIndexData;
-  DrawHypercube(player, {0, 0, 0, 0}, 0, 0, mesh, Vertexdata, Indexdata, 1);
+  DrawHypercube(player, {0, 0, 0, 0}, 0, 0, mesh, Vertexdata, Indexdata, 0);
 }
 void Renderer::DrawTerrain(Player &player) {
   auto *mesh = &this->Terrain[0]; // Just use first mesh
@@ -412,6 +444,7 @@ void Renderer::UpdateViewportAndProjection() {
   // Recreate depth texture with new size
   if (this->DepthTexture) {
     SDL_ReleaseGPUTexture(this->basicInitVars.GPU, this->DepthTexture);
+    this->DepthTexture = nullptr; // Set to nullptr after releasing
   }
   this->DepthTexture = CreateDepthTexture(drawableWidth, drawableHeight);
 
@@ -429,6 +462,7 @@ void Renderer::EventManager(Player &player) {
 
     case SDL_EVENT_WINDOW_RESIZED: {
       UpdateViewportAndProjection();
+      break;
     }
     case SDL_EVENT_MOUSE_WHEEL: {
       const SDL_MouseWheelEvent &wheel = this->basicInitVars.event.wheel;
