@@ -67,19 +67,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
     ChunkPrefab newChunk;
     newChunk.xPos = (int)key.x * newChunk.xSize;
     newChunk.zPos = (int)key.z * newChunk.zSize;
-
-    // Try to load from cache first
-    if (cache->loadChunk(newChunk, (int)key.x, (int)key.z)) {
-      CHUNK_LOG("Loaded chunk from cache");
-      // Need to regenerate faces after loading
-      newChunk.VisableFaces();
-    } else {
-      // Generate new chunk if not in cache
-      newChunk.GenerateChunk();
-      // Save to cache for next time
-      cache->saveChunk(newChunk, (int)key.x, (int)key.z);
-    }
-
+    newChunk.GenerateChunk();
     this->Chunks[key] = newChunk;
   }
   return std::ref(Chunks[key]);

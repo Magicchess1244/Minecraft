@@ -249,8 +249,7 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
     if (!isFaceInFrustum(worldFrustum, faceVerts))
       continue;
 
-    Faces.push_back(
-        {face->blockPos, face->side, face->blockID, 1, face->blockID == 5});
+    Faces.push_back({face->blockPos, face->side, face->blockID, face->blockID == 5});
   }
 
   for (auto &Face : Faces) {
@@ -857,11 +856,13 @@ void Renderer::PipelineInit() {
       pipelineInitVars.vertex_shader;
   this->pipelineInitVars.pipeline_desc.fragment_shader =
       pipelineInitVars.fragment_shader;
+  
   this->pipelineInitVars.pipeline_desc.rasterizer_state = {
       .fill_mode = SDL_GPU_FILLMODE_FILL,
       .cull_mode = SDL_GPU_CULLMODE_BACK, // Enable back-face culling
       .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE};
-  VertexGPUInit();
+
+      VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =
       1; // We only bind one buffer at a time

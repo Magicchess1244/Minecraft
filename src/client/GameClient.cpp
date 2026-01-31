@@ -149,7 +149,7 @@ void PlayerMovement(Player &player, int &inventorySlot) {
 }
 void GameLoop(GameClient &game) {
   game.add_player({
-      {0, 0, 0},
+      {0, 40, 0},
       {0.0f, 0.0f, 0.0f},
       {255, 0, 0},
   });
