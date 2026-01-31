@@ -3,7 +3,7 @@
 #include <ostream>
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 0.2f;
+constexpr float playerSpeed = 0.05f;
 
 void GameClient::set_seed() {
   /*int res;
@@ -91,9 +91,9 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   // Apply mouse movement to rotation
   // Mouse X controls yaw (Y-axis rotation)
   // Mouse Y controls pitch (X-axis rotation)
-  PlayerRot.y = -mouseX; // Yaw (left/right)
-  PlayerRot.x = -mouseY; // Pitch (up/down)
-  PlayerRot.z = 0;       // Roll (not used for FPS camera)
+  PlayerRot.y = mouseX; // Yaw (left/right)
+  PlayerRot.x = mouseY; // Pitch (up/down)
+  PlayerRot.z = 0;      // Roll (not used for FPS camera)
 
   if (move_left || move_right) {
     PlayerDirection.x = move_left ? -1 : 1;
@@ -133,13 +133,13 @@ void PlayerMovement(Player &player, int &inventorySlot) {
   if (playerDirection.x != 0 || playerDirection.y != 0 ||
       playerDirection.z != 0) {
     float deltaTime = 1.0f;
-    player.Position.y += playerDirection.y * playerSpeed * deltaTime;
+    player.Position.y += playerDirection.y * playerSpeed * deltaTime * 2;
 
     Vector3 Rot = player.Rotation;
     Rot.x = 0;
 
-    Vector3 Dir = Rot.Forward() * playerDirection.z +
-                  Rot.Right() * playerDirection.x;
+    Vector3 Dir =
+        Rot.Forward() * playerDirection.z + Rot.Right() * playerDirection.x;
 
     Dir = Dir.Normalized();
 

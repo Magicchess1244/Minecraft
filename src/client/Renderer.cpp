@@ -10,36 +10,46 @@ const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
 constexpr float Zfar = 100.0f;
 constexpr int RenderDistance = 0;
-const Vector3 Verts[6][4] = {{// Front (+Z)
-                              {0.5, -0.5, 0.5},
-                              {-0.5, -0.5, 0.5},
-                              {0.5, 0.5, 0.5},
-                              {-0.5, 0.5, 0.5}},
-                             {// Back (-Z)
-                              {-0.5, -0.5, -0.5},
-                              {0.5, -0.5, -0.5},
-                              {-0.5, 0.5, -0.5},
-                              {0.5, 0.5, -0.5}},
-                             {// Right (+X)
-                              {0.5, -0.5, -0.5},
-                              {0.5, -0.5, 0.5},
-                              {0.5, 0.5, -0.5},
-                              {0.5, 0.5, 0.5}},
-                             {// Left (-X)
-                              {-0.5, -0.5, 0.5},
-                              {-0.5, -0.5, -0.5},
-                              {-0.5, 0.5, 0.5},
-                              {-0.5, 0.5, -0.5}},
-                             {// Top (+Y)
-                              {-0.5, 0.5, -0.5},
-                              {0.5, 0.5, -0.5},
-                              {-0.5, 0.5, 0.5},
-                              {0.5, 0.5, 0.5}},
-                             {// Bottom (-Y)
-                              {-0.5, -0.5, -0.5},
-                              {0.5, -0.5, -0.5},
-                              {-0.5, -0.5, 0.5},
-                              {0.5, -0.5, 0.5}}};
+const Vector3 Verts[6][4] = {
+    {// Front (+Z) - looking at face from outside (positive Z direction)
+     // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
+     {0.5, -0.5, 0.5},  // 0: bottom-right
+     {-0.5, -0.5, 0.5}, // 1: bottom-left
+     {0.5, 0.5, 0.5},   // 2: top-right
+     {-0.5, 0.5, 0.5}}, // 3: top-left
+    {// Back (-Z) - looking at face from outside (negative Z direction)
+     // Counter-clockwise: bottom-left, bottom-right, top-left, top-right
+     {-0.5, -0.5, -0.5}, // 0: bottom-left
+     {0.5, -0.5, -0.5},  // 1: bottom-right
+     {-0.5, 0.5, -0.5},  // 2: top-left
+     {0.5, 0.5, -0.5}},  // 3: top-right
+    {// Right (+X) - looking at face from outside (positive X direction)
+     // Counter-clockwise when viewed from +X: front-bottom, back-bottom,
+     // front-top, back-top
+     {0.5, -0.5, 0.5},  // 0: front-bottom
+     {0.5, -0.5, -0.5}, // 1: back-bottom
+     {0.5, 0.5, 0.5},   // 2: front-top
+     {0.5, 0.5, -0.5}}, // 3: back-top
+    {// Left (-X) - looking at face from outside (negative X direction)
+     // Counter-clockwise when viewed from -X: back-bottom, front-bottom,
+     // back-top, front-top
+     {-0.5, -0.5, -0.5}, // 0: back-bottom
+     {-0.5, -0.5, 0.5},  // 1: front-bottom
+     {-0.5, 0.5, -0.5},  // 2: back-top
+     {-0.5, 0.5, 0.5}},  // 3: front-top
+    {// Top (+Y) - looking at face from outside (positive Y direction)
+     // Counter-clockwise: back-left, back-right, front-left, front-right
+     {-0.5, 0.5, -0.5}, // 0: back-left
+     {0.5, 0.5, -0.5},  // 1: back-right
+     {-0.5, 0.5, 0.5},  // 2: front-left
+     {0.5, 0.5, 0.5}},  // 3: front-right
+    {// Bottom (-Y) - looking at face from outside (negative Y direction, from
+     // below) Counter-clockwise when viewed from below: front-right,
+     // back-right, front-left, back-left
+     {0.5, -0.5, 0.5},     // 0: front-right
+     {0.5, -0.5, -0.5},    // 1: back-right
+     {-0.5, -0.5, 0.5},    // 2: front-left
+     {-0.5, -0.5, -0.5}}}; // 3: back-left
 const Vector3 Direction[6] = {
     {0, 0, -1}, // Front
     {0, 0, 1},  // Back
@@ -206,22 +216,38 @@ void Renderer::DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
   Indexdata[mesh->BaseIndex++] = mesh->BaseVertex + 3;
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
-                           int bufferIndex, int bufferOffset) {
+                           int bufferIndex, int bufferOffset,
+                           const Frustum &worldFrustum) {
   auto *mesh = &this->Terrain[bufferIndex];
   std::vector<DrawnFace> Faces;
+
+  // Calculate the offset for this chunk within the packed buffer
+  constexpr int maxVerticesPerChunk =
+      4 * 10000; // 4 vertices per face, max 10000 faces
+  constexpr int maxIndicesPerChunk =
+      6 * 10000; // 6 indices per face, max 10000 faces
+
+  const int vertexOffset = bufferOffset * maxVerticesPerChunk;
+  const int indexOffset = bufferOffset * maxIndicesPerChunk;
+
+  // Track local indices within this chunk's allocated space
+  int localVertexIndex = 0;
+  int localIndexIndex = 0;
 
   for (int i = 0; i < chunk.allFaces.size(); i++) {
     auto *face = &chunk.allFaces[i];
 
-    // Frustum culling - check if face is inside frustum
+    // Frustum culling - check if face is inside frustum (in world space)
     const Vector3 *verts = Verts[face->side];
     Vector3 faceVerts[4];
     for (int j = 0; j < 4; j++) {
+      // Just add block position - no rotation needed since frustum is in world
+      // space
       faceVerts[j] = verts[j] + face->blockPos;
-      faceVerts[j] = rotate(faceVerts[j] - player.Position, player.Rotation);
     }
 
-    if (!isFaceInFrustum(this->frustum, faceVerts)) continue;
+    if (!isFaceInFrustum(worldFrustum, faceVerts))
+      continue;
 
     Faces.push_back(
         {face->blockPos, face->side, face->blockID, 1, face->blockID == 5});
@@ -230,25 +256,45 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
   for (auto &Face : Faces) {
     const Vector3 *verts = Verts[Face.side];
 
+    // Write vertices to this chunk's section of the buffer
     for (int i = 0; i < 4; i++) {
       Vector3 worldPos = (verts[i] + Face.blockPos);
 
       Vector3 Color = BlockDef[Face.blockID].color.ToFloat() -
                       Colors[(int)(Face.side / 2)].ToFloat();
       Vertex vertex = {worldPos, Color};
-      mesh->mappedVertexData[mesh->BaseVertex + i] = vertex;
+      mesh->mappedVertexData[vertexOffset + localVertexIndex + i] = vertex;
     }
 
-    // Indices are relative to this chunk's vertex offset
-    mesh->mappedIndexData[mesh->BaseIndex++] = mesh->BaseVertex + 0;
-    mesh->mappedIndexData[mesh->BaseIndex++] = mesh->BaseVertex + 1;
-    mesh->mappedIndexData[mesh->BaseIndex++] = mesh->BaseVertex + 2;
+    // Write indices to this chunk's section of the buffer
+    // Indices reference vertices within this chunk's allocated space
+    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
+        vertexOffset + localVertexIndex + 0;
+    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
+        vertexOffset + localVertexIndex + 1;
+    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
+        vertexOffset + localVertexIndex + 2;
 
-    mesh->mappedIndexData[mesh->BaseIndex++] = mesh->BaseVertex + 2;
-    mesh->mappedIndexData[mesh->BaseIndex++] = mesh->BaseVertex + 1;
-    mesh->mappedIndexData[mesh->BaseIndex++] = mesh->BaseVertex + 3;
+    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
+        vertexOffset + localVertexIndex + 2;
+    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
+        vertexOffset + localVertexIndex + 1;
+    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
+        vertexOffset + localVertexIndex + 3;
 
-    mesh->BaseVertex += 4;
+    localVertexIndex += 4;
+  }
+
+  // Update the mesh's BaseVertex and BaseIndex to track the maximum used
+  // This accumulates across all chunks in this buffer
+  int maxVertexUsed = vertexOffset + localVertexIndex;
+  int maxIndexUsed = indexOffset + localIndexIndex;
+
+  if (maxVertexUsed > mesh->BaseVertex) {
+    mesh->BaseVertex = maxVertexUsed;
+  }
+  if (maxIndexUsed > mesh->BaseIndex) {
+    mesh->BaseIndex = maxIndexUsed;
   }
 }
 void Renderer::DrawTerrain(Player &player) {
@@ -257,9 +303,17 @@ void Renderer::DrawTerrain(Player &player) {
   SpiralIterator spiral(RenderDistance * 2 + 1);
   Vector3 PlayerChunk = (player.Position / 32).Truncate();
 
+  // Transform frustum to world space (aligned with camera)
+  Frustum worldFrustum = this->frustum;
+  worldFrustum.transformToWorldSpace(player.Position, player.Rotation);
+
   // Group chunks by buffer
   for (int bufferIdx = 0; bufferIdx < this->totalBuffers; bufferIdx++) {
     auto *mesh = &this->Terrain[bufferIdx];
+
+    // Reset counters for this buffer
+    mesh->BaseVertex = 0;
+    mesh->BaseIndex = 0;
 
     // Map buffers once for this buffer
     Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
@@ -277,18 +331,20 @@ void Renderer::DrawTerrain(Player &player) {
 
     for (int chunkIdx = startChunkIdx; chunkIdx < endChunkIdx; chunkIdx++) {
       // Calculate chunk position
-      std::pair<int,int> Pos = spiral.next();
+      std::pair<int, int> Pos = spiral.next();
       Vector3 Chunk = {(float)Pos.first, 0, (float)Pos.second};
       Chunk += PlayerChunk;
 
       int bufferOffset = chunkIdx % chunksPerBuffer;
       RenderChunk(chunkManager.get_chunk(Chunk), player, chunkIdx, bufferIdx,
-                  bufferOffset);
+                  bufferOffset, worldFrustum);
     }
 
     // Unmap and upload once for this buffer
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->VertextransferBuffer);
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->IndextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               mesh->VertextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               mesh->IndextransferBuffer);
 
     // Upload vertex data
     constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
@@ -305,7 +361,8 @@ void Renderer::DrawTerrain(Player &player) {
     Vertexregion.size = packedVertexSize;
     Vertexregion.offset = 0;
 
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Vertexlocation, &Vertexregion, true);
+    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Vertexlocation,
+                          &Vertexregion, true);
 
     // Upload index data
     SDL_GPUTransferBufferLocation Indexlocation{};
@@ -317,7 +374,8 @@ void Renderer::DrawTerrain(Player &player) {
     Indexregion.size = packedIndexSize;
     Indexregion.offset = 0;
 
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Indexlocation, &Indexregion, true);
+    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Indexlocation,
+                          &Indexregion, true);
   }
 }
 /*
@@ -405,7 +463,8 @@ surface); if (!texture) { std::cerr << "SDL_CreateTextureFromSurface failed: "
 void Renderer::UpdateViewportAndProjection() {
   // Get the actual drawable size (important for high-DPI displays)
   int drawableWidth, drawableHeight;
-  SDL_GetWindowSizeInPixels(this->basicInitVars.window, &drawableWidth, &drawableHeight);
+  SDL_GetWindowSizeInPixels(this->basicInitVars.window, &drawableWidth,
+                            &drawableHeight);
 
   this->basicInitVars.Width = drawableWidth;
   this->basicInitVars.Height = drawableHeight;
@@ -662,8 +721,9 @@ void Renderer::Init() {
   }
   if (!SDL_ClaimWindowForGPUDevice(this->basicInitVars.GPU,
                                    this->basicInitVars.window)) {
-    std::cout << "Error claiming basicInitVars.window for basicInitVars.GPU device: "
-              << SDL_GetError() << std::endl;
+    std::cout
+        << "Error claiming basicInitVars.window for basicInitVars.GPU device: "
+        << SDL_GetError() << std::endl;
   }
   this->basicInitVars.event = {};
   SDL_SetWindowRelativeMouseMode(basicInitVars.window, true);
@@ -800,7 +860,7 @@ void Renderer::PipelineInit() {
   this->pipelineInitVars.pipeline_desc.rasterizer_state = {
       .fill_mode = SDL_GPU_FILLMODE_FILL,
       .cull_mode = SDL_GPU_CULLMODE_BACK, // Enable back-face culling
-      .front_face = SDL_GPU_FRONTFACE_CLOCKWISE};
+      .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE};
   VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =

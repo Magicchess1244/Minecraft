@@ -8,102 +8,98 @@
 
 class SpiralIterator {
 private:
-    int size;
-    std::vector<std::pair<int, int>> path;
-    int currentIndex;
-    
-    void generatePath() {
-        path.clear();
-        
-        int halfSize = size / 2;
-        int x = -halfSize;
-        int y = -halfSize;
-        
+  int size;
+  std::vector<std::pair<int, int>> path;
+  int currentIndex;
+
+  void generatePath() {
+    path.clear();
+
+    int halfSize = size / 2;
+    int x = -halfSize;
+    int y = -halfSize;
+
+    path.push_back({x, y});
+
+    int n = size - 1;
+
+    // Right n steps
+    for (int i = 0; i < n; i++) {
+      x++;
+      path.push_back({x, y});
+    }
+
+    // Up n steps
+    for (int i = 0; i < n; i++) {
+      y++;
+      path.push_back({x, y});
+    }
+
+    // Left n steps
+    for (int i = 0; i < n; i++) {
+      x--;
+      path.push_back({x, y});
+    }
+
+    // Down n-1 steps
+    for (int i = 0; i < n - 1; i++) {
+      y--;
+      path.push_back({x, y});
+    }
+
+    // Continue spiraling inward
+    n -= 2;
+
+    while (n > 0) {
+      // Right n steps
+      for (int i = 0; i < n; i++) {
+        x++;
         path.push_back({x, y});
-        
-        int n = size - 1;
-        
-        // Right n steps
-        for (int i = 0; i < n; i++) {
-            x++;
-            path.push_back({x, y});
-        }
-        
-        // Up n steps
-        for (int i = 0; i < n; i++) {
-            y++;
-            path.push_back({x, y});
-        }
-        
-        // Left n steps
-        for (int i = 0; i < n; i++) {
-            x--;
-            path.push_back({x, y});
-        }
-        
-        // Down n-1 steps
-        for (int i = 0; i < n - 1; i++) {
-            y--;
-            path.push_back({x, y});
-        }
-        
-        // Continue spiraling inward
-        n -= 2;
-        
-        while (n > 0) {
-            // Right n steps
-            for (int i = 0; i < n; i++) {
-                x++;
-                path.push_back({x, y});
-            }
-            
-            // Up n steps
-            for (int i = 0; i < n; i++) {
-                y++;
-                path.push_back({x, y});
-            }
-            
-            // Left n steps
-            for (int i = 0; i < n; i++) {
-                x--;
-                path.push_back({x, y});
-            }
-            
-            // Down n steps
-            for (int i = 0; i < n; i++) {
-                y--;
-                path.push_back({x, y});
-            }
-            
-            n -= 2;
-        }
-        
-        // Final step to center if needed
-        if (path.size() < size * size) {
-            x++;
-            path.push_back({x, y});
-        }
+      }
+
+      // Up n steps
+      for (int i = 0; i < n; i++) {
+        y++;
+        path.push_back({x, y});
+      }
+
+      // Left n steps
+      for (int i = 0; i < n; i++) {
+        x--;
+        path.push_back({x, y});
+      }
+
+      // Down n steps
+      for (int i = 0; i < n; i++) {
+        y--;
+        path.push_back({x, y});
+      }
+
+      n -= 2;
     }
-    
+
+    // Final step to center if needed
+    if (path.size() < size * size) {
+      x++;
+      path.push_back({x, y});
+    }
+  }
+
 public:
-    SpiralIterator(int gridSize) : size(gridSize), currentIndex(0) {
-        generatePath();
+  SpiralIterator(int gridSize) : size(gridSize), currentIndex(0) {
+    generatePath();
+  }
+
+  void reset() { currentIndex = 0; }
+
+  std::pair<int, int> next() {
+    if (currentIndex < path.size()) {
+      return path[currentIndex++];
     }
-    
-    void reset() {
-        currentIndex = 0;
-    }
-    
-    std::pair<int, int> next() {
-        if (currentIndex < path.size()) {
-            return path[currentIndex++];
-        }
-        return {0, 0};
-    }
-    
-    bool hasNext() {
-        return currentIndex < path.size();
-    }
+    return {0, 0};
+  }
+
+  bool hasNext() { return currentIndex < path.size(); }
 };
 struct Plane {
   Vector3 normal{0.f, 1.f, 0.f}; // must be normalized
@@ -175,6 +171,53 @@ struct Frustum {
     }
 
     return frustum;
+  }
+
+  // Transform frustum from camera space to world space
+  // This rotates and translates the frustum to match the camera's position and
+  // orientation
+  void transformToWorldSpace(const Vector3 &cameraPosition,
+                             const Vector3 &cameraRotation) {
+    // Calculate rotation angles
+    Vector3 rot = cameraRotation.AngleToRadians();
+    float cosY = cos(rot.y), sinY = sin(rot.y);
+    float cosX = cos(rot.x), sinX = sin(rot.x);
+
+    // Create rotation matrix (Y * X order, same as camera)
+    // This is the inverse of the view rotation (transpose of the view's
+    // rotation part)
+    auto rotateNormal = [&](const Vector3 &n) -> Vector3 {
+      // First rotate around X axis
+      Vector3 temp;
+      temp.x = n.x;
+      temp.y = n.y * cosX - n.z * sinX;
+      temp.z = n.y * sinX + n.z * cosX;
+
+      // Then rotate around Y axis
+      Vector3 result;
+      result.x = temp.x * cosY + temp.z * sinY;
+      result.y = temp.y;
+      result.z = -temp.x * sinY + temp.z * cosY;
+
+      return result;
+    };
+
+    // Transform each plane
+    auto transformPlane = [&](Plane &plane) {
+      // Rotate the normal
+      plane.normal = rotateNormal(plane.normal);
+
+      // Update distance: d' = d - n'·p
+      // where n' is the rotated normal and p is the camera position
+      plane.distance = plane.distance - plane.normal.Dot(cameraPosition);
+    };
+
+    transformPlane(nearFace);
+    transformPlane(farFace);
+    transformPlane(leftFace);
+    transformPlane(rightFace);
+    transformPlane(topFace);
+    transformPlane(bottomFace);
   }
 };
 struct Vertex {
@@ -281,7 +324,8 @@ public:
 
   void Stats(Player &player);
   void RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
-                   int bufferIndex, int bufferOffset);
+                   int bufferIndex, int bufferOffset,
+                   const Frustum &worldFrustum);
   void DrawTerrain(Player &player);
   void MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                       std::vector<Player> &players);
