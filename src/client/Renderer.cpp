@@ -1,8 +1,6 @@
 #include "../../include/client/GameClient.hpp"
 #include "../../include/client/ModelAtlas.hpp"
-#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gpu.h>
-#include <SDL3/SDL_oldnames.h>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
@@ -159,85 +157,47 @@ Vector4 lerp4D(const Vector4 &p1, const Vector4 &p2, float t) {
                  p1.z + t * (p2.z - p1.z), p1.w + t * (p2.w - p1.w));
 }
 // Slice a 4D model at a specific w value
-std::vector<Triangle3D> slice4DModel(const std::vector<Triangle4D> &model,
-                                     float wSlice) {
-  std::vector<Triangle3D> slice;
-
-  for (const auto &tri : model) {
-    std::vector<Vector4> intersectionPoints;
-
-    // Check each edge of the triangle
-    for (int i = 0; i < 3; i++) {
-      const Vector4 &p1 = tri.vertices[i];
-      const Vector4 &p2 = tri.vertices[(i + 1) % 3];
-
-      // Check if edge crosses the w = wSlice plane
-      if ((p1.w <= wSlice && p2.w >= wSlice) ||
-          (p1.w >= wSlice && p2.w <= wSlice)) {
-
-        // Avoid division by zero
-        if (std::fabs(p2.w - p1.w) > 0.0001f) {
-          float t = (wSlice - p1.w) / (p2.w - p1.w);
-          intersectionPoints.push_back(lerp4D(p1, p2, t));
+std::vector<Vector3> intersectWithWPlane(const std::vector<Vector4>& points,
+                                          float wSlice) {
+    std::vector<Vector3> intersectionPoints;
+    
+    if (points.size() < 2) {
+        return intersectionPoints; // Need at least 2 points for a line segment
+    }
+    
+    // Check each consecutive pair of points (forming line segments)
+    for (size_t i = 0; i < points.size() - 1; i++) {
+        const Vector4& p1 = points[i];
+        const Vector4& p2 = points[i + 1];
+        
+        // Check if the line segment crosses the w = wSlice plane
+        if ((p1.w <= wSlice && p2.w >= wSlice) ||
+            (p1.w >= wSlice && p2.w <= wSlice)) {
+            
+            // Avoid division by zero
+            if (std::fabs(p2.w - p1.w) > 0.0001f) {
+                // Calculate interpolation parameter
+                float t = (wSlice - p1.w) / (p2.w - p1.w);
+                
+                // Interpolate to find intersection point
+                Vector4 intersection = lerp4D(p1, p2, t);
+                
+                // Project to 3D by dropping the w coordinate
+                intersectionPoints.push_back(
+                    Vector3(intersection.x, intersection.y, intersection.z)
+                );
+            }
         }
-      }
     }
-
-    // Create triangles from intersection points (handles 3+ points)
-    if (intersectionPoints.size() >= 3) {
-      // Proper triangle from 3 points
-      Triangle3D sliceTri;
-      sliceTri.vertices[0] =
-          Vector3(intersectionPoints[0].x, intersectionPoints[0].y,
-                  intersectionPoints[0].z);
-      sliceTri.vertices[1] =
-          Vector3(intersectionPoints[1].x, intersectionPoints[1].y,
-                  intersectionPoints[1].z);
-      sliceTri.vertices[2] =
-          Vector3(intersectionPoints[2].x, intersectionPoints[2].y,
-                  intersectionPoints[2].z);
-      slice.push_back(sliceTri);
-    } else if (intersectionPoints.size() == 2) {
-      // Create a degenerate triangle (line segment)
-      Triangle3D sliceTri;
-      sliceTri.vertices[0] =
-          Vector3(intersectionPoints[0].x, intersectionPoints[0].y,
-                  intersectionPoints[0].z);
-      sliceTri.vertices[1] =
-          Vector3(intersectionPoints[1].x, intersectionPoints[1].y,
-                  intersectionPoints[1].z);
-      sliceTri.vertices[2] = sliceTri.vertices[1]; // Degenerate
-      slice.push_back(sliceTri);
-    }
-  }
-
-  return slice;
+    
+    return intersectionPoints;
 }
-
 void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
                    Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata,
                    int BlockModel) {
 
-  // Build 4D triangles from the model
-  std::vector<Triangle4D> model4D;
+  std::vector<Vector4> model4D;
 
-  // Convert model vertices to 4D triangles
-  for (int i = 0; i < ModelAtlas[BlockModel].Vertex.size(); i += 3) {
-    if (i + 2 >= ModelAtlas[BlockModel].Vertex.size())
-      break;
-
-    Triangle4D tri;
-    for (int j = 0; j < 3; j++) {
-      tri.vertices[j] =
-          Vector4(ModelAtlas[BlockModel].Vertex[i + j].x + blocks.x,
-                  ModelAtlas[BlockModel].Vertex[i + j].y + blocks.y,
-                  ModelAtlas[BlockModel].Vertex[i + j].z + blocks.z,
-                  ModelAtlas[BlockModel].Vertex[i + j].w + blocks.w);
-    }
-    model4D.push_back(tri);
-  }
-
-  // Apply rotations to all vertices
   Matrix RotationXW = Matrix::Identity(4);
   Matrix RotationZW = Matrix::Identity(4);
   float Rot = (player.w - std::floor(player.w)) * 2 * PI;
@@ -254,37 +214,34 @@ void DrawHypercube(Player &player, Vector4 blocks, int blockID, int Side,
   RotationZW(3, 2) = sin(Rot);
   RotationZW(3, 3) = cos(Rot);
 
-  // Apply rotations
-  for (auto &tri : model4D) {
-    for (int i = 0; i < 3; i++) {
-      Matrix DPos(4, 1);
-      DPos(0, 0) = tri.vertices[i].x;
-      DPos(1, 0) = tri.vertices[i].y;
-      DPos(2, 0) = tri.vertices[i].z;
-      DPos(3, 0) = tri.vertices[i].w;
+  // Convert model vertices to 4D triangles
+  for (const auto &Vert : ModelAtlas[BlockModel]) {
+    Vector4 WorldPos = Vert + blocks;
 
-      DPos = RotationXW * DPos;
-      DPos = RotationZW * DPos;
+    Matrix DPos(4, 1);
+    DPos(0, 0) = WorldPos.x;
+    DPos(1, 0) = WorldPos.y;
+    DPos(2, 0) = WorldPos.z;
+    DPos(3, 0) = WorldPos.w;
 
-      tri.vertices[i] = Vector4(DPos(0, 0), DPos(1, 0), DPos(2, 0), DPos(3, 0));
-    }
+    DPos = RotationXW * DPos;
+    DPos = RotationZW * DPos;
+
+    model4D.push_back(Vector4(DPos(0, 0), DPos(1, 0), DPos(2, 0), DPos(3, 0)));
   }
-
   // Slice the 4D model at the player's w position
-  float wSlice = player.w;
-  std::vector<Triangle3D> slicedTriangles = slice4DModel(model4D, wSlice);
+  std::vector<Vector3> IntersectingVets = intersectWithWPlane(model4D, player.w);
 
   // Add sliced triangles to mesh
   Vector3 color = BlockDef[blockID].color.ToFloat();
   int baseVertex = mesh->BaseVertex;
 
-  for (const auto &tri : slicedTriangles) {
-    for (int i = 0; i < 3; i++) {
-      Vertex vertex = {tri.vertices[i], color};
+  for (const auto &tri : IntersectingVets) {
+      Vertex vertex = {tri, color};
       Vertexdata[mesh->BaseVertex] = vertex;
       Indexdata[mesh->BaseIndex++] = mesh->BaseVertex++;
-    }
   }
+  std::cout << mesh->BaseVertex << std::endl;
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
                            int bufferIndex, int bufferOffset) {
@@ -833,10 +790,10 @@ void Renderer::PipelineInit() {
       pipelineInitVars.vertex_shader;
   this->pipelineInitVars.pipeline_desc.fragment_shader =
       pipelineInitVars.fragment_shader;
-  this->pipelineInitVars.pipeline_desc.rasterizer_state = {
+  /*this->pipelineInitVars.pipeline_desc.rasterizer_state = {
       .fill_mode = SDL_GPU_FILLMODE_FILL,
       .cull_mode = SDL_GPU_CULLMODE_BACK, // Enable back-face culling
-      .front_face = SDL_GPU_FRONTFACE_CLOCKWISE};
+      .front_face = SDL_GPU_FRONTFACE_CLOCKWISE};*/
   VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =

@@ -2,7 +2,6 @@
 #define __CHUNKMANAGER_HPP__
 
 #include "Common.hpp"
-#include <unordered_map>
 
 class ChunkPrefab;
 class ChunkCache;
