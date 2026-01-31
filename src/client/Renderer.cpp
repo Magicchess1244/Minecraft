@@ -14,28 +14,28 @@ const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
      {0.5, -0.5, 0.5},  // 0: bottom-right
-     {-0.5, -0.5, 0.5}, // 1: bottom-left
      {0.5, 0.5, 0.5},   // 2: top-right
+     {-0.5, -0.5, 0.5}, // 1: bottom-left
      {-0.5, 0.5, 0.5}}, // 3: top-left
     {// Back (-Z) - looking at face from outside (negative Z direction)
      // Counter-clockwise: bottom-left, bottom-right, top-left, top-right
      {-0.5, -0.5, -0.5}, // 0: bottom-left
-     {0.5, -0.5, -0.5},  // 1: bottom-right
      {-0.5, 0.5, -0.5},  // 2: top-left
+     {0.5, -0.5, -0.5},  // 1: bottom-right
      {0.5, 0.5, -0.5}},  // 3: top-right
     {// Right (+X) - looking at face from outside (positive X direction)
      // Counter-clockwise when viewed from +X: front-bottom, back-bottom,
      // front-top, back-top
      {0.5, -0.5, 0.5},  // 0: front-bottom
-     {0.5, -0.5, -0.5}, // 1: back-bottom
      {0.5, 0.5, 0.5},   // 2: front-top
+     {0.5, -0.5, -0.5}, // 1: back-bottom
      {0.5, 0.5, -0.5}}, // 3: back-top
     {// Left (-X) - looking at face from outside (negative X direction)
      // Counter-clockwise when viewed from -X: back-bottom, front-bottom,
      // back-top, front-top
      {-0.5, -0.5, -0.5}, // 0: back-bottom
-     {-0.5, -0.5, 0.5},  // 1: front-bottom
      {-0.5, 0.5, -0.5},  // 2: back-top
+     {-0.5, -0.5, 0.5},  // 1: front-bottom
      {-0.5, 0.5, 0.5}},  // 3: front-top
     {// Top (+Y) - looking at face from outside (positive Y direction)
      // Counter-clockwise: back-left, back-right, front-left, front-right
