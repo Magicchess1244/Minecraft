@@ -207,173 +207,140 @@ void Renderer::DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
     Vertexdata[mesh->BaseVertex++] = vertex;
   }
 
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex + 0;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex + 1;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex + 2;
+  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 0;
+  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 2;
+  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 1;
 
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex + 2;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex + 1;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex + 3;
+  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 1;
+  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 2;
+  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 3;
 }
 void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
                            int bufferIndex, int bufferOffset,
                            const Frustum &worldFrustum) {
   auto *mesh = &this->Terrain[bufferIndex];
-  std::vector<DrawnFace> Faces;
 
-  // Calculate the offset for this chunk within the packed buffer
-  constexpr int maxVerticesPerChunk =
-      4 * 10000; // 4 vertices per face, max 10000 faces
-  constexpr int maxIndicesPerChunk =
-      6 * 10000; // 6 indices per face, max 10000 faces
+  for (auto &face : chunk.allFaces) {
+    // Skip transparent faces in this simplified call if we handle them
+    // elsewhere But for now, let's just fix the indices in the main loop
+    const Vector3 *verts = Verts[face.side];
 
-  const int vertexOffset = bufferOffset * maxVerticesPerChunk;
-  const int indexOffset = bufferOffset * maxIndicesPerChunk;
-
-  // Track local indices within this chunk's allocated space
-  int localVertexIndex = 0;
-  int localIndexIndex = 0;
-
-  for (int i = 0; i < chunk.allFaces.size(); i++) {
-    auto *face = &chunk.allFaces[i];
-
-    // Frustum culling - check if face is inside frustum (in world space)
-    const Vector3 *verts = Verts[face->side];
-    Vector3 faceVerts[4];
-    for (int j = 0; j < 4; j++) {
-      // Just add block position - no rotation needed since frustum is in world
-      // space
-      faceVerts[j] = verts[j] + face->blockPos;
-    }
-
-    //if (!isFaceInFrustum(worldFrustum, faceVerts))continue;
-
-    Faces.push_back({face->blockPos, face->side, face->blockID, face->blockID == 5});
-  }
-
-  for (auto &Face : Faces) {
-    const Vector3 *verts = Verts[Face.side];
-
-    // Write vertices to this chunk's section of the buffer
+    // Write vertices
     for (int i = 0; i < 4; i++) {
-      Vector3 worldPos = (verts[i] + Face.blockPos);
-
-      Vector3 Color = BlockDef[Face.blockID].color.ToFloat() -
-                      Colors[(int)(Face.side / 2)].ToFloat();
+      Vector3 worldPos = (verts[i] + face.blockPos);
+      Vector3 Color = BlockDef[face.blockID].color.ToFloat() -
+                      Colors[(int)(face.side / 2)].ToFloat();
       Vertex vertex = {worldPos, Color};
-      mesh->mappedVertexData[vertexOffset + localVertexIndex + i] = vertex;
+      mesh->mappedVertexData[mesh->BaseVertex + i] = vertex;
     }
 
-    // Write indices to this chunk's section of the buffer
-    // Indices reference vertices within this chunk's allocated space
-    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
-        vertexOffset + localVertexIndex + 0;
-    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
-        vertexOffset + localVertexIndex + 1;
-    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
-        vertexOffset + localVertexIndex + 2;
+    // Write indices (CCW)
+    mesh->mappedIndexData[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
+    mesh->mappedIndexData[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
+    mesh->mappedIndexData[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
 
-    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
-        vertexOffset + localVertexIndex + 2;
-    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
-        vertexOffset + localVertexIndex + 1;
-    mesh->mappedIndexData[indexOffset + localIndexIndex++] =
-        vertexOffset + localVertexIndex + 3;
+    mesh->mappedIndexData[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
+    mesh->mappedIndexData[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
+    mesh->mappedIndexData[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
 
-    localVertexIndex += 4;
-  }
-
-  // Update the mesh's BaseVertex and BaseIndex to track the maximum used
-  // This accumulates across all chunks in this buffer
-  int maxVertexUsed = vertexOffset + localVertexIndex;
-  int maxIndexUsed = indexOffset + localIndexIndex;
-
-  if (maxVertexUsed > mesh->BaseVertex) {
-    mesh->BaseVertex = maxVertexUsed;
-  }
-  if (maxIndexUsed > mesh->BaseIndex) {
-    mesh->BaseIndex = maxIndexUsed;
+    mesh->BaseVertex += 4;
+    mesh->BaseIndex += 6;
   }
 }
 void Renderer::DrawTerrain(Player &player) {
-  // Process chunks by buffer to avoid repeated map/unmap
-  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
   SpiralIterator spiral(RenderDistance * 2 + 1);
   Vector3 PlayerChunk = (player.Position / 16).Truncate();
 
-  // Transform frustum to world space (aligned with camera)
-  Frustum worldFrustum = this->frustum;
-  worldFrustum.transformToWorldSpace(player.Position, player.Rotation);
-
-  // Group chunks by buffer
   for (int bufferIdx = 0; bufferIdx < this->totalBuffers; bufferIdx++) {
     auto *mesh = &this->Terrain[bufferIdx];
-
-    // Reset counters for this buffer
     mesh->BaseVertex = 0;
     mesh->BaseIndex = 0;
+    mesh->OpaqueIndexCount = 0;
+    mesh->TransparentIndexCount = 0;
 
-    // Map buffers once for this buffer
     Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
         this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
     Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
         this->basicInitVars.GPU, mesh->IndextransferBuffer, true);
 
-    // Store pointers in mesh for RenderChunk to use
     mesh->mappedVertexData = Vertexdata;
     mesh->mappedIndexData = Indexdata;
 
-    // Process all chunks that belong to this buffer
     int startChunkIdx = bufferIdx * chunksPerBuffer;
-    int endChunkIdx = std::min(startChunkIdx + chunksPerBuffer, totalChunks);
+    int endChunkIdx =
+        std::min(startChunkIdx + chunksPerBuffer,
+                 (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1));
 
-    for (int chunkIdx = startChunkIdx; chunkIdx < endChunkIdx; chunkIdx++) {
-      // Calculate chunk position
+    std::vector<ChunkPrefab *> chunks;
+    for (int i = startChunkIdx; i < endChunkIdx; i++) {
       std::pair<int, int> Pos = spiral.next();
-      Vector3 Chunk = {(float)Pos.first, 0, (float)Pos.second};
-      Chunk += PlayerChunk;
-
-      int bufferOffset = chunkIdx % chunksPerBuffer;
-      RenderChunk(chunkManager.get_chunk(Chunk), player, chunkIdx, bufferIdx,
-                  bufferOffset, worldFrustum);
+      Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
+      ChunkPos += PlayerChunk;
+      chunks.push_back(&chunkManager.get_chunk(ChunkPos));
     }
 
-    // Unmap and upload once for this buffer
+    // First pass: Opaque
+    for (auto *chunk : chunks) {
+      for (auto &face : chunk->allFaces) {
+        if (face.Transparent)
+          continue;
+        const Vector3 *verts = Verts[face.side];
+        for (int i = 0; i < 4; i++) {
+          Vertexdata[mesh->BaseVertex + i] = {
+              verts[i] + face.blockPos,
+              BlockDef[face.blockID].color.ToFloat() -
+                  Colors[(int)(face.side / 2)].ToFloat()};
+        }
+        Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
+        Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
+        Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
+        Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
+        Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
+        Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
+        mesh->BaseVertex += 4;
+        mesh->BaseIndex += 6;
+      }
+    }
+    mesh->OpaqueIndexCount = mesh->BaseIndex;
+
+    // Second pass: Transparent
+    for (auto *chunk : chunks) {
+      for (auto &face : chunk->allFaces) {
+        if (!face.Transparent)
+          continue;
+        const Vector3 *verts = Verts[face.side];
+        for (int i = 0; i < 4; i++) {
+          Vertexdata[mesh->BaseVertex + i] = {
+              verts[i] + face.blockPos,
+              BlockDef[face.blockID].color.ToFloat() -
+                  Colors[(int)(face.side / 2)].ToFloat()};
+        }
+        Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
+        Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
+        Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
+        Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
+        Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
+        Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
+        mesh->BaseVertex += 4;
+        mesh->BaseIndex += 6;
+      }
+    }
+    mesh->TransparentIndexCount = mesh->BaseIndex - mesh->OpaqueIndexCount;
+
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
                                mesh->VertextransferBuffer);
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
                                mesh->IndextransferBuffer);
 
-    // Upload vertex data
-    constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
-    constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
-    const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
-    const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
+    SDL_GPUTransferBufferLocation vLoc{mesh->VertextransferBuffer, 0};
+    SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
+                             (Uint32)(mesh->BaseVertex * sizeof(Vertex))};
+    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
 
-    SDL_GPUTransferBufferLocation Vertexlocation{};
-    Vertexlocation.transfer_buffer = mesh->VertextransferBuffer;
-    Vertexlocation.offset = 0;
-
-    SDL_GPUBufferRegion Vertexregion{};
-    Vertexregion.buffer = mesh->VertexBuffer.buffer;
-    Vertexregion.size = packedVertexSize;
-    Vertexregion.offset = 0;
-
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Vertexlocation,
-                          &Vertexregion, true);
-
-    // Upload index data
-    SDL_GPUTransferBufferLocation Indexlocation{};
-    Indexlocation.transfer_buffer = mesh->IndextransferBuffer;
-    Indexlocation.offset = 0;
-
-    SDL_GPUBufferRegion Indexregion{};
-    Indexregion.buffer = mesh->IndexBuffer.buffer;
-    Indexregion.size = packedIndexSize;
-    Indexregion.offset = 0;
-
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &Indexlocation,
-                          &Indexregion, true);
+    SDL_GPUTransferBufferLocation iLoc{mesh->IndextransferBuffer, 0};
+    SDL_GPUBufferRegion iReg{mesh->IndexBuffer.buffer, 0,
+                             (Uint32)(mesh->BaseIndex * sizeof(Uint32))};
+    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
   }
 }
 /*
@@ -855,13 +822,13 @@ void Renderer::PipelineInit() {
       pipelineInitVars.vertex_shader;
   this->pipelineInitVars.pipeline_desc.fragment_shader =
       pipelineInitVars.fragment_shader;
-  
+
   this->pipelineInitVars.pipeline_desc.rasterizer_state = {
       .fill_mode = SDL_GPU_FILLMODE_FILL,
       .cull_mode = SDL_GPU_CULLMODE_BACK, // Enable back-face culling
-      .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE};
+      .front_face = SDL_GPU_FRONTFACE_CLOCKWISE};
 
-      VertexGPUInit();
+  VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =
       1; // We only bind one buffer at a time
@@ -872,6 +839,15 @@ void Renderer::PipelineInit() {
       this->pipelineInitVars.vertex_attributes;
 
   pipelineInitVars.pipeline_desc.props = 0;
+
+  this->pipelineInitVars.graphicsPipeline = SDL_CreateGPUGraphicsPipeline(
+      this->basicInitVars.GPU, &this->pipelineInitVars.pipeline_desc);
+
+  // Transparent pipeline (same but with depth write disabled)
+  this->pipelineInitVars.pipeline_desc.depth_stencil_state.enable_depth_write =
+      false;
+  this->pipelineInitVars.transparentPipeline = SDL_CreateGPUGraphicsPipeline(
+      this->basicInitVars.GPU, &this->pipelineInitVars.pipeline_desc);
 }
 Renderer::Renderer(GameClient &gameClient)
     : gameClient(gameClient), chunkManager() {
@@ -881,10 +857,9 @@ Renderer::Renderer(GameClient &gameClient)
   ColorTargetDes();
   PipelineInit();
 
-  this->pipelineInitVars.graphicsPipeline = SDL_CreateGPUGraphicsPipeline(
-      this->basicInitVars.GPU, &this->pipelineInitVars.pipeline_desc);
-  if (!this->pipelineInitVars.graphicsPipeline) {
-    SDL_Log("Failed to create pipeline: %s", SDL_GetError());
+  if (!this->pipelineInitVars.graphicsPipeline ||
+      !this->pipelineInitVars.transparentPipeline) {
+    SDL_Log("Failed to create pipelines: %s", SDL_GetError());
   }
 
   SDL_ReleaseGPUShader(this->basicInitVars.GPU,
