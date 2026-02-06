@@ -67,7 +67,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
     ChunkPrefab newChunk;
     newChunk.xPos = (int)key.x * newChunk.xSize;
     newChunk.zPos = (int)key.z * newChunk.zSize;
-    newChunk.GenerateChunk();
+    if (!newChunk.isDirty) newChunk.GenerateChunk();
     this->Chunks[key] = newChunk;
   }
   return std::ref(Chunks[key]);

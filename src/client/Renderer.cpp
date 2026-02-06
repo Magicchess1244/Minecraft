@@ -8,34 +8,34 @@ constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = tan((90 * (PI / 180)) / 2.0f);
 const float Znear = 0.1f;
-constexpr float Zfar = 100.0f;
-constexpr int RenderDistance = 0;
+constexpr float Zfar = 500.0f;
+constexpr int RenderDistance = 1;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
      {0.5, -0.5, 0.5},  // 0: bottom-right
-     {0.5, 0.5, 0.5},   // 2: top-right
      {-0.5, -0.5, 0.5}, // 1: bottom-left
+     {0.5, 0.5, 0.5},   // 2: top-right
      {-0.5, 0.5, 0.5}}, // 3: top-left
     {// Back (-Z) - looking at face from outside (negative Z direction)
      // Counter-clockwise: bottom-left, bottom-right, top-left, top-right
      {-0.5, -0.5, -0.5}, // 0: bottom-left
-     {-0.5, 0.5, -0.5},  // 2: top-left
      {0.5, -0.5, -0.5},  // 1: bottom-right
+     {-0.5, 0.5, -0.5},  // 2: top-left
      {0.5, 0.5, -0.5}},  // 3: top-right
     {// Right (+X) - looking at face from outside (positive X direction)
      // Counter-clockwise when viewed from +X: front-bottom, back-bottom,
      // front-top, back-top
      {0.5, -0.5, 0.5},  // 0: front-bottom
-     {0.5, 0.5, 0.5},   // 2: front-top
      {0.5, -0.5, -0.5}, // 1: back-bottom
+     {0.5, 0.5, 0.5},   // 2: front-top
      {0.5, 0.5, -0.5}}, // 3: back-top
     {// Left (-X) - looking at face from outside (negative X direction)
      // Counter-clockwise when viewed from -X: back-bottom, front-bottom,
      // back-top, front-top
      {-0.5, -0.5, -0.5}, // 0: back-bottom
-     {-0.5, 0.5, -0.5},  // 2: back-top
      {-0.5, -0.5, 0.5},  // 1: front-bottom
+     {-0.5, 0.5, -0.5},  // 2: back-top
      {-0.5, 0.5, 0.5}},  // 3: front-top
     {// Top (+Y) - looking at face from outside (positive Y direction)
      // Counter-clockwise: back-left, back-right, front-left, front-right
@@ -246,8 +246,7 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
       faceVerts[j] = verts[j] + face->blockPos;
     }
 
-    if (!isFaceInFrustum(worldFrustum, faceVerts))
-      continue;
+    //if (!isFaceInFrustum(worldFrustum, faceVerts))continue;
 
     Faces.push_back({face->blockPos, face->side, face->blockID, face->blockID == 5});
   }
@@ -300,7 +299,7 @@ void Renderer::DrawTerrain(Player &player) {
   // Process chunks by buffer to avoid repeated map/unmap
   int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
   SpiralIterator spiral(RenderDistance * 2 + 1);
-  Vector3 PlayerChunk = (player.Position / 32).Truncate();
+  Vector3 PlayerChunk = (player.Position / 16).Truncate();
 
   // Transform frustum to world space (aligned with camera)
   Frustum worldFrustum = this->frustum;
@@ -316,9 +315,9 @@ void Renderer::DrawTerrain(Player &player) {
 
     // Map buffers once for this buffer
     Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
-        this->basicInitVars.GPU, mesh->VertextransferBuffer, false);
+        this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
     Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
-        this->basicInitVars.GPU, mesh->IndextransferBuffer, false);
+        this->basicInitVars.GPU, mesh->IndextransferBuffer, true);
 
     // Store pointers in mesh for RenderChunk to use
     mesh->mappedVertexData = Vertexdata;
@@ -560,7 +559,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   depth_target_info.store_op = SDL_GPU_STOREOP_DONT_CARE;
   depth_target_info.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
   depth_target_info.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-  depth_target_info.cycle = true;
+  depth_target_info.cycle = false;
 
   Player player = players[0];
   Matrix model = Rotation({0, 0, 0});
@@ -683,7 +682,7 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
   SDL_GPUTexture *result;
 
   createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-  createinfo.format = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+  createinfo.format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
   createinfo.width = drawablew;
   createinfo.height = drawableh;
   createinfo.layer_count_or_depth = 1;
@@ -848,7 +847,7 @@ void Renderer::PipelineInit() {
   this->pipelineInitVars.pipeline_desc.target_info.has_depth_stencil_target =
       true;
   this->pipelineInitVars.pipeline_desc.target_info.depth_stencil_format =
-      SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+      SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
 
   this->pipelineInitVars.pipeline_desc.primitive_type =
       SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
