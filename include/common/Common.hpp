@@ -105,6 +105,7 @@ struct Vector3 {
             z * float(PI / 180.0)};
   }
 
+  Vector3 Round() const { return {std::round(x), std::round(y), std::round(z)}; }
   Vector3 Truncate() const { return {floorf(x), floorf(y), floorf(z)}; }
 
   Vector3 Forward() const {

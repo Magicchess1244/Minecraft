@@ -1,7 +1,6 @@
 #include "../../include/common/Chunck.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 
-constexpr int HeightVar = 13;
 constexpr float CaveThreshold = -0.15f; // Lower threshold = more caves
 constexpr int CaveMinY = 2;
 constexpr int CaveMaxY = 40;
@@ -16,7 +15,7 @@ const Vector3 Direction[6] = {
 };
 
 // Helper function to check if a block should exist (considering caves)
-bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight) {
+bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight) {
   // Above terrain height = air
   if (worldY > terrainHeight)
     return false;
@@ -45,8 +44,8 @@ void ChunkPrefab::GenerateChunk() {
   for (Uint8 x = 0; x < xSize; x++) {
     for (Uint8 z = 0; z < zSize; z++) {
       heights[x * zSize + z] =
-          35 + (int)(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 4,
-                                 0.1f) *
+          BaseHeight + (int)(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 4,
+                                 Frecuence) *
                      HeightVar);
     }
   }

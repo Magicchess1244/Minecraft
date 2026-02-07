@@ -18,6 +18,9 @@ public:
   static constexpr Uint8 xSize = 16;
   static constexpr Uint8 zSize = 16;
   static constexpr Uint8 ySize = 64;
+  static constexpr float Frecuence = 0.1f;
+  static constexpr Uint8 BaseHeight = 35;
+  static constexpr Uint8 HeightVar = 13;
 
   int xPos = -1;
   int zPos = -1;
@@ -31,6 +34,7 @@ public:
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
   void GenerateChunk();
+  bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight);
 
 private:
   //void GenerateChunkCaves();

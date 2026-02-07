@@ -11,6 +11,7 @@ int main(int argc, char* argv[])
 	GameClient client;
 
 	do {
+	    choice = 0;
 		std::cout << "Choose an option:\n1. Start Server\n2. Start Client\n";
 		std::cin >> choice;
 
@@ -23,7 +24,7 @@ int main(int argc, char* argv[])
 			BitMiner::GameLoop(client);
 			break;
 		default:
-			std::cout << "Invalid choice.\n";
+			std::cout << "Invalid choice.\n\n";
 			break;
 		}
 	} while (choice > 2 || choice < 1);

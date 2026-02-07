@@ -3,7 +3,8 @@
 #include <ostream>
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 0.25f;
+constexpr float playerSpeed = 0.15f;
+float deltaTime = 1.0f;
 
 void GameClient::set_seed() {
   /*int res;
@@ -112,14 +113,12 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
     }
   }
 }
-void PlayerMovement(Player &player, int &inventorySlot) {
+void PlayerMovement(Player &player, int &inventorySlot, ChunkManager &manager) {
   Vector3 playerDirection = {0, 0, 0};
   Vector3 RotationDir = {0, 0, 0};
-
   PlayerInput(playerDirection, true, inventorySlot, RotationDir);
 
   if (RotationDir.x != 0 || RotationDir.y != 0) {
-
     player.Rotation.y += RotationDir.y * mouseSensitivity;
     player.Rotation.x += RotationDir.x * mouseSensitivity;
     player.Rotation.x = SDL_clamp(player.Rotation.x, -90.0f, 90.0f);
@@ -129,22 +128,66 @@ void PlayerMovement(Player &player, int &inventorySlot) {
       player.Rotation.y += 360.0f;
   }
 
+  // Define player collision box
+  // Collision points relative to camera (player.Position)
+  // Assuming camera is at eye level, roughly 1.6 units above feet
+  auto isColliding = [&](Vector3 pos) {
+    float r = 0.3f; // player radius
+    float eyeHeight = 1.6f;
+    float bodyHeight = 1.8f;
+
+    // Points to check: corners of the box at foot level, waist level, and head
+    // level
+    float yChecks[] = {-1.6f, -0.8f, 0.1f};
+    float xzChecks[] = {-r, r};
+
+    for (float yOff : yChecks) {
+      for (float xOff : xzChecks) {
+        for (float zOff : xzChecks) {
+          if (manager.IsSolid(pos + Vector3(xOff, yOff, zOff))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
   // Handle movement
   if (playerDirection.x != 0 || playerDirection.y != 0 ||
       playerDirection.z != 0) {
-    float deltaTime = 1.0f;
-    player.Position.y += playerDirection.y * playerSpeed * deltaTime * 2;
+    // 1. Vertical Movement
+    if (playerDirection.y != 0) {
+      Vector3 nextY = player.Position;
+      nextY.y += playerDirection.y * playerSpeed;
+      if (!isColliding(nextY)) {
+        player.Position.y = nextY.y;
+      }
+    }
 
+    // 2. Horizontal Movement
     Vector3 Rot = player.Rotation;
     Rot.x = 0;
-
     Vector3 Dir =
         Rot.Forward() * playerDirection.z + Rot.Right() * playerDirection.x;
 
-    Dir = Dir.Normalized();
+    if (Dir.LengthSquared() > 0.0001f) {
+      Dir = Dir.Normalized() * playerSpeed * deltaTime;
 
-    player.Position.x += Dir.x * playerSpeed * deltaTime;
-    player.Position.z += Dir.z * playerSpeed * deltaTime;
+      // Try Move X
+      Vector3 nextX = player.Position;
+      nextX.x += Dir.x;
+      if (!isColliding(nextX)) {
+        player.Position.x = nextX.x;
+      }
+
+      // Try Move Z
+      Vector3 nextZ = player.Position;
+      nextZ.z += Dir.z;
+      if (!isColliding(nextZ)) {
+        player.Position.z = nextZ.z;
+      }
+    }
   }
 }
 void GameLoop(GameClient &game) {
@@ -174,13 +217,15 @@ void GameLoop(GameClient &game) {
   int inventorySlot = 0;
 
   // ChunckManager::Size(width, height, Range.y, Range.x);
-  Renderer RendererObject(game);
+  ChunkManager chunkManager;
+  Renderer RendererObject(game, chunkManager);
 
   while (game.GetRunning()) {
-    PlayerMovement(p[0], inventorySlot);
+    PlayerMovement(p[0], inventorySlot, chunkManager);
     RendererObject.MainRenderLoop(inventory, inventorySlot, p);
   }
 
   std::cout << "Exiting game..." << std::endl;
 }
+
 } // namespace BitMiner

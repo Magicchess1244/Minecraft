@@ -31,7 +31,7 @@ typedef struct {
 constexpr int BlockNum = 6;
 const Block BlockDef[BlockNum] = {
     {"Air", 0, {255, 178, 255}, {0, 0}, false, false},
-    {"Grass", 1, {0, 166, 0}, {0, 0}, true, false},
+    {"Grass", 1, {255, 255, 255}, {0, 0}, true, false},
     {"Dirt", 2, {255, 255, 255}, {1, 3}, true, false},
     {"Stone", 3, {255, 255, 255}, {4, 64}, false, false},
     {"Bedrock", 4, {51, 51, 51}, {0, 3}, false, false},
@@ -57,6 +57,8 @@ public:
     }
     return BlockDef[BlockId];
   }
+  bool RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
+  bool IsSolid(Vector3 worldPos);
 };
 /*
 namespace ChunckManager {

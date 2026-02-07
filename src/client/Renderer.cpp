@@ -13,43 +13,43 @@ constexpr int RenderDistance = 4;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
-     {0.5, -0.5, 0.5},  // 0: bottom-right
-     {-0.5, -0.5, 0.5}, // 1: bottom-left
-     {0.5, 0.5, 0.5},   // 2: top-right
-     {-0.5, 0.5, 0.5}}, // 3: top-left
+     {1.0, 0.0, 1.0},  // 0: bottom-right
+     {0.0, 0.0, 1.0},  // 1: bottom-left
+     {1.0, 1.0, 1.0},  // 2: top-right
+     {0.0, 1.0, 1.0}}, // 3: top-left
     {// Back (-Z) - looking at face from outside (negative Z direction)
      // Counter-clockwise: bottom-left, bottom-right, top-left, top-right
-     {-0.5, -0.5, -0.5}, // 0: bottom-left
-     {0.5, -0.5, -0.5},  // 1: bottom-right
-     {-0.5, 0.5, -0.5},  // 2: top-left
-     {0.5, 0.5, -0.5}},  // 3: top-right
+     {0.0, 0.0, 0.0},  // 0: bottom-left
+     {1.0, 0.0, 0.0},  // 1: bottom-right
+     {0.0, 1.0, 0.0},  // 2: top-left
+     {1.0, 1.0, 0.0}}, // 3: top-right
     {// Right (+X) - looking at face from outside (positive X direction)
      // Counter-clockwise when viewed from +X: front-bottom, back-bottom,
      // front-top, back-top
-     {0.5, -0.5, 0.5},  // 0: front-bottom
-     {0.5, 0.5, 0.5},   // 2: front-top
-     {0.5, -0.5, -0.5}, // 1: back-bottom
-     {0.5, 0.5, -0.5}}, // 3: back-top
+     {1.0, 1.0, 1.0},  // 2: front-top
+     {1.0, 1.0, 0.0},  // 3: back-top
+     {1.0, 0.0, 1.0},  // 0: front-bottom
+     {1.0, 0.0, 0.0}}, // 1: back-bottom
     {// Left (-X) - looking at face from outside (negative X direction)
      // Counter-clockwise when viewed from -X: back-bottom, front-bottom,
      // back-top, front-top
-     {-0.5, -0.5, -0.5}, // 0: back-bottom
-     {-0.5, 0.5, -0.5},  // 2: back-top
-     {-0.5, -0.5, 0.5},  // 1: front-bottom:
-     {-0.5, 0.5, 0.5}},  // 3: front-top
+     {0.0, 1.0, 0.0},  // 2: back-top
+     {0.0, 1.0, 1.0},  // 3: front-top
+     {0.0, 0.0, 0.0},  // 0: back-bottom
+     {0.0, 0.0, 1.0}}, // 1: front-bottom:
     {// Top (+Y) - looking at face from outside (positive Y direction)
      // Counter-clockwise: back-left, back-right, front-left, front-right
-     {-0.5, 0.5, -0.5}, // 0: back-left
-     {0.5, 0.5, -0.5},  // 1: back-right
-     {-0.5, 0.5, 0.5},  // 2: front-left
-     {0.5, 0.5, 0.5}},  // 3: front-right
+     {0.0, 1.0, 0.0},  // 0: back-left
+     {1.0, 1.0, 0.0},  // 1: back-right
+     {0.0, 1.0, 1.0},  // 2: front-left
+     {1.0, 1.0, 1.0}}, // 3: front-right
     {// Bottom (-Y) - looking at face from outside (negative Y direction, from
      // below) Counter-clockwise when viewed from below: front-right,
      // back-right, front-left, back-left
-     {0.5, -0.5, 0.5},     // 0: front-right
-     {0.5, -0.5, -0.5},    // 1: back-right
-     {-0.5, -0.5, 0.5},    // 2: front-left
-     {-0.5, -0.5, -0.5}}}; // 3: back-left
+     {1.0, 0.0, 1.0},   // 0: front-right
+     {1.0, 0.0, 0.0},   // 1: back-right
+     {0.0, 0.0, 1.0},   // 2: front-left
+     {0.0, 0.0, 0.0}}}; // 3: back-left
 const Vector3 Direction[6] = {
     {0, 0, 1},  // Front
     {0, 0, -1}, // Back
@@ -60,8 +60,8 @@ const Vector3 Direction[6] = {
 };
 const Color Colors[3] = {
     {0, 0, 0},    // Front / Back
-    {5, 5, 5},    // Right / Left
-    {10, 10, 10}, // Top / Bottom
+    {10, 10, 10}, // Right / Left
+    {20, 20, 20}, // Top / Bottom
 };
 Matrix Perspective(float Fov, float Aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
@@ -1045,8 +1045,8 @@ void Renderer::PipelineInit() {
   this->pipelineInitVars.transparentPipeline = SDL_CreateGPUGraphicsPipeline(
       this->basicInitVars.GPU, &this->pipelineInitVars.pipeline_desc);
 }
-Renderer::Renderer(GameClient &gameClient)
-    : gameClient(gameClient), chunkManager() {
+Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
+    : gameClient(gameClient), chunkManager(manager) {
   TextureAtlas = nullptr;
   Sampler = nullptr;
 

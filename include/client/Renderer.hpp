@@ -259,7 +259,7 @@ private:
   void EventManager(Player &player);
 
 public:
-  Renderer(GameClient &gameClient);
+  Renderer(GameClient &gameClient, ChunkManager &manager);
   ~Renderer() {
     for (auto &mesh : this->Terrain) {
       SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.IndexBuffer.buffer);

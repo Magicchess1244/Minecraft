@@ -1,5 +1,6 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
+#include "../../include/common/PerlinNoise.hpp"
 
 constexpr int ySize = 64;
 constexpr Biome Biomes[11] = {
@@ -42,18 +43,18 @@ constexpr HeightsDif PeaksAndValiesHeight[6] = {
 int BlockSize = 50;
 
 ChunkManager::ChunkManager() {
-  //cache = new ChunkCache(); // Initialize cache system
+  // cache = new ChunkCache(); // Initialize cache system
 }
 
 ChunkManager::~ChunkManager() {
-        /*
-  // Save all dirty chunks before destroying
-  for (auto &pair : Chunks) {
-    if (pair.second.isDirty) {
-      cache->saveChunk(pair.second, (int)pair.first.x, (int)pair.first.z);
-    }
-  }
-  delete cache;*/
+  /*
+// Save all dirty chunks before destroying
+for (auto &pair : Chunks) {
+if (pair.second.isDirty) {
+cache->saveChunk(pair.second, (int)pair.first.x, (int)pair.first.z);
+}
+}
+delete cache;*/
 }
 
 ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
@@ -62,12 +63,14 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   // Check if chunk is already loaded
   if (this->Chunks.find(key) == this->Chunks.end()) {
     // REMOVED: std::cout - major performance killer!
-    //std::cout << "Generating chunk at: " << key.x << ", " << key.z << std::endl;
+    // std::cout << "Generating chunk at: " << key.x << ", " << key.z <<
+    // std::endl;
 
     ChunkPrefab newChunk;
     newChunk.xPos = (int)key.x * newChunk.xSize;
     newChunk.zPos = (int)key.z * newChunk.zSize;
-    if (!newChunk.isDirty) newChunk.GenerateChunk();
+    if (!newChunk.isDirty)
+      newChunk.GenerateChunk();
     this->Chunks[key] = newChunk;
   }
   return std::ref(Chunks[key]);
@@ -105,6 +108,50 @@ int ChunkManager::GetHeight(float Continentalness, float Errotion,
   return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight));
 }
 
+bool ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
+                           float MaxDistance) {
+  Vector3 Dir = NormalDir;
+
+  // Calculate number of steps based on MaxDistance
+  int numSteps = (int)(MaxDistance * 3); // 3 checks per unit for good coverage
+
+  Vector3 RelChunkPos = (Origin / 16).Truncate();
+  ChunkPrefab *CurrentChunk = &get_chunk(RelChunkPos);
+
+  for (int i = 0; i <= numSteps; i++) {
+    float t = ((float)i / (float)numSteps) * MaxDistance;
+    Vector3 NewPos = (Origin + Dir * t).Truncate();
+
+    Vector3 NewRelChunkPos = (NewPos / 16).Truncate();
+    if (NewRelChunkPos != RelChunkPos) {
+      RelChunkPos = NewRelChunkPos;
+      CurrentChunk = &get_chunk(NewRelChunkPos);
+    }
+
+    int Height = CurrentChunk->BaseHeight +
+                 (int)(PerlinNoise(NewPos, 4, CurrentChunk->Frecuence) *
+                       CurrentChunk->HeightVar);
+
+    if (CurrentChunk->isSolidBlock(NewPos.x, NewPos.y, NewPos.z, Height))
+      return true;
+  }
+  return false;
+}
+
+bool ChunkManager::IsSolid(Vector3 worldPos) {
+  Vector3 RelChunkPos = {(float)floor(worldPos.x / 16.0f), 0,
+                         (float)floor(worldPos.z / 16.0f)};
+  ChunkPrefab &chunk = get_chunk(RelChunkPos);
+
+  // Use floor to get integer block coordinates for height calculation, matching
+  // GenerateChunk grid
+  Vector3 floorPos = worldPos.Truncate();
+  int height = chunk.BaseHeight + (int)(PerlinNoise({floorPos.x, 0, floorPos.z},
+                                                    4, chunk.Frecuence) *
+                                        chunk.HeightVar);
+  return chunk.isSolidBlock((int)floorPos.x, (int)floorPos.y, (int)floorPos.z,
+                            height);
+}
 /*
 namespace ChunckManager {
         static bool isTransparent(int blockID)
