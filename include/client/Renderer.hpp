@@ -5,6 +5,7 @@
 #include "../common/Chunck.hpp"
 #include "../common/ChunkManager.hpp"
 #include <SDL3/SDL_gpu.h>
+#include <SDL3_image/SDL_image.h>
 
 class SpiralIterator {
 private:
@@ -187,6 +188,7 @@ struct Frustum {
 struct Vertex {
   Vector3 Position;
   Vector3 Color;
+  SDL_FPoint UV;
 };
 struct Mesh {
   SDL_GPUTransferBuffer *VertextransferBuffer = nullptr;
@@ -213,7 +215,7 @@ struct PipileInitVars {
   SDL_GPUGraphicsPipeline *graphicsPipeline = nullptr;
   SDL_GPUGraphicsPipeline *transparentPipeline = nullptr;
   SDL_GPUVertexBufferDescription vertex_buffer_desc;
-  SDL_GPUVertexAttribute vertex_attributes[2];
+  SDL_GPUVertexAttribute vertex_attributes[3];
   SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
   SDL_GPUShader *vertex_shader;
   SDL_GPUShader *fragment_shader;
@@ -233,6 +235,8 @@ private:
   PipileInitVars pipelineInitVars;
   RunTimeRenderVars runTimeRenderVars;
   SDL_GPUTexture *DepthTexture = nullptr;
+  SDL_GPUTexture *TextureAtlas = nullptr;
+  SDL_GPUSampler *Sampler = nullptr;
   ChunkManager chunkManager;
   GameClient &gameClient;
   bool fullScreen = false;
@@ -251,6 +255,7 @@ private:
   void VertexGPUInit();
   void PipelineInit();
   void ColorTargetDes();
+  void LoadTexture();
   void EventManager(Player &player);
 
 public:
@@ -267,6 +272,15 @@ public:
 
     SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
                                    pipelineInitVars.graphicsPipeline);
+
+    if (TextureAtlas) {
+      SDL_ReleaseGPUTexture(this->basicInitVars.GPU, TextureAtlas);
+      TextureAtlas = nullptr;
+    }
+    if (Sampler) {
+      SDL_ReleaseGPUSampler(this->basicInitVars.GPU, Sampler);
+      Sampler = nullptr;
+    }
 
     // Release DepthTexture before destroying GPU device
     if (DepthTexture) {

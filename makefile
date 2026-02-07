@@ -1,10 +1,10 @@
 # Compiler and flags
 CXX := g++
-CXXFLAGS := -std=c++17 -O3 -pthread # Optimized build with threading support
-LDFLAGS := -lSDL3 -lSDL3_ttf -pthread
+CXXFLAGS := -std=c++17 -O3 -pthread
+LDFLAGS := -lSDL3 -lSDL3_ttf -lSDL3_image -pthread
 
 # Include directories
-INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server
+INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server -I/usr/include/SDL3 -I/usr/local/include/SDL3
 
 # Targets
 CLIENT_TARGET := minecraft3d-client

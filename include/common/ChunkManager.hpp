@@ -32,8 +32,8 @@ constexpr int BlockNum = 6;
 const Block BlockDef[BlockNum] = {
     {"Air", 0, {255, 178, 255}, {0, 0}, false, false},
     {"Grass", 1, {0, 166, 0}, {0, 0}, true, false},
-    {"Dirt", 2, {153, 76, 25}, {1, 3}, true, false},
-    {"Stone", 3, {128, 128, 128}, {4, 64}, false, false},
+    {"Dirt", 2, {255, 255, 255}, {1, 3}, true, false},
+    {"Stone", 3, {255, 255, 255}, {4, 64}, false, false},
     {"Bedrock", 4, {51, 51, 51}, {0, 3}, false, false},
     {"Water", 5, {0, 102, 204}, {0, 0}, false, true}};
 
