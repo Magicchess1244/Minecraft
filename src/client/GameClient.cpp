@@ -1,11 +1,16 @@
 #include "../../include/client/GameClient.hpp"
 #include "../../include/common/PerlinNoise.hpp"
+#include <SDL3/SDL_stdinc.h>
+#include <algorithm>
 #include <chrono>
 #include <ostream>
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 13.0f;
+constexpr float playerSpeed = 5.0f;
 float deltaTime = 1.0f;
+float JumpTimer = 0;
+Vector3 playerDirection = {0, 0, 0};
+
 
 void GameClient::set_seed() {
   /*int res;
@@ -83,9 +88,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
       KeyboardState[SDL_SCANCODE_D] || KeyboardState[SDL_SCANCODE_RIGHT];
 
   PlayerDirection.x = 0;
-  PlayerDirection.y = 0;
   PlayerDirection.z = 0;
-
   // Get mouse movement and button states
   float mouseX, mouseY;
   Uint32 mouseState = SDL_GetRelativeMouseState(&mouseX, &mouseY);
@@ -104,8 +107,15 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   if (move_left || move_right) {
     PlayerDirection.x = move_left ? -1 : 1;
   }
-  if (move_down || move_up) {
-    PlayerDirection.y = move_down ? -1 : 1;
+  if(!OnGround) {
+    PlayerDirection.y -= 0.1f;
+    PlayerDirection.y = SDL_clamp(PlayerDirection.y, -4, 10);
+  } else {
+    PlayerDirection.y = 0;
+    if (move_up && JumpTimer > 0.2f) {
+      PlayerDirection.y += 2.0f;
+      JumpTimer = 0;
+    }
   }
   if (move_backward || move_foward) {
     PlayerDirection.z = move_backward ? -1 : 1;
@@ -235,12 +245,13 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
 }
 void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
                   std::vector<Slot> &inventory) {
-  Vector3 playerDirection = {0, 0, 0};
+
+  JumpTimer += deltaTime;
   Vector3 RotationDir = {0, 0, 0};
   bool LeftClick = false, RightClick = false;
-  PlayerInput(playerDirection, true, inventorySlot, RotationDir, LeftClick,
+  bool OnGround = manager.RayCast(player.Position, {0,-1, 0}, 2).hit;
+  PlayerInput(playerDirection, OnGround, inventorySlot, RotationDir, LeftClick,
               RightClick);
-
   PlayerRotation(player, RotationDir);
   PlayerMove(player, playerDirection, manager);
   PlayerBreackPlace(LeftClick, RightClick, manager, player, inventorySlot,

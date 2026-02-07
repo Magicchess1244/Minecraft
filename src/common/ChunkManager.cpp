@@ -193,8 +193,9 @@ void ChunkManager::Place(Vector3 Pos, int BlockID) {
 
   int Index = localX + localY * ChunkPrefab::xSize +
               localZ * ChunkPrefab::xSize * ChunkPrefab::ySize;
+  if (Pos.y != 0)
+    CurrentChunk.Modifications[Index] = BlockID;
 
-  CurrentChunk.Modifications[Index] = BlockID;
   CurrentChunk.isDirty = true;
   CurrentChunk.GenerateChunk(
       GetChunkOrNull(Chunks, {chunkKey.x - 1, 0, chunkKey.z}),
