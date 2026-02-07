@@ -6,10 +6,10 @@
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
-const float FOV = tan((90 * (PI / 180)) / 2.0f);
+const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 1;
+constexpr int RenderDistance = 4;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
@@ -27,15 +27,15 @@ const Vector3 Verts[6][4] = {
      // Counter-clockwise when viewed from +X: front-bottom, back-bottom,
      // front-top, back-top
      {0.5, -0.5, 0.5},  // 0: front-bottom
-     {0.5, -0.5, -0.5}, // 1: back-bottom
      {0.5, 0.5, 0.5},   // 2: front-top
+     {0.5, -0.5, -0.5}, // 1: back-bottom
      {0.5, 0.5, -0.5}}, // 3: back-top
     {// Left (-X) - looking at face from outside (negative X direction)
      // Counter-clockwise when viewed from -X: back-bottom, front-bottom,
      // back-top, front-top
      {-0.5, -0.5, -0.5}, // 0: back-bottom
-     {-0.5, -0.5, 0.5},  // 1: front-bottom
      {-0.5, 0.5, -0.5},  // 2: back-top
+     {-0.5, -0.5, 0.5},  // 1: front-bottom:
      {-0.5, 0.5, 0.5}},  // 3: front-top
     {// Top (+Y) - looking at face from outside (positive Y direction)
      // Counter-clockwise: back-left, back-right, front-left, front-right
@@ -51,26 +51,26 @@ const Vector3 Verts[6][4] = {
      {-0.5, -0.5, 0.5},    // 2: front-left
      {-0.5, -0.5, -0.5}}}; // 3: back-left
 const Vector3 Direction[6] = {
-    {0, 0, -1}, // Front
-    {0, 0, 1},  // Back
-    {-1, 0, 0}, // Right
-    {1, 0, 0},  // Left
-    {0, -1, 0}, // Top
-    {0, 1, 0}   // Bottom
+    {0, 0, 1},  // Front
+    {0, 0, -1}, // Back
+    {1, 0, 0},  // Right
+    {-1, 0, 0}, // Left
+    {0, 1, 0},  // Top
+    {0, -1, 0}  // Bottom
 };
 const Color Colors[3] = {
     {0, 0, 0},    // Front / Back
     {5, 5, 5},    // Right / Left
     {10, 10, 10}, // Top / Bottom
 };
-Matrix Perspective(float tanHalfFov, float aspect, float Near, float Far) {
+Matrix Perspective(float Fov, float Aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
-  float f = 1 / tanHalfFov;
-  m(0, 0) = (f / aspect); // Negated to flip x-axis
-  m(1, 1) = f;
-  m(2, 2) = (Near + Far) / (Near - Far);
+  float tanHalfFov = std::tan(Fov * PI / 360.0f);
+  m(0, 0) = 1.0f / (Aspect * tanHalfFov);
+  m(1, 1) = 1.0f / tanHalfFov;
+  m(2, 2) = Far / (Far - Near);
   m(3, 2) = 1.0f;
-  m(2, 3) = (2.0f * Near * Far) / (Near - Far);
+  m(2, 3) = -(Far * Near) / (Far - Near);
   m(3, 3) = 0.0f;
   return m;
 }
@@ -250,7 +250,34 @@ void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
 void Renderer::DrawTerrain(Player &player) {
   SpiralIterator spiral(RenderDistance * 2 + 1);
   Vector3 PlayerChunk = (player.Position / 16).Truncate();
+  PlayerChunk.y = 0;
 
+  // 1. Collect all chunks and their distances
+  struct ChunkDistance {
+    ChunkPrefab *chunk;
+    float distSq;
+  };
+  std::vector<ChunkDistance> sortedChunkList;
+  while (spiral.hasNext()) {
+    std::pair<int, int> Pos = spiral.next();
+    Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
+    ChunkPos += PlayerChunk;
+    ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
+
+    // Use center of chunk for distance
+    Vector3 chunkCenter = ChunkPos * 16.0f + Vector3(8, 0, 8);
+    float d2 = (chunkCenter - player.Position).LengthSquared();
+    sortedChunkList.push_back({&chunk, d2});
+  }
+
+  // 2. Sort chunks BACK TO FRONT (furthest first)
+  std::sort(sortedChunkList.begin(), sortedChunkList.end(),
+            [](const ChunkDistance &a, const ChunkDistance &b) {
+              return a.distSq > b.distSq;
+            });
+
+  // 3. Fill buffers using sorted chunks
+  int currentSortedIdx = 0;
   for (int bufferIdx = 0; bufferIdx < this->totalBuffers; bufferIdx++) {
     auto *mesh = &this->Terrain[bufferIdx];
     mesh->BaseVertex = 0;
@@ -266,17 +293,11 @@ void Renderer::DrawTerrain(Player &player) {
     mesh->mappedVertexData = Vertexdata;
     mesh->mappedIndexData = Indexdata;
 
-    int startChunkIdx = bufferIdx * chunksPerBuffer;
-    int endChunkIdx =
-        std::min(startChunkIdx + chunksPerBuffer,
-                 (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1));
-
     std::vector<ChunkPrefab *> chunks;
-    for (int i = startChunkIdx; i < endChunkIdx; i++) {
-      std::pair<int, int> Pos = spiral.next();
-      Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
-      ChunkPos += PlayerChunk;
-      chunks.push_back(&chunkManager.get_chunk(ChunkPos));
+    for (int i = 0;
+         i < chunksPerBuffer && currentSortedIdx < sortedChunkList.size();
+         i++) {
+      chunks.push_back(sortedChunkList[currentSortedIdx++].chunk);
     }
 
     // First pass: Opaque
@@ -304,26 +325,38 @@ void Renderer::DrawTerrain(Player &player) {
     mesh->OpaqueIndexCount = mesh->BaseIndex;
 
     // Second pass: Transparent
+    std::vector<const DrawnFace *> transparentFaces;
     for (auto *chunk : chunks) {
       for (auto &face : chunk->allFaces) {
-        if (!face.Transparent)
-          continue;
-        const Vector3 *verts = Verts[face.side];
-        for (int i = 0; i < 4; i++) {
-          Vertexdata[mesh->BaseVertex + i] = {
-              verts[i] + face.blockPos,
-              BlockDef[face.blockID].color.ToFloat() -
-                  Colors[(int)(face.side / 2)].ToFloat()};
-        }
-        Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
-        Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
-        Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
-        Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
-        Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
-        Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
-        mesh->BaseVertex += 4;
-        mesh->BaseIndex += 6;
+        if (face.Transparent)
+          transparentFaces.push_back(&face);
       }
+    }
+
+    // Sort transparent faces BACK TO FRONT (furthest first)
+    std::sort(transparentFaces.begin(), transparentFaces.end(),
+              [&](const DrawnFace *a, const DrawnFace *b) {
+                float distA = (a->blockPos - player.Position).LengthSquared();
+                float distB = (b->blockPos - player.Position).LengthSquared();
+                return distA > distB;
+              });
+
+    for (auto *face : transparentFaces) {
+      const Vector3 *verts = Verts[face->side];
+      for (int i = 0; i < 4; i++) {
+        Vertexdata[mesh->BaseVertex + i] = {
+            verts[i] + face->blockPos,
+            BlockDef[face->blockID].color.ToFloat() -
+                Colors[(int)(face->side / 2)].ToFloat()};
+      }
+      Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
+      Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
+      Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
+      Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
+      Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
+      Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
+      mesh->BaseVertex += 4;
+      mesh->BaseIndex += 6;
     }
     mesh->TransparentIndexCount = mesh->BaseIndex - mesh->OpaqueIndexCount;
 
@@ -445,7 +478,9 @@ void Renderer::UpdateViewportAndProjection() {
 
   // Update frustum for new aspect ratio
   float aspect = (float)drawableWidth / (float)drawableHeight;
-  this->frustum = Frustum().createFrustumFromCamera(aspect, FOV, Znear, Zfar);
+  float tanHalfFov = tan(FOV * PI / 360.0f);
+  this->frustum =
+      Frustum().createFrustumFromCamera(aspect, tanHalfFov, Znear, Zfar);
 }
 void Renderer::EventManager(Player &player) {
   while (SDL_PollEvent(&this->basicInitVars.event)) {
@@ -548,22 +583,35 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   this->runTimeRenderVars.pass =
       SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
                              &color_target_info, 1, &depth_target_info);
+  // Pass 1: Draw Opaque everything
   SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
                               this->pipelineInitVars.graphicsPipeline);
 
-  // Draw the tesseract from first mesh
   for (auto &mesh : this->Terrain) {
-    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0,
-                             &mesh.VertexBuffer, 1);
-    SDL_BindGPUIndexBuffer(this->runTimeRenderVars.pass, &mesh.IndexBuffer,
-                           SDL_GPU_INDEXELEMENTSIZE_32BIT);
-
-    if (mesh.BaseVertex > 0) {
-      SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, mesh.BaseIndex,
-                                   1, 0, 0, 0);
+    if (mesh.OpaqueIndexCount > 0) {
+      SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0,
+                               &mesh.VertexBuffer, 1);
+      SDL_BindGPUIndexBuffer(this->runTimeRenderVars.pass, &mesh.IndexBuffer,
+                             SDL_GPU_INDEXELEMENTSIZE_32BIT);
+      SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass,
+                                   mesh.OpaqueIndexCount, 1, 0, 0, 0);
     }
-    mesh.BaseIndex = 0;
-    mesh.BaseVertex = 0;
+  }
+
+  // Pass 2: Draw Transparent everything
+  SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
+                              this->pipelineInitVars.transparentPipeline);
+
+  for (auto &mesh : this->Terrain) {
+    if (mesh.TransparentIndexCount > 0) {
+      SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0,
+                               &mesh.VertexBuffer, 1);
+      SDL_BindGPUIndexBuffer(this->runTimeRenderVars.pass, &mesh.IndexBuffer,
+                             SDL_GPU_INDEXELEMENTSIZE_32BIT);
+      SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass,
+                                   mesh.TransparentIndexCount, 1,
+                                   mesh.OpaqueIndexCount, 0, 0);
+    }
   }
 
   SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
@@ -696,7 +744,6 @@ void Renderer::Init() {
 void Renderer::GenerateBuffer() {
   // Calculate buffer packing
   int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
-  this->chunksPerBuffer = 3; // Pack 3 chunks per buffer
   this->totalBuffers =
       (totalChunks + chunksPerBuffer - 1) / chunksPerBuffer; // Ceiling division
 
@@ -822,12 +869,12 @@ void Renderer::PipelineInit() {
       pipelineInitVars.vertex_shader;
   this->pipelineInitVars.pipeline_desc.fragment_shader =
       pipelineInitVars.fragment_shader;
-
-  this->pipelineInitVars.pipeline_desc.rasterizer_state = {
-      .fill_mode = SDL_GPU_FILLMODE_FILL,
-      .cull_mode = SDL_GPU_CULLMODE_BACK, // Enable back-face culling
-      .front_face = SDL_GPU_FRONTFACE_CLOCKWISE};
-
+  this->pipelineInitVars.pipeline_desc.rasterizer_state.fill_mode =
+      SDL_GPU_FILLMODE_FILL;
+  this->pipelineInitVars.pipeline_desc.rasterizer_state.cull_mode =
+      SDL_GPU_CULLMODE_BACK;
+  this->pipelineInitVars.pipeline_desc.rasterizer_state.front_face =
+      SDL_GPU_FRONTFACE_CLOCKWISE;
   VertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =

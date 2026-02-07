@@ -1,6 +1,5 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
-#include "../../include/common/ChunkCache.hpp"
 
 constexpr int ySize = 64;
 constexpr Biome Biomes[11] = {
@@ -43,17 +42,18 @@ constexpr HeightsDif PeaksAndValiesHeight[6] = {
 int BlockSize = 50;
 
 ChunkManager::ChunkManager() {
-  cache = new ChunkCache(); // Initialize cache system
+  //cache = new ChunkCache(); // Initialize cache system
 }
 
 ChunkManager::~ChunkManager() {
+        /*
   // Save all dirty chunks before destroying
   for (auto &pair : Chunks) {
     if (pair.second.isDirty) {
       cache->saveChunk(pair.second, (int)pair.first.x, (int)pair.first.z);
     }
   }
-  delete cache;
+  delete cache;*/
 }
 
 ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
@@ -62,7 +62,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   // Check if chunk is already loaded
   if (this->Chunks.find(key) == this->Chunks.end()) {
     // REMOVED: std::cout - major performance killer!
-    CHUNK_LOG("Generating chunk at: " << key.x << ", " << key.z);
+    //std::cout << "Generating chunk at: " << key.x << ", " << key.z << std::endl;
 
     ChunkPrefab newChunk;
     newChunk.xPos = (int)key.x * newChunk.xSize;

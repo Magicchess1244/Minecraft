@@ -29,20 +29,37 @@ public:
   void generatePath() {
     path.clear();
     int x = 0, y = 0;
-    int dx = 0, dy = -1;
-    int maxSteps = size * size;
+    int dx = 1, dy = 0; // Start moving RIGHT
+    int steps = 1;
+    int stepCount = 0;
+    int turnsInCurrentSize = 0;
 
-    for (int i = 0; i < maxSteps; i++) {
-      if (x > -size / 2 && x <= size / 2 && y > -size / 2 && y <= size / 2) {
-        path.push_back({x, y});
-      }
-      if (x == y || (x < 0 && x == -y) || (x > 0 && x == 1 - y)) {
+    path.push_back({x, y}); // Add starting position
+
+    int maxSteps = size * size;
+    for (int i = 1; i < maxSteps; i++) {
+      x += dx;
+      y += dy;
+      path.push_back({x, y});
+
+      stepCount++;
+
+      // Time to turn?
+      if (stepCount == steps) {
+        stepCount = 0;
+        turnsInCurrentSize++;
+
+        // Turn right (clockwise): (dx, dy) -> (-dy, dx)
         int temp = dx;
         dx = -dy;
         dy = temp;
+
+        // Increase step size after every 2 turns
+        if (turnsInCurrentSize == 2) {
+          steps++;
+          turnsInCurrentSize = 0;
+        }
       }
-      x += dx;
-      y += dy;
     }
   }
 
@@ -62,12 +79,12 @@ struct Frustum {
 
   // Creates a frustum in camera space. Camera is at origin looking +Z, Y up, X
   // right.
-  static Frustum createFrustumFromCamera(float aspect, float fovY_radians,
+  static Frustum createFrustumFromCamera(float aspect, float tanHalfFov,
                                          float Znear, float Zfar) {
     Frustum frustum;
 
-    // half sizes at far plane (use tan(fov/2))
-    const float halfVSide = Zfar * fovY_radians;
+    // half sizes at far plane
+    const float halfVSide = Zfar * tanHalfFov;
     const float halfHSide = halfVSide * aspect;
 
     Vector3 camForward = {0.f, 0.f, 1.f};
