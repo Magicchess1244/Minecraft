@@ -1,137 +1,161 @@
 #include "../../include/common/Chunck.hpp"
+#include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 
-constexpr float CaveThreshold = -0.15f; // Lower threshold = more caves
+constexpr float CaveThreshold = -0.15f;
 constexpr int CaveMinY = 2;
 constexpr int CaveMaxY = 40;
 
-const Vector3 Direction[6] = {
-    {0, 0, 1},  // Front
-    {0, 0, -1}, // Back
-    {1, 0, 0},  // Right
-    {-1, 0, 0}, // Left
-    {0, 1, 0},  // Top
-    {0, -1, 0}  // Bottom
-};
+bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
+                               int terrainHeight) {
+  int localX = worldX - xPos;
+  int localY = worldY;
+  int localZ = worldZ - zPos;
 
-// Helper function to check if a block should exist (considering caves)
-bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight) {
-  // Above terrain height = air
-  if (worldY > terrainHeight)
-    return false;
-
-  // Below cave range = always solid
-  if (worldY < CaveMinY)
-    return true;
-
-  // Within cave range - use 3D Perlin noise for caves
-  if (worldY <= CaveMaxY) {
-    // Use larger scale for bigger caves, more octaves for detail
-    float caveNoise = PerlinNoise(
-        {(float)worldX * 0.1f, (float)worldY * 0.1f, (float)worldZ * 0.1f}, 3,
-        0.5f);
-    if (caveNoise < CaveThreshold) { // Note: less than, not greater than
-      return false;                  // This is a cave
+  // Priority 1: User modifications (placing/breaking)
+  if (localX >= 0 && localX < xSize && localY >= 0 && localY < ySize &&
+      localZ >= 0 && localZ < zSize) {
+    int Index = localX + localY * xSize + localZ * xSize * ySize;
+    auto it = Modifications.find(Index);
+    if (it != Modifications.end()) {
+      return it->second != 0; // 0 is Air (not solid), others are solid
     }
   }
 
-  return true; // Solid block
+  // Priority 2: World boundaries
+  if (worldY < 0 || worldY >= ySize)
+    return false;
+  if (worldY == 0)
+    return true; // Bedrock floor
+
+  // Priority 3: Natural terrain
+  if (worldY > terrainHeight)
+    return false;
+  if (worldY < CaveMinY)
+    return true;
+
+  // Priority 4: Caves
+  if (worldY <= CaveMaxY) {
+    float caveNoise = PerlinNoise(
+        {(float)worldX * 0.1f, (float)worldY * 0.1f, (float)worldZ * 0.1f}, 3,
+        0.5f);
+    if (caveNoise < CaveThreshold)
+      return false;
+  }
+
+  return true;
 }
 
-void ChunkPrefab::GenerateChunk() {
-  // Pre-calculate all heights in the chunk
+void ChunkPrefab::GenerateChunk(ChunkPrefab *negX, ChunkPrefab *posX,
+                                ChunkPrefab *negZ, ChunkPrefab *posZ) {
   std::vector<int> heights(xSize * zSize);
   for (Uint8 x = 0; x < xSize; x++) {
     for (Uint8 z = 0; z < zSize; z++) {
       heights[x * zSize + z] =
-          BaseHeight + (int)(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 4,
-                                 Frecuence) *
-                     HeightVar);
+          BaseHeight +
+          (int)(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 4,
+                            Frecuence) *
+                HeightVar);
     }
   }
 
   this->allFaces.clear();
   this->allFaces.reserve(xSize * zSize * 10);
 
-  // Check all 4 horizontal directions for side faces
   static const int offsets[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
   static const int faceIndices[4] = {3, 2, 1, 0}; // Left, Right, Back, Front
+  ChunkPrefab *neighbors[4] = {negX, posX, negZ, posZ};
+  Vector3 ChunkWorldPos = {(float)this->xPos, 0, (float)this->zPos};
 
-  // Build a 3D grid of solid blocks
   for (Uint8 x = 0; x < xSize; x++) {
     for (Uint8 z = 0; z < zSize; z++) {
       int height = heights[x * zSize + z];
-      Vector3 ChunkWorldPos = {(float)this->xPos, 0, (float)this->zPos};
 
-      // Iterate through all Y levels from 0 to height
-      for (int y = 0; y <= height; y++) {
+      for (int y = 0; y < ySize; y++) {
         int worldX = xPos + x;
         int worldY = y;
         int worldZ = zPos + z;
 
-        // Check if this block is solid
         if (!isSolidBlock(worldX, worldY, worldZ, height))
           continue;
 
-        // Determine block type based on depth
-        int BlockID = 1; // Grass
-        if (height - y > 0) BlockID = 2; // Dirt
-        if (height - y > 3) BlockID = 3; // Stone
-        if (y == 0) BlockID = 4;
+        // Determine Block ID
+        int Index = x + y * xSize + z * xSize * ySize;
+        int BlockID = 1;
+        auto it = Modifications.find(Index);
+        if (it != Modifications.end()) {
+          BlockID = it->second;
+        } else {
+          BlockID = 1; // Grass
+          if (height - y > 0)
+            BlockID = 2; // Dirt
+          if (height - y > 3)
+            BlockID = 3; // Stone
+          if (y == 0)
+            BlockID = 4;
+        }
 
-        // Check top face (index 4)
-        int topY = y + 1;
-        int topNeighborHeight;
-        topNeighborHeight = heights[x * zSize + z]; // Same column
-
-        if (!isSolidBlock(worldX, topY, worldZ, topNeighborHeight)) {
-          Vector3 blockPos = {(float)x, (float)y, (float)z};
+        // Top Face
+        if (y + 1 < ySize) {
+          if (!isSolidBlock(worldX, y + 1, worldZ, height))
+            this->allFaces.push_back(
+                {Vector3((float)worldX, (float)worldY, (float)worldZ), 4,
+                 BlockID, BlockDef[BlockID].Water});
+        } else {
           this->allFaces.push_back(
-              {blockPos + ChunkWorldPos, 4, BlockID, false});
+              {Vector3((float)worldX, (float)worldY, (float)worldZ), 4, BlockID,
+               BlockDef[BlockID].Water});
         }
 
-        // Check bottom face (index 5)
+        // Bottom Face
         if (y > 0) {
-          int bottomY = y - 1;
-          if (!isSolidBlock(worldX, bottomY, worldZ, height)) {
-            Vector3 blockPos = {(float)x, (float)y, (float)z};
+          if (!isSolidBlock(worldX, y - 1, worldZ, height))
             this->allFaces.push_back(
-                {blockPos + ChunkWorldPos, 5, BlockID, false});
-          }
+                {Vector3((float)worldX, (float)worldY, (float)worldZ), 5,
+                 BlockID, BlockDef[BlockID].Water});
         }
 
-        // Check all 4 horizontal directions for side faces
+        // Side Faces
         for (int dir = 0; dir < 4; dir++) {
-          int nx = x + offsets[dir][0];
-          int nz = z + offsets[dir][1];
+          int nx = worldX + offsets[dir][0];
+          int nz = worldZ + offsets[dir][1];
 
-          int nWorldX = xPos + nx;
-          int nWorldZ = zPos + nz;
+          // For simplicity in culling, we calculate neighbor terrain height
+          int nHeight =
+              BaseHeight +
+              (int)(PerlinNoise({(float)nx, 0, (float)nz}, 4, Frecuence) *
+                    HeightVar);
 
-          // Get neighbor height
-          int neighborHeight;
-          if (nx < 0 || nx >= xSize || nz < 0 || nz >= zSize) {
-            // Outside chunk - calculate height
-            neighborHeight =
-                35 + (int)(PerlinNoise({(float)nWorldX, 0, (float)nWorldZ}, 4,
-                                       0.1f) *
-                           HeightVar);
+          bool isSolid = false;
+          if (neighbors[dir]) {
+            // Check neighbor chunk
+            // Only use neighbor chunk if the coordinate is ACTUALLY outside
+            // this chunk's bounds in that direction.
+            // Wait, offsets[dir] moves us 1 unit.
+            // If x=0, dir=0 (left, -1), nx=-1 (relative to worldX).
+            // worldX = xPos + x.
+            // If x=0, worldX=xPos. nx = xPos - 1.
+            // This is definitely outside current chunk.
+            // But if x=1, worldX=xPos+1. nx=xPos. efficient logic:
+            // Is nx inside [xPos, xPos+16)?
+            if (nx >= xPos && nx < xPos + xSize && nz >= zPos &&
+                nz < zPos + zSize) {
+              isSolid = isSolidBlock(nx, y, nz, nHeight);
+            } else {
+              isSolid = neighbors[dir]->isSolidBlock(nx, y, nz, nHeight);
+            }
           } else {
-            neighborHeight = heights[nx * zSize + nz];
+            isSolid = isSolidBlock(nx, y, nz, nHeight);
           }
 
-          // Check if neighbor is solid
-          bool neighborSolid =
-              isSolidBlock(nWorldX, y, nWorldZ, neighborHeight);
-
-          // Draw face if neighbor is air/cave
-          if (!neighborSolid) {
-            Vector3 blockPos = {(float)x, (float)y, (float)z};
+          if (!isSolid) {
             this->allFaces.push_back(
-                {blockPos + ChunkWorldPos, faceIndices[dir], BlockID, true});
+                {Vector3((float)worldX, (float)worldY, (float)worldZ),
+                 faceIndices[dir], BlockID, BlockDef[BlockID].Water});
           }
         }
       }
     }
   }
+  isDirty = false;
 }

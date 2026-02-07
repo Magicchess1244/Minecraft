@@ -2,7 +2,6 @@
 #define __CHUNKMANAGER_HPP__
 
 #include "Common.hpp"
-#include <cstddef>
 
 class ChunkPrefab;
 class ChunkCache;
@@ -37,6 +36,12 @@ const Block BlockDef[BlockNum] = {
     {"Bedrock", 4, {51, 51, 51}, {0, 3}, false, false},
     {"Water", 5, {0, 102, 204}, {0, 0}, false, true}};
 
+struct RaycastResult {
+  bool hit;
+  Vector3 pos;
+  Vector3 prevPos;
+};
+
 class ChunkManager {
 private:
   std::unordered_map<Vector3, ChunkPrefab> Chunks;
@@ -57,8 +62,9 @@ public:
     }
     return BlockDef[BlockId];
   }
-  bool RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
+  RaycastResult RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
   bool IsSolid(Vector3 worldPos);
+  void Place(Vector3 Pos, int BlockID);
 };
 /*
 namespace ChunckManager {

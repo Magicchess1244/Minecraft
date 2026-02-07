@@ -237,7 +237,7 @@ private:
   SDL_GPUTexture *DepthTexture = nullptr;
   SDL_GPUTexture *TextureAtlas = nullptr;
   SDL_GPUSampler *Sampler = nullptr;
-  ChunkManager chunkManager;
+  ChunkManager &chunkManager;
   GameClient &gameClient;
   bool fullScreen = false;
   Frustum frustum;

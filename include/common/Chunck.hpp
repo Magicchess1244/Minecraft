@@ -33,11 +33,12 @@ public:
   inline bool isValidPos(int x, int y, int z) const {
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
-  void GenerateChunk();
+  void GenerateChunk(ChunkPrefab *negX = nullptr, ChunkPrefab *posX = nullptr,
+                     ChunkPrefab *negZ = nullptr, ChunkPrefab *posZ = nullptr);
   bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight);
 
 private:
-  //void GenerateChunkCaves();
+  // void GenerateChunkCaves();
   void VisableFaces();
 };
 

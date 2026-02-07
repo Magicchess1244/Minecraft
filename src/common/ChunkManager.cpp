@@ -3,6 +3,16 @@
 #include "../../include/common/PerlinNoise.hpp"
 
 constexpr int ySize = 64;
+
+// Helper to get chunk without creating it
+ChunkPrefab *GetChunkOrNull(std::unordered_map<Vector3, ChunkPrefab> &chunks,
+                            Vector3 key) {
+  auto it = chunks.find(key);
+  if (it != chunks.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
 constexpr Biome Biomes[11] = {
     {20, 20, 0, 0, 20, 6},     // Ice
     {40, 20, 20, 0, 20, 6},    // Tundra
@@ -60,20 +70,24 @@ delete cache;*/
 ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   key.y = 0;
 
-  // Check if chunk is already loaded
-  if (this->Chunks.find(key) == this->Chunks.end()) {
-    // REMOVED: std::cout - major performance killer!
-    // std::cout << "Generating chunk at: " << key.x << ", " << key.z <<
-    // std::endl;
-
+  auto it = Chunks.find(key);
+  if (it == Chunks.end()) {
     ChunkPrefab newChunk;
-    newChunk.xPos = (int)key.x * newChunk.xSize;
-    newChunk.zPos = (int)key.z * newChunk.zSize;
-    if (!newChunk.isDirty)
-      newChunk.GenerateChunk();
-    this->Chunks[key] = newChunk;
+    newChunk.xPos = (int)key.x * ChunkPrefab::xSize;
+    newChunk.zPos = (int)key.z * ChunkPrefab::zSize;
+    newChunk.isDirty =
+        true; // Mark as dirty so it generates on first access or below
+    it = Chunks.emplace(key, std::move(newChunk)).first;
   }
-  return std::ref(Chunks[key]);
+
+  if (it->second.isDirty) {
+    it->second.GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
+                             GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
+                             GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
+                             GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+  }
+
+  return it->second;
 }
 
 int ChunkManager::BaseHeight(float ValueNoise, int Length,
@@ -108,34 +122,42 @@ int ChunkManager::GetHeight(float Continentalness, float Errotion,
   return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight));
 }
 
-bool ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
-                           float MaxDistance) {
+RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
+                                    float MaxDistance) {
   Vector3 Dir = NormalDir;
 
   // Calculate number of steps based on MaxDistance
-  int numSteps = (int)(MaxDistance * 3); // 3 checks per unit for good coverage
+  int numSteps = (int)(MaxDistance * 10); // More checks for better precision
 
   Vector3 RelChunkPos = (Origin / 16).Truncate();
   ChunkPrefab *CurrentChunk = &get_chunk(RelChunkPos);
+
+  Vector3 LastPos = Origin.Truncate();
 
   for (int i = 0; i <= numSteps; i++) {
     float t = ((float)i / (float)numSteps) * MaxDistance;
     Vector3 NewPos = (Origin + Dir * t).Truncate();
 
-    Vector3 NewRelChunkPos = (NewPos / 16).Truncate();
-    if (NewRelChunkPos != RelChunkPos) {
-      RelChunkPos = NewRelChunkPos;
-      CurrentChunk = &get_chunk(NewRelChunkPos);
+    if (i > 0 && NewPos != LastPos) {
+      Vector3 NewRelChunkPos = (NewPos / 16).Truncate();
+      if (NewRelChunkPos != RelChunkPos) {
+        RelChunkPos = NewRelChunkPos;
+        CurrentChunk = &get_chunk(NewRelChunkPos);
+      }
+
+      int Height = CurrentChunk->BaseHeight +
+                   (int)(PerlinNoise({NewPos.x, 0, NewPos.z}, 4,
+                                     CurrentChunk->Frecuence) *
+                         CurrentChunk->HeightVar);
+
+      if (CurrentChunk->isSolidBlock((int)NewPos.x, (int)NewPos.y,
+                                     (int)NewPos.z, Height))
+        return {true, NewPos, LastPos};
+
+      LastPos = NewPos;
     }
-
-    int Height = CurrentChunk->BaseHeight +
-                 (int)(PerlinNoise(NewPos, 4, CurrentChunk->Frecuence) *
-                       CurrentChunk->HeightVar);
-
-    if (CurrentChunk->isSolidBlock(NewPos.x, NewPos.y, NewPos.z, Height))
-      return true;
   }
-  return false;
+  return {false, {0, 0, 0}, {0, 0, 0}};
 }
 
 bool ChunkManager::IsSolid(Vector3 worldPos) {
@@ -152,6 +174,64 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
   return chunk.isSolidBlock((int)floorPos.x, (int)floorPos.y, (int)floorPos.z,
                             height);
 }
+
+void ChunkManager::Place(Vector3 Pos, int BlockID) {
+  Vector3 chunkKey = (Pos / 16).Truncate();
+  chunkKey.y = 0;
+
+  ChunkPrefab &CurrentChunk = get_chunk(chunkKey);
+
+  int localX = (int)floorf(Pos.x) - CurrentChunk.xPos;
+  int localY = (int)floorf(Pos.y);
+  int localZ = (int)floorf(Pos.z) - CurrentChunk.zPos;
+
+  if (localX < 0 || localX >= ChunkPrefab::xSize || localY < 0 ||
+      localY >= ChunkPrefab::ySize || localZ < 0 ||
+      localZ >= ChunkPrefab::zSize) {
+    return;
+  }
+
+  int Index = localX + localY * ChunkPrefab::xSize +
+              localZ * ChunkPrefab::xSize * ChunkPrefab::ySize;
+
+  CurrentChunk.Modifications[Index] = BlockID;
+  CurrentChunk.isDirty = true;
+  CurrentChunk.GenerateChunk(
+      GetChunkOrNull(Chunks, {chunkKey.x - 1, 0, chunkKey.z}),
+      GetChunkOrNull(Chunks, {chunkKey.x + 1, 0, chunkKey.z}),
+      GetChunkOrNull(Chunks, {chunkKey.x, 0, chunkKey.z - 1}),
+      GetChunkOrNull(Chunks, {chunkKey.x, 0, chunkKey.z + 1}));
+
+  // Update neighbors
+  if (localX == 0) {
+    Vector3 key = {chunkKey.x - 1, 0, chunkKey.z};
+    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+  } else if (localX == ChunkPrefab::xSize - 1) {
+    Vector3 key = {chunkKey.x + 1, 0, chunkKey.z};
+    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+  }
+
+  if (localZ == 0) {
+    Vector3 key = {chunkKey.x, 0, chunkKey.z - 1};
+    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+  } else if (localZ == ChunkPrefab::zSize - 1) {
+    Vector3 key = {chunkKey.x, 0, chunkKey.z + 1};
+    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
+                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+  }
+}
+
 /*
 namespace ChunckManager {
         static bool isTransparent(int blockID)

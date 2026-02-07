@@ -1,9 +1,10 @@
 #include "../../include/client/GameClient.hpp"
 #include "../../include/common/PerlinNoise.hpp"
+#include <chrono>
 #include <ostream>
 
 constexpr float mouseSensitivity = 0.1f;
-constexpr float playerSpeed = 0.15f;
+constexpr float playerSpeed = 13.0f;
 float deltaTime = 1.0f;
 
 void GameClient::set_seed() {
@@ -68,7 +69,7 @@ int FindSlot(std::vector<Slot> &Inventory, short Type) {
   return 0;
 }
 void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
-                 Vector3 &PlayerRot) {
+                 Vector3 &PlayerRot, bool &LeftClick, bool &RightClick) {
   const bool *KeyboardState = SDL_GetKeyboardState(NULL);
   const bool move_foward =
       (KeyboardState[SDL_SCANCODE_W] || KeyboardState[SDL_SCANCODE_UP]);
@@ -85,9 +86,13 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   PlayerDirection.y = 0;
   PlayerDirection.z = 0;
 
-  // Get mouse movement
+  // Get mouse movement and button states
   float mouseX, mouseY;
-  SDL_GetRelativeMouseState(&mouseX, &mouseY);
+  Uint32 mouseState = SDL_GetRelativeMouseState(&mouseX, &mouseY);
+
+  // Detect mouse button clicks
+  LeftClick = (mouseState & SDL_BUTTON_LMASK) != 0;
+  RightClick = (mouseState & SDL_BUTTON_RMASK) != 0;
 
   // Apply mouse movement to rotation
   // Mouse X controls yaw (Y-axis rotation)
@@ -113,11 +118,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
     }
   }
 }
-void PlayerMovement(Player &player, int &inventorySlot, ChunkManager &manager) {
-  Vector3 playerDirection = {0, 0, 0};
-  Vector3 RotationDir = {0, 0, 0};
-  PlayerInput(playerDirection, true, inventorySlot, RotationDir);
-
+void PlayerRotation(Player &player, Vector3 RotationDir) {
   if (RotationDir.x != 0 || RotationDir.y != 0) {
     player.Rotation.y += RotationDir.y * mouseSensitivity;
     player.Rotation.x += RotationDir.x * mouseSensitivity;
@@ -127,7 +128,9 @@ void PlayerMovement(Player &player, int &inventorySlot, ChunkManager &manager) {
     if (player.Rotation.y < 0.0f)
       player.Rotation.y += 360.0f;
   }
-
+}
+void PlayerMove(Player &player, Vector3 playerDirection,
+                ChunkManager &manager) {
   // Define player collision box
   // Collision points relative to camera (player.Position)
   // Assuming camera is at eye level, roughly 1.6 units above feet
@@ -159,7 +162,7 @@ void PlayerMovement(Player &player, int &inventorySlot, ChunkManager &manager) {
     // 1. Vertical Movement
     if (playerDirection.y != 0) {
       Vector3 nextY = player.Position;
-      nextY.y += playerDirection.y * playerSpeed;
+      nextY.y += playerDirection.y * playerSpeed * deltaTime;
       if (!isColliding(nextY)) {
         player.Position.y = nextY.y;
       }
@@ -189,6 +192,59 @@ void PlayerMovement(Player &player, int &inventorySlot, ChunkManager &manager) {
       }
     }
   }
+}
+void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
+                       Player &player, int inventorySlot,
+                       std::vector<Slot> &inventory) {
+  static bool lastLeft = false;
+  static bool lastRight = false;
+
+  bool justLeft = Left && !lastLeft;
+  bool justRight = Right && !lastRight;
+
+  lastLeft = Left;
+  lastRight = Right;
+
+  if (justLeft || justRight) {
+    RaycastResult Ray =
+        manager.RayCast(player.Position, player.Rotation.Forward(), 10);
+    if (Ray.hit) {
+      if (justLeft) {
+        manager.Place(Ray.pos, 0); // Break block (Air)
+      } else {
+        // Prevent placing block inside player's body
+        Vector3 placePos = Ray.prevPos;
+        bool collides = false;
+
+        // Check if the placed block intersects with the player's bounding box
+        // Player is roughly from CameraY-1.6 to CameraY+0.2
+        for (float yOff = -1.5f; yOff <= 0.1f; yOff += 0.5f) {
+          Vector3 check = (player.Position + Vector3(0, yOff, 0)).Truncate();
+          if (check == placePos) {
+            collides = true;
+            break;
+          }
+        }
+
+        if (!collides) {
+          manager.Place(placePos, inventory[inventorySlot].Type);
+        }
+      }
+    }
+  }
+}
+void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
+                  std::vector<Slot> &inventory) {
+  Vector3 playerDirection = {0, 0, 0};
+  Vector3 RotationDir = {0, 0, 0};
+  bool LeftClick = false, RightClick = false;
+  PlayerInput(playerDirection, true, inventorySlot, RotationDir, LeftClick,
+              RightClick);
+
+  PlayerRotation(player, RotationDir);
+  PlayerMove(player, playerDirection, manager);
+  PlayerBreackPlace(LeftClick, RightClick, manager, player, inventorySlot,
+                    inventory);
 }
 void GameLoop(GameClient &game) {
   game.add_player({
@@ -220,8 +276,14 @@ void GameLoop(GameClient &game) {
   ChunkManager chunkManager;
   Renderer RendererObject(game, chunkManager);
 
+  auto lastTime = std::chrono::high_resolution_clock::now();
+
   while (game.GetRunning()) {
-    PlayerMovement(p[0], inventorySlot, chunkManager);
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+    lastTime = currentTime;
+
+    PlayerAction(p[0], inventorySlot, chunkManager, inventory);
     RendererObject.MainRenderLoop(inventory, inventorySlot, p);
   }
 

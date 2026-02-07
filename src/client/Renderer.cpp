@@ -60,8 +60,8 @@ const Vector3 Direction[6] = {
 };
 const Color Colors[3] = {
     {0, 0, 0},    // Front / Back
-    {10, 10, 10}, // Right / Left
-    {20, 20, 20}, // Top / Bottom
+    {25, 25, 25}, // Right / Left
+    {50, 50, 50}, // Top / Bottom
 };
 Matrix Perspective(float Fov, float Aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
