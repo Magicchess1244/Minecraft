@@ -6,6 +6,7 @@
 #include "../common/ChunkManager.hpp"
 #include <SDL3/SDL_gpu.h>
 #include <SDL3_image/SDL_image.h>
+#include <vector>
 
 class SpiralIterator {
 private:
@@ -138,6 +139,43 @@ struct Frustum {
     return frustum;
   }
 
+  // Check if an axis-aligned bounding box (AABB) is inside or intersecting the
+  // frustum Uses the "p-vertex/n-vertex" test for each plane
+  bool isChunkInFrustum(const Vector3 &minPoint,
+                        const Vector3 &maxPoint) const {
+    // Get all 8 corners of the AABB
+    Vector3 corners[8] = {
+        {minPoint.x, minPoint.y, minPoint.z}, // 0: min corner
+        {maxPoint.x, minPoint.y, minPoint.z}, // 1
+        {minPoint.x, maxPoint.y, minPoint.z}, // 2
+        {maxPoint.x, maxPoint.y, minPoint.z}, // 3
+        {minPoint.x, minPoint.y, maxPoint.z}, // 4
+        {maxPoint.x, minPoint.y, maxPoint.z}, // 5
+        {minPoint.x, maxPoint.y, maxPoint.z}, // 6
+        {maxPoint.x, maxPoint.y, maxPoint.z}  // 7: max corner
+    };
+
+    // Check all 6 frustum planes
+    const Plane *planes[6] = {&nearFace,  &farFace, &leftFace,
+                              &rightFace, &topFace, &bottomFace};
+
+    for (const Plane *plane : planes) {
+      int outsideCount = 0;
+      for (int i = 0; i < 8; ++i) {
+        // A negative distance means outside
+        if (plane->getSignedDistanceToPlane(corners[i]) < 0.0f) {
+          ++outsideCount;
+        }
+      }
+      // If all 8 corners are outside this plane, cull the chunk
+      if (outsideCount == 8) {
+        return false;
+      }
+    }
+
+    return true; // At least partially inside all planes
+  }
+
   // Transform frustum from camera space to world space
   // This rotates and translates the frustum to match the camera's position and
   // orientation
@@ -205,6 +243,10 @@ struct Mesh {
   int OpaqueIndexCount = 0;
   int TransparentIndexCount = 0;
 };
+struct ChunkDistance {
+  ChunkPrefab *chunk;
+  float distSq;
+};
 struct BasicInitVars {
   SDL_Window *window = nullptr;
   SDL_GPUDevice *GPU = nullptr;
@@ -248,6 +290,7 @@ private:
   Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);
   void DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
                 Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata);
+  std::vector<ChunkDistance> SortChunks(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();
   void Init();

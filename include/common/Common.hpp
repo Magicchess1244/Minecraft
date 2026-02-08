@@ -16,7 +16,6 @@
 #include <vector>
 constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;
-
 struct Vector3 {
   float x, y, z;
 

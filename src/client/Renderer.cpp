@@ -3,13 +3,14 @@
 #include <SDL3/SDL_gpu.h>
 #include <iostream>
 #include <ostream>
+#include <vector>
 
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 4;
+constexpr int RenderDistance = 6;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
@@ -194,81 +195,29 @@ Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
 
   return result;
 }
-void Renderer::DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
-                        Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata) {
-  const Vector3 *verts = Verts[Side];
-
-  for (int i = 0; i < 4; i++) {
-    Vector3 worldPos = (verts[i] + blocks);
-
-    Vector3 Color =
-        BlockDef[blockID].color.ToFloat() - Colors[(int)(Side / 2)].ToFloat();
-
-    // UV corners: 0:BR, 1:BL, 2:TR, 3:TL
-    int cx = (i == 0 || i == 2) ? 1 : 0;
-    int cy = (i == 0 || i == 1) ? 1 : 0;
-
-    Vertex vertex = {worldPos, Color, getUV(blockID, cx, cy)};
-    Vertexdata[mesh->BaseVertex++] = vertex;
-  }
-
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 0;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 2;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 1;
-
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 1;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 2;
-  Indexdata[mesh->BaseIndex++] = mesh->BaseVertex - 4 + 3;
-}
-void Renderer::RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
-                           int bufferIndex, int bufferOffset,
-                           const Frustum &worldFrustum) {
-  auto *mesh = &this->Terrain[bufferIndex];
-
-  for (auto &face : chunk.allFaces) {
-    const Vector3 *verts = Verts[face.side];
-
-    // Write vertices
-    for (int i = 0; i < 4; i++) {
-      Vector3 worldPos = (verts[i] + face.blockPos);
-      Vector3 Color = BlockDef[face.blockID].color.ToFloat() -
-                      Colors[(int)(face.side / 2)].ToFloat();
-
-      int cx = (i == 0 || i == 2) ? 1 : 0;
-      int cy = (i == 0 || i == 1) ? 1 : 0;
-
-      Vertex vertex = {worldPos, Color, getUV(face.blockID, cx, cy)};
-      mesh->mappedVertexData[mesh->BaseVertex + i] = vertex;
-    }
-
-    // Write indices (CCW)
-    mesh->mappedIndexData[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
-    mesh->mappedIndexData[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
-    mesh->mappedIndexData[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
-
-    mesh->mappedIndexData[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
-    mesh->mappedIndexData[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
-    mesh->mappedIndexData[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
-
-    mesh->BaseVertex += 4;
-    mesh->BaseIndex += 6;
-  }
-}
-void Renderer::DrawTerrain(Player &player) {
-  SpiralIterator spiral(RenderDistance * 2 + 1);
+std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   Vector3 PlayerChunk = (player.Position / 16).Truncate();
   PlayerChunk.y = 0;
+  SpiralIterator spiral(RenderDistance * 2 + 1);
 
-  // 1. Collect all chunks and their distances
-  struct ChunkDistance {
-    ChunkPrefab *chunk;
-    float distSq;
-  };
   std::vector<ChunkDistance> sortedChunkList;
   while (spiral.hasNext()) {
     std::pair<int, int> Pos = spiral.next();
+
+    // Calculate chunk position in world space FIRST
     Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
     ChunkPos += PlayerChunk;
+
+    // Now calculate world-space bounding box for this chunk
+    Vector3 Min = {ChunkPos.x * ChunkPrefab::xSize, 0,
+                   ChunkPos.z * ChunkPrefab::zSize};
+    Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
+                   (ChunkPos.z + 1) * ChunkPrefab::zSize};
+
+    // Test against world-space frustum
+    if (!frustum.isChunkInFrustum(Min, Max))
+      continue;
+
     ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
 
     // Use center of chunk for distance
@@ -282,8 +231,13 @@ void Renderer::DrawTerrain(Player &player) {
             [](const ChunkDistance &a, const ChunkDistance &b) {
               return a.distSq > b.distSq;
             });
+  return sortedChunkList;
+}
+void Renderer::DrawTerrain(Player &player) {
+  // 1. Collect all chunks and their distances
+  std::vector<ChunkDistance> sortedChunkList = SortChunks(player);
 
-  // 3. Fill buffers using sorted chunks
+  // 2. Fill buffers using sorted chunks
   int currentSortedIdx = 0;
   for (int bufferIdx = 0; bufferIdx < this->totalBuffers; bufferIdx++) {
     auto *mesh = &this->Terrain[bufferIdx];
@@ -532,6 +486,21 @@ void Renderer::EventManager(Player &player) {
 void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               std::vector<Player> &players) {
   EventManager(players[0]);
+
+  // Transform frustum to world space based on player position and rotation
+  // Create a fresh frustum in camera space
+  float frustumAspect =
+      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+  float tanHalfFov = tan(FOV * PI / 360.0f);
+  Frustum worldFrustum =
+      Frustum::createFrustumFromCamera(frustumAspect, tanHalfFov, Znear, Zfar);
+
+  // Transform to world space using player's position and rotation
+  worldFrustum.transformToWorldSpace(players[0].Position, players[0].Rotation);
+
+  // Store the world-space frustum for use in DrawTerrain
+  this->frustum = worldFrustum;
+
   this->runTimeRenderVars.cmdCopy =
       SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
