@@ -4,7 +4,7 @@
 
 constexpr float CaveThreshold = -0.15f;
 constexpr int CaveMinY = 2;
-constexpr int CaveMaxY = 40;
+constexpr int CaveMaxY = 38;
 
 bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
                                int terrainHeight) {

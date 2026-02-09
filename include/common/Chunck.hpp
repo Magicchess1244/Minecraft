@@ -18,9 +18,9 @@ public:
   static constexpr Uint8 xSize = 16;
   static constexpr Uint8 zSize = 16;
   static constexpr Uint8 ySize = 64;
-  static constexpr float Frecuence = 0.1f;
+  static constexpr float Frecuence = 0.05f;
   static constexpr Uint8 BaseHeight = 35;
-  static constexpr Uint8 HeightVar = 13;
+  static constexpr Uint8 HeightVar = 20;
 
   int xPos = -1;
   int zPos = -1;

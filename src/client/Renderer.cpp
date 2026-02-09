@@ -10,6 +10,7 @@ constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
+// When the render distance gets to 12 it crashes, posible fix is tessalation
 constexpr int RenderDistance = 6;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
@@ -266,12 +267,15 @@ void Renderer::DrawTerrain(Player &player) {
       for (auto &face : chunk->allFaces) {
         if (face.Transparent)
           continue;
-        const Vector3 *verts = Verts[face.side];
+        Vector3 WorldVerts[4];
+        for (int i = 0; i < 4; i++) WorldVerts[i] = Verts[face.side][i] + face.blockPos;
+
+        if (!isFaceInFrustum(frustum, WorldVerts)) continue;
         for (int i = 0; i < 4; i++) {
           int cx = (i == 0 || i == 2) ? 1 : 0;
           int cy = (i == 0 || i == 1) ? 1 : 0;
           Vertexdata[mesh->BaseVertex + i] = {
-              verts[i] + face.blockPos,
+              WorldVerts[i],
               BlockDef[face.blockID].color.ToFloat() -
                   Colors[(int)(face.side / 2)].ToFloat(),
               getUV(face.blockID, cx, cy)};
@@ -306,12 +310,16 @@ void Renderer::DrawTerrain(Player &player) {
               });
 
     for (auto *face : transparentFaces) {
-      const Vector3 *verts = Verts[face->side];
+      Vector3 WorldVerts[4];
+      for (int i = 0; i < 4; i++) WorldVerts[i] = Verts[face->side][i] + face->blockPos;
+
+      if (!isFaceInFrustum(frustum, WorldVerts)) continue;
+
       for (int i = 0; i < 4; i++) {
         int cx = (i == 0 || i == 2) ? 1 : 0;
         int cy = (i == 0 || i == 1) ? 1 : 0;
         Vertexdata[mesh->BaseVertex + i] = {
-            verts[i] + face->blockPos,
+            WorldVerts[i],
             BlockDef[face->blockID].color.ToFloat() -
                 Colors[(int)(face->side / 2)].ToFloat(),
             getUV(face->blockID, cx, cy)};
