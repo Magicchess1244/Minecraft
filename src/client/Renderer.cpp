@@ -5,6 +5,7 @@
 #include <ostream>
 #include <vector>
 
+
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = 90.0f;
@@ -197,42 +198,45 @@ Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
   return result;
 }
 std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
-  Vector3 PlayerChunk = (player.Position / 16).Truncate();
-  PlayerChunk.y = 0;
-  SpiralIterator spiral(RenderDistance * 2 + 1);
-
-  std::vector<ChunkDistance> sortedChunkList;
-  while (spiral.hasNext()) {
-    std::pair<int, int> Pos = spiral.next();
-
-    // Calculate chunk position in world space FIRST
-    Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
-    ChunkPos += PlayerChunk;
-
-    // Now calculate world-space bounding box for this chunk
-    Vector3 Min = {ChunkPos.x * ChunkPrefab::xSize, 0,
-                   ChunkPos.z * ChunkPrefab::zSize};
-    Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
-                   (ChunkPos.z + 1) * ChunkPrefab::zSize};
-
-    // Test against world-space frustum
-    if (!frustum.isChunkInFrustum(Min, Max))
-      continue;
-
-    ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
-
-    // Use center of chunk for distance
-    Vector3 chunkCenter = ChunkPos * 16.0f + Vector3(8, 0, 8);
-    float d2 = (chunkCenter - player.Position).LengthSquared();
-    sortedChunkList.push_back({&chunk, d2});
-  }
-
-  // 2. Sort chunks BACK TO FRONT (furthest first)
-  std::sort(sortedChunkList.begin(), sortedChunkList.end(),
-            [](const ChunkDistance &a, const ChunkDistance &b) {
-              return a.distSq > b.distSq;
-            });
-  return sortedChunkList;
+    Vector3 PlayerChunk = (player.Position / 16).Truncate();
+    PlayerChunk.y = 0;
+    
+    SpiralIterator spiral(RenderDistance * 2 + 1);
+    std::vector<ChunkDistance> sortedChunkList;
+    
+    while (spiral.hasNext()) {
+        std::pair<int, int> Pos = spiral.next();
+        
+        // Calculate chunk position in world space FIRST
+        Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
+        ChunkPos += PlayerChunk;
+        
+        // Now calculate world-space bounding box for this chunk
+        Vector3 Min = {ChunkPos.x * ChunkPrefab::xSize, 0,
+                       ChunkPos.z * ChunkPrefab::zSize};
+        Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
+                       (ChunkPos.z + 1) * ChunkPrefab::zSize};
+        
+        // Test against world-space frustum
+        if (!frustum.isChunkInFrustum(Min, Max))
+            continue;
+        
+        ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
+        
+        // Use center of chunk for distance
+        Vector3 chunkCenter = ChunkPos * 16.0f + Vector3(8, 0, 8);
+        float d2 = (chunkCenter - player.Position).LengthSquared();
+        
+        sortedChunkList.push_back({&chunk, d2});
+    }
+    
+    // 2. Sort chunks BACK TO FRONT (furthest first)
+    std::sort(sortedChunkList.begin(), sortedChunkList.end(),
+              [](const ChunkDistance &a, const ChunkDistance &b) {
+                  return a.distSq > b.distSq;
+              });
+    
+    return sortedChunkList;
 }
 void Renderer::DrawTerrain(Player &player) {
   // 1. Collect all chunks and their distances

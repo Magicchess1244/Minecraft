@@ -2,9 +2,24 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 
-constexpr float CaveThreshold = -0.15f;
+constexpr float CaveThreshold = -0.18f;
 constexpr int CaveMinY = 2;
 constexpr int CaveMaxY = 38;
+
+constexpr HeightsDif ContinentelnessHeight[5] = {{0.15f, ChunkPrefab::ySize * 0.8f},
+                                                 {-0.15f, ChunkPrefab::ySize * 0.45f},
+                                                 {-0.35f, ChunkPrefab::ySize * 0.45f},
+                                                 {-0.65f, 30},
+                                                 {-0.9f, 15}};
+
+int GetBaseHeight(float ValueNoise) {
+  for (int i = 0; i < 5; i++) {
+    if(ValueNoise >= ContinentelnessHeight[i].x){
+      return Lerp(ContinentelnessHeight[i].y, ContinentelnessHeight[i + 1].y, (ValueNoise - ContinentelnessHeight[i + 1].x)/(ContinentelnessHeight[i].x - ContinentelnessHeight[i + 1].x)) + 5;
+    }
+  }
+  return ContinentelnessHeight[4].y;
+}
 
 bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
                                int terrainHeight) {
@@ -51,6 +66,7 @@ void ChunkPrefab::GenerateChunk(ChunkPrefab *negX, ChunkPrefab *posX,
   std::vector<int> heights(xSize * zSize);
   for (Uint8 x = 0; x < xSize; x++) {
     for (Uint8 z = 0; z < zSize; z++) {
+     // BaseHeight[x * zSize + z] = GetBaseHeight(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 3, 0.08f));
       heights[x * zSize + z] =
           BaseHeight +
           (int)(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 4,
@@ -122,6 +138,7 @@ void ChunkPrefab::GenerateChunk(ChunkPrefab *negX, ChunkPrefab *posX,
 
           // For simplicity in culling, we calculate neighbor terrain height
           int nHeight =
+              //GetBaseHeight(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 3, 0.08f)) +
               BaseHeight +
               (int)(PerlinNoise({(float)nx, 0, (float)nz}, 4, Frecuence) *
                     HeightVar);

@@ -1,7 +1,6 @@
 #include "../../include/client/GameClient.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
-#include <algorithm>
 #include <chrono>
 #include <ostream>
 

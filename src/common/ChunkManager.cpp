@@ -26,14 +26,7 @@ constexpr Biome Biomes[11] = {
     {60, 100, 0, 80, 20, 4},   // Desert
     {40, 80, 20, 0, 20, 5},    // Savanna
 };
-constexpr HeightsDif ContinentelnessHeight[8] = {{1, ySize},
-                                                 {0.4f, ySize * 0.9f},
-                                                 {0.15f, ySize * 0.8f},
-                                                 {-0.15f, ySize * 0.45f},
-                                                 {-0.35f, ySize * 0.45f},
-                                                 {-0.65f, ySize * 0.1f},
-                                                 {-0.9f, ySize * 0.09f},
-                                                 {-1.0f, ySize}};
+
 constexpr HeightsDif ErrotionHeight[10] = {
     {1, ySize * 0.05f},    {0.8f, ySize * 0.1f},
     {0.7f, ySize * 0.35f}, {0.4f, ySize * 0.35f},
@@ -90,17 +83,6 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   return it->second;
 }
 
-int ChunkManager::BaseHeight(float ValueNoise, int Length,
-                             const HeightsDif *Heights) {
-  for (int i = 0; i < Length - 1; i++) {
-    if (ValueNoise > ContinentelnessHeight[i].x) {
-      // REMOVED: std::cout - performance killer!
-      return Lerp(Heights[i + 1].y, Heights[i].y,
-                  (ValueNoise + 1 / (Heights[i + 1].x + 1)));
-    }
-  }
-  return Heights[Length - 1].y;
-}
 Biome ChunkManager::GetBiome(float Humudity, float Temperature) {
   Biome TheBiome;
 
@@ -116,10 +98,6 @@ Biome ChunkManager::GetBiome(float Humudity, float Temperature) {
   }
 
   return TheBiome;
-}
-int ChunkManager::GetHeight(float Continentalness, float Errotion,
-                            float PeakAndValleys) {
-  return (int)(BaseHeight(Continentalness, 8, ContinentelnessHeight));
 }
 
 RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
@@ -145,10 +123,13 @@ RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
         CurrentChunk = &get_chunk(NewRelChunkPos);
       }
 
-      int Height = CurrentChunk->BaseHeight +
-                   (int)(PerlinNoise({NewPos.x, 0, NewPos.z}, 4,
-                                     CurrentChunk->Frecuence) *
-                         CurrentChunk->HeightVar);
+      int Height =
+          //CurrentChunk->BaseHeight[((int)NewPos.x % 16) * ChunkPrefab::zSize +
+          //                         (int)NewPos.z] +
+          ChunkPrefab::BaseHeight +
+          (int)(PerlinNoise({NewPos.x, 0, NewPos.z}, 4,
+                            CurrentChunk->Frecuence) *
+                CurrentChunk->HeightVar);
 
       if (CurrentChunk->isSolidBlock((int)NewPos.x, (int)NewPos.y,
                                      (int)NewPos.z, Height))
@@ -168,9 +149,12 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
   // Use floor to get integer block coordinates for height calculation, matching
   // GenerateChunk grid
   Vector3 floorPos = worldPos.Truncate();
-  int height = chunk.BaseHeight + (int)(PerlinNoise({floorPos.x, 0, floorPos.z},
-                                                    4, chunk.Frecuence) *
-                                        chunk.HeightVar);
+  int height =
+      //chunk.BaseHeight[((int)worldPos.x % 16) * ChunkPrefab::zSize +
+      //                 ((int)worldPos.z % 16)] +
+      ChunkPrefab::BaseHeight +
+      (int)(PerlinNoise({floorPos.x, 0, floorPos.z}, 4, chunk.Frecuence) *
+            chunk.HeightVar);
   return chunk.isSolidBlock((int)floorPos.x, (int)floorPos.y, (int)floorPos.z,
                             height);
 }

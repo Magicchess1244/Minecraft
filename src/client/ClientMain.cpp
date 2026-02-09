@@ -1,35 +1,13 @@
 //
 #include "../../include/client/GameClient.hpp"
-#include "../../include/server/GameServer.hpp"
 
 int main(int argc, char* argv[])
 {
 	srand(static_cast<unsigned int>(time(0)));
 
-	int choice = 0;
-	GameServer server;
 	GameClient client;
 
-	do {
-	    choice = 0;
-		std::cout << "Choose an option:\n1. Start Server\n2. Start Client\n";
-		std::cin >> choice;
-
-		switch (choice) {
-		case 1:
-			server.set_seed(rand());
-			//server.AcceptClients();
-			break;
-		case 2:
-			BitMiner::GameLoop(client);
-			break;
-		default:
-			std::cout << "Invalid choice.\n\n";
-			break;
-		}
-	} while (choice > 2 || choice < 1);
-
-	std::cout << "Exiting game..." << std::endl;
+    BitMiner::GameLoop(client);
 
 	return 0;
 }

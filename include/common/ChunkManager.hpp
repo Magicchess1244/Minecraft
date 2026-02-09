@@ -41,6 +41,7 @@ struct RaycastResult {
   Vector3 pos;
   Vector3 prevPos;
 };
+  int BaseHeight(float ValueNoise, int Length, const HeightsDif *Heights);
 
 class ChunkManager {
 private:
@@ -52,7 +53,6 @@ public:
   ~ChunkManager();
 
   ChunkPrefab &get_chunk(Vector3 key);
-  int BaseHeight(float ValueNoise, int Length, const HeightsDif *Heights);
   Biome GetBiome(float Humudity, float Temperature);
   int GetHeight(float Continentalness, float Errotion, float PeakAndVallies);
   Block GetBlock(int BlockId) {
