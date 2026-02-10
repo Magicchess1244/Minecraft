@@ -2,6 +2,7 @@
 #define __CHUNKMANAGER_HPP__
 
 #include "Common.hpp"
+#include <SDL3/SDL_stdinc.h>
 
 class ChunkPrefab;
 class ChunkCache;
@@ -47,6 +48,7 @@ class ChunkManager {
 private:
   std::unordered_map<Vector3, ChunkPrefab> Chunks;
   ChunkCache *cache; // Chunk caching system
+  std::unordered_map<Vector3, Uint8> Modifications;
 
 public:
   ChunkManager();
@@ -61,6 +63,10 @@ public:
       return BlockDef[0];
     }
     return BlockDef[BlockId];
+  }
+  Uint8 GetMod(Vector3 Pos){
+    if (Modifications.find(Pos) != Modifications.end()) return Modifications.find(Pos)->second;
+    return 255; // I am sending 255 to indicate its not found might have to change if I add more blocks
   }
   RaycastResult RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
   bool IsSolid(Vector3 worldPos);

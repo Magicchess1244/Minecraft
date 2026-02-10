@@ -9,6 +9,7 @@ constexpr float playerSpeed = 5.0f;
 float deltaTime = 1.0f;
 float JumpTimer = 0;
 Vector3 playerDirection = {0, 0, 0};
+constexpr bool PLayerColistion = true;
 
 
 void GameClient::set_seed() {
@@ -144,6 +145,7 @@ void PlayerMove(Player &player, Vector3 playerDirection,
   // Collision points relative to camera (player.Position)
   // Assuming camera is at eye level, roughly 1.6 units above feet
   auto isColliding = [&](Vector3 pos) {
+    if (!PLayerColistion) return false;
     float r = 0.3f; // player radius
     float eyeHeight = 1.6f;
     float bodyHeight = 1.8f;
@@ -164,7 +166,6 @@ void PlayerMove(Player &player, Vector3 playerDirection,
     }
     return false;
   };
-
   // Handle movement
   if (playerDirection.x != 0 || playerDirection.y != 0 ||
       playerDirection.z != 0) {

@@ -271,8 +271,13 @@ struct RunTimeRenderVars {
 };
 class GameClient;
 
+struct CachedChunkMesh {
+  std::vector<Vertex> vertices;
+  std::vector<Uint32> indices;
+};
 class Renderer {
 private:
+  std::unordered_map<Vector3, CachedChunkMesh> opaqueMeshCache;
   BasicInitVars basicInitVars;
   PipileInitVars pipelineInitVars;
   RunTimeRenderVars runTimeRenderVars;
@@ -284,7 +289,7 @@ private:
   bool fullScreen = false;
   Frustum frustum;
   std::vector<Mesh> Terrain;
-  int chunksPerBuffer = 5, totalBuffers = 0;
+  int chunksPerBuffer = 10, totalBuffers = 0;
 
   SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
   Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);

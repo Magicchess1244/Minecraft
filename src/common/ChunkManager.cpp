@@ -1,6 +1,5 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
-#include "../../include/common/PerlinNoise.hpp"
 
 constexpr int ySize = 64;
 
@@ -74,10 +73,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   }
 
   if (it->second.isDirty) {
-    it->second.GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
-                             GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
-                             GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
-                             GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+    it->second.GenerateChunk(*this);
   }
 
   return it->second;
@@ -123,16 +119,9 @@ RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
         CurrentChunk = &get_chunk(NewRelChunkPos);
       }
 
-      int Height =
-          //CurrentChunk->BaseHeight[((int)NewPos.x % 16) * ChunkPrefab::zSize +
-          //                         (int)NewPos.z] +
-          ChunkPrefab::BaseHeight +
-          (int)(PerlinNoise({NewPos.x, 0, NewPos.z}, 4,
-                            CurrentChunk->Frecuence) *
-                CurrentChunk->HeightVar);
-
+      int Height = CurrentChunk->GetHeight({NewPos.x, NewPos.z});
       if (CurrentChunk->isSolidBlock((int)NewPos.x, (int)NewPos.y,
-                                     (int)NewPos.z, Height))
+                                     (int)NewPos.z, Height, *this))
         return {true, NewPos, LastPos};
 
       LastPos = NewPos;
@@ -149,14 +138,9 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
   // Use floor to get integer block coordinates for height calculation, matching
   // GenerateChunk grid
   Vector3 floorPos = worldPos.Truncate();
-  int height =
-      //chunk.BaseHeight[((int)worldPos.x % 16) * ChunkPrefab::zSize +
-      //                 ((int)worldPos.z % 16)] +
-      ChunkPrefab::BaseHeight +
-      (int)(PerlinNoise({floorPos.x, 0, floorPos.z}, 4, chunk.Frecuence) *
-            chunk.HeightVar);
+  int height = chunk.GetHeight({(float) floorPos.x, (float) floorPos.z});
   return chunk.isSolidBlock((int)floorPos.x, (int)floorPos.y, (int)floorPos.z,
-                            height);
+                            height, *this);
 }
 
 void ChunkManager::Place(Vector3 Pos, int BlockID) {
@@ -178,42 +162,26 @@ void ChunkManager::Place(Vector3 Pos, int BlockID) {
   int Index = localX + localY * ChunkPrefab::xSize +
               localZ * ChunkPrefab::xSize * ChunkPrefab::ySize;
   if (Pos.y != 0)
-    CurrentChunk.Modifications[Index] = BlockID;
+    Modifications[Index] = BlockID;
 
   CurrentChunk.isDirty = true;
-  CurrentChunk.GenerateChunk(
-      GetChunkOrNull(Chunks, {chunkKey.x - 1, 0, chunkKey.z}),
-      GetChunkOrNull(Chunks, {chunkKey.x + 1, 0, chunkKey.z}),
-      GetChunkOrNull(Chunks, {chunkKey.x, 0, chunkKey.z - 1}),
-      GetChunkOrNull(Chunks, {chunkKey.x, 0, chunkKey.z + 1}));
+  CurrentChunk.GenerateChunk(*this);
 
   // Update neighbors
   if (localX == 0) {
     Vector3 key = {chunkKey.x - 1, 0, chunkKey.z};
-    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+    get_chunk(key).GenerateChunk(*this);
   } else if (localX == ChunkPrefab::xSize - 1) {
     Vector3 key = {chunkKey.x + 1, 0, chunkKey.z};
-    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+    get_chunk(key).GenerateChunk(*this);
   }
 
   if (localZ == 0) {
     Vector3 key = {chunkKey.x, 0, chunkKey.z - 1};
-    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+    get_chunk(key).GenerateChunk(*this);
   } else if (localZ == ChunkPrefab::zSize - 1) {
     Vector3 key = {chunkKey.x, 0, chunkKey.z + 1};
-    get_chunk(key).GenerateChunk(GetChunkOrNull(Chunks, {key.x - 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x + 1, 0, key.z}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z - 1}),
-                                 GetChunkOrNull(Chunks, {key.x, 0, key.z + 1}));
+    get_chunk(key).GenerateChunk(*this);
   }
 }
 

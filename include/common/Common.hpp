@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_stdinc.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include <algorithm>
@@ -9,13 +10,15 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
-#include <string>
-#include <thread>
-#include <tuple>
 #include <unordered_map>
 #include <vector>
 constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;
+struct Vector2 {
+  float x,y;
+
+  float Dot(Vector2 other){ return this->x * other.x + this->y * other.y;}
+};
 struct Vector3 {
   float x, y, z;
 
@@ -104,7 +107,9 @@ struct Vector3 {
             z * float(PI / 180.0)};
   }
 
-  Vector3 Round() const { return {std::round(x), std::round(y), std::round(z)}; }
+  Vector3 Round() const {
+    return {std::round(x), std::round(y), std::round(z)};
+  }
   Vector3 Truncate() const { return {floorf(x), floorf(y), floorf(z)}; }
 
   Vector3 Forward() const {
@@ -142,6 +147,9 @@ struct Vector3 {
 
   Vector3 Min(const Vector3 &a) const {
     return {std::min(x, a.x), std::min(y, a.y), std::min(z, a.z)};
+  }
+  Uint16 ToIndex(int dim1, int dim2) {
+    return (Uint16)((int)x + (int)y * dim1 + (int)z * dim1 * dim2);
   }
 };
 struct Matrix {

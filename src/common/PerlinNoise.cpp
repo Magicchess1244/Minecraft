@@ -18,10 +18,22 @@ uint32_t hash(int32_t x, int32_t y, int32_t z, int32_t seed) {
     return h;
 }
 
-// Generate a random gradient vector from hash
+// 2D hash function
+uint32_t hash2D(int32_t x, int32_t y, int32_t seed) {
+    uint32_t h = seed;
+    h ^= x * 1619;
+    h ^= y * 31337;
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
+    return h;
+}
+
+// Generate a random gradient vector from hash (3D)
 Vector3 GetGradient(int32_t x, int32_t y, int32_t z, int32_t seed) {
     uint32_t h = hash(x, y, z, seed);
-    
     // Use hash to select from a set of 12 gradient directions
     // These are the edge directions of a cube (normalized)
     static const Vector3 gradients[12] = {
@@ -29,12 +41,54 @@ Vector3 GetGradient(int32_t x, int32_t y, int32_t z, int32_t seed) {
         {1, 0, 1},  {-1, 0, 1},  {1, 0, -1},  {-1, 0, -1},
         {0, 1, 1},  {0, -1, 1},  {0, 1, -1},  {0, -1, -1}
     };
-    
     return gradients[h % 12];
+}
+
+// Generate a random 2D gradient vector from hash
+Vector2 GetGradient2D(int32_t x, int32_t y, int32_t seed) {
+    uint32_t h = hash2D(x, y, seed);
+    // Use hash to select from a set of 8 gradient directions
+    // These are the corners and edge midpoints of a square
+    static const Vector2 gradients[8] = {
+        {1, 0},  {-1, 0},  {0, 1},  {0, -1},
+        {0.707107f, 0.707107f},  {-0.707107f, 0.707107f},
+        {0.707107f, -0.707107f}, {-0.707107f, -0.707107f}
+    };
+    return gradients[h % 8];
 }
 
 float Fade(float t) { 
     return t * t * t * (t * (t * 6 - 15) + 10); 
+}
+
+float BasicPerlinNoise2D(float xPos, float yPos) {
+    int x0 = static_cast<int>(std::floor(xPos));
+    int y0 = static_cast<int>(std::floor(yPos));
+    
+    float localX = xPos - x0;
+    float localY = yPos - y0;
+    
+    // Get gradients at 4 corners
+    Vector2 g00 = GetGradient2D(x0,     y0,     seed);
+    Vector2 g10 = GetGradient2D(x0 + 1, y0,     seed);
+    Vector2 g01 = GetGradient2D(x0,     y0 + 1, seed);
+    Vector2 g11 = GetGradient2D(x0 + 1, y0 + 1, seed);
+    
+    // Compute dot products with relative position vectors
+    float d00 = g00.Dot({localX,     localY});
+    float d10 = g10.Dot({localX - 1, localY});
+    float d01 = g01.Dot({localX,     localY - 1});
+    float d11 = g11.Dot({localX - 1, localY - 1});
+    
+    // Fade curves
+    float u = Fade(localX);
+    float v = Fade(localY);
+    
+    // Bilinear interpolation
+    float x0_interp = Lerp(d00, d10, u);
+    float x1_interp = Lerp(d01, d11, u);
+    
+    return Lerp(x0_interp, x1_interp, v);
 }
 
 float BasicPerlinNoise(float xPos, float yPos, float zPos) {
@@ -83,6 +137,28 @@ float BasicPerlinNoise(float xPos, float yPos, float zPos) {
     return Lerp(Lerp0, Lerp1, w);
 }
 
+float PerlinNoise2D(Vector2 Pos, int Octaves, float ConstFrequency) {
+    float Frequency = ConstFrequency;
+    float Amplitude = 1.0f;  // Start with amplitude 1.0
+    float FinalNoise = 0.0f;
+    float MaxValue = 0.0f;  // For normalization
+    
+    for (int i = 0; i < Octaves; ++i) {
+        FinalNoise += BasicPerlinNoise2D(
+            Pos.x * Frequency, 
+            Pos.y * Frequency
+        ) * Amplitude;
+        
+        MaxValue += Amplitude;
+        Frequency *= 2.0f;
+        Amplitude *= 0.5f;
+    }
+    
+    // Normalize to [-1, 1] range
+    FinalNoise /= MaxValue;
+    return SDL_clamp(FinalNoise, -1.0f, 1.0f);
+}
+
 float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency) {
     float Frequency = ConstFrequency;
     float Amplitude = 1.0f;  // Start with amplitude 1.0
@@ -103,7 +179,6 @@ float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency) {
     
     // Normalize to [-1, 1] range
     FinalNoise /= MaxValue;
-    
     return SDL_clamp(FinalNoise, -1.0f, 1.0f);
 }
 

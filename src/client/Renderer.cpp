@@ -5,7 +5,6 @@
 #include <ostream>
 #include <vector>
 
-
 constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
 constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = 90.0f;
@@ -198,45 +197,54 @@ Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
   return result;
 }
 std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
-    Vector3 PlayerChunk = (player.Position / 16).Truncate();
-    PlayerChunk.y = 0;
-    
-    SpiralIterator spiral(RenderDistance * 2 + 1);
-    std::vector<ChunkDistance> sortedChunkList;
-    
-    while (spiral.hasNext()) {
-        std::pair<int, int> Pos = spiral.next();
-        
-        // Calculate chunk position in world space FIRST
-        Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
-        ChunkPos += PlayerChunk;
-        
-        // Now calculate world-space bounding box for this chunk
-        Vector3 Min = {ChunkPos.x * ChunkPrefab::xSize, 0,
-                       ChunkPos.z * ChunkPrefab::zSize};
-        Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
-                       (ChunkPos.z + 1) * ChunkPrefab::zSize};
-        
-        // Test against world-space frustum
-        if (!frustum.isChunkInFrustum(Min, Max))
-            continue;
-        
-        ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
-        
-        // Use center of chunk for distance
-        Vector3 chunkCenter = ChunkPos * 16.0f + Vector3(8, 0, 8);
-        float d2 = (chunkCenter - player.Position).LengthSquared();
-        
-        sortedChunkList.push_back({&chunk, d2});
-    }
-    
-    // 2. Sort chunks BACK TO FRONT (furthest first)
-    std::sort(sortedChunkList.begin(), sortedChunkList.end(),
-              [](const ChunkDistance &a, const ChunkDistance &b) {
-                  return a.distSq > b.distSq;
-              });
-    
-    return sortedChunkList;
+  Vector3 PlayerChunk = (player.Position / 16).Truncate();
+  PlayerChunk.y = 0;
+
+  SpiralIterator spiral(RenderDistance * 2 + 1);
+  std::vector<ChunkDistance> sortedChunkList;
+
+  while (spiral.hasNext()) {
+    std::pair<int, int> Pos = spiral.next();
+
+    // Calculate chunk position in world space FIRST
+    Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
+    ChunkPos += PlayerChunk;
+
+    // Now calculate world-space bounding box for this chunk
+    Vector3 Min = {ChunkPos.x * ChunkPrefab::xSize, 0,
+                   ChunkPos.z * ChunkPrefab::zSize};
+    Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
+                   (ChunkPos.z + 1) * ChunkPrefab::zSize};
+
+    // Test against world-space frustum
+    if (!frustum.isChunkInFrustum(Min, Max))
+      continue;
+
+    ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
+
+    // Use center of chunk for distance
+    Vector3 chunkCenter = ChunkPos * 16.0f + Vector3(8, 0, 8);
+    float d2 = (chunkCenter - player.Position).LengthSquared();
+
+    sortedChunkList.push_back({&chunk, d2});
+  }
+
+  // 2. Sort chunks BACK TO FRONT (furthest first)
+  std::sort(sortedChunkList.begin(), sortedChunkList.end(),
+            [](const ChunkDistance &a, const ChunkDistance &b) {
+              return a.distSq > b.distSq;
+            });
+
+  return sortedChunkList;
+}
+Vector3 getCoordinates(int pos) {
+  // xSize=16 (2^4), ySize=64 (2^6), zSize=16 (2^4)
+  // Index = x + y * xSize + z * xSize * ySize
+  // Index = x + y * 16 + z * 1024
+  int x = pos & 0xF;         // pos % 16
+  int y = (pos >> 4) & 0x3F; // (pos / 16) % 64
+  int z = (pos >> 10);       // pos / 1024
+  return {(float)x, (float)y, (float)z};
 }
 void Renderer::DrawTerrain(Player &player) {
   // 1. Collect all chunks and their distances
@@ -268,65 +276,96 @@ void Renderer::DrawTerrain(Player &player) {
 
     // First pass: Opaque
     for (auto *chunk : chunks) {
-      for (auto &face : chunk->allFaces) {
-        if (face.Transparent)
-          continue;
-        Vector3 WorldVerts[4];
-        for (int i = 0; i < 4; i++) WorldVerts[i] = Verts[face.side][i] + face.blockPos;
+      Vector3 chunkPosKey = {(float)chunk->xPos / 16, 0,
+                             (float)chunk->zPos / 16};
 
-        if (!isFaceInFrustum(frustum, WorldVerts)) continue;
-        for (int i = 0; i < 4; i++) {
-          int cx = (i == 0 || i == 2) ? 1 : 0;
-          int cy = (i == 0 || i == 1) ? 1 : 0;
-          Vertexdata[mesh->BaseVertex + i] = {
-              WorldVerts[i],
-              BlockDef[face.blockID].color.ToFloat() -
-                  Colors[(int)(face.side / 2)].ToFloat(),
-              getUV(face.blockID, cx, cy)};
+      if (chunk->needsMeshUpdate ||
+          opaqueMeshCache.find(chunkPosKey) == opaqueMeshCache.end()) {
+        auto &cache = opaqueMeshCache[chunkPosKey];
+        cache.vertices.clear();
+        cache.indices.clear();
+
+        for (auto &face : chunk->allFaces) {
+          if (face.Transparent)
+            continue;
+
+          Uint32 baseV = cache.vertices.size();
+          Vector3 blockPos = getCoordinates(face.blockPos);
+          Vector3 worldPos =
+              blockPos + Vector3{(float)chunk->xPos, 0, (float)chunk->zPos};
+
+          for (int i = 0; i < 4; i++) {
+            int cx = (i == 0 || i == 2) ? 1 : 0;
+            int cy = (i == 0 || i == 1) ? 1 : 0;
+            cache.vertices.push_back(
+                {Verts[face.side][i] + worldPos,
+                 BlockDef[face.blockID].color.ToFloat() -
+                     Colors[(int)(face.side / 2)].ToFloat(),
+                 getUV(face.blockID, cx, cy)});
+          }
+          cache.indices.push_back(baseV + 0);
+          cache.indices.push_back(baseV + 2);
+          cache.indices.push_back(baseV + 1);
+          cache.indices.push_back(baseV + 1);
+          cache.indices.push_back(baseV + 2);
+          cache.indices.push_back(baseV + 3);
         }
-        Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
-        Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
-        Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
-        Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
-        Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
-        Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
-        mesh->BaseVertex += 4;
-        mesh->BaseIndex += 6;
+        chunk->needsMeshUpdate = false;
       }
+
+      auto &cache = opaqueMeshCache[chunkPosKey];
+      if (cache.vertices.empty())
+        continue;
+
+      // Copy from cache to mapped GPU memory
+      memcpy(&Vertexdata[mesh->BaseVertex], cache.vertices.data(),
+             cache.vertices.size() * sizeof(Vertex));
+      for (size_t i = 0; i < cache.indices.size(); i++) {
+        Indexdata[mesh->BaseIndex + i] = cache.indices[i] + mesh->BaseVertex;
+      }
+
+      mesh->BaseVertex += cache.vertices.size();
+      mesh->BaseIndex += cache.indices.size();
     }
     mesh->OpaqueIndexCount = mesh->BaseIndex;
 
     // Second pass: Transparent
-    std::vector<const DrawnFace *> transparentFaces;
+    std::vector<TransparentDrawnFace> transparentFaces;
     for (auto *chunk : chunks) {
       for (auto &face : chunk->allFaces) {
-        if (face.Transparent)
-          transparentFaces.push_back(&face);
+        if (face.Transparent) {
+          const TransparentDrawnFace TransparentFace{
+              getCoordinates(face.blockPos) +
+                  Vector3{(float)chunk->xPos, 0, (float)chunk->zPos},
+              face.side,
+              face.blockID,
+          };
+          transparentFaces.push_back(TransparentFace);
+        }
       }
     }
 
     // Sort transparent faces BACK TO FRONT (furthest first)
     std::sort(transparentFaces.begin(), transparentFaces.end(),
-              [&](const DrawnFace *a, const DrawnFace *b) {
-                float distA = (a->blockPos - player.Position).LengthSquared();
-                float distB = (b->blockPos - player.Position).LengthSquared();
-                return distA > distB;
-              });
+          [&](const TransparentDrawnFace &a, const TransparentDrawnFace &b) {
+              float distA = (a.blockPos - player.Position).LengthSquared();
+              float distB = (b.blockPos - player.Position).LengthSquared();
+              return distA > distB;
+          }); 
 
-    for (auto *face : transparentFaces) {
+    for (auto &face : transparentFaces) {
       Vector3 WorldVerts[4];
-      for (int i = 0; i < 4; i++) WorldVerts[i] = Verts[face->side][i] + face->blockPos;
-
-      if (!isFaceInFrustum(frustum, WorldVerts)) continue;
+      for (int i = 0; i < 4; i++)
+        WorldVerts[i] = Verts[face.side][i] + face.blockPos;
 
       for (int i = 0; i < 4; i++) {
         int cx = (i == 0 || i == 2) ? 1 : 0;
         int cy = (i == 0 || i == 1) ? 1 : 0;
         Vertexdata[mesh->BaseVertex + i] = {
             WorldVerts[i],
-            BlockDef[face->blockID].color.ToFloat() -
-                Colors[(int)(face->side / 2)].ToFloat(),
-            getUV(face->blockID, cx, cy)};
+            BlockDef[face.blockID].color.ToFloat() -
+                Colors[(int)(face.side / 2)].ToFloat(),
+            getUV(face.blockID, cx, cy)};
       }
       Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
       Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
@@ -758,7 +797,7 @@ void Renderer::Init() {
 }
 void Renderer::GenerateBuffer() {
   // Calculate buffer packing
-  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
+  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1) / 2;
   this->totalBuffers =
       (totalChunks + chunksPerBuffer - 1) / chunksPerBuffer; // Ceiling division
 
@@ -938,7 +977,6 @@ void Renderer::LoadTexture() {
     SDL_Log("Failed to create sampler: %s", SDL_GetError());
   }
 }
-
 void Renderer::ColorTargetDes() {
   this->pipelineInitVars.colorTargetDescriptions[0] = {};
   this->pipelineInitVars.colorTargetDescriptions[0].blend_state.enable_blend =

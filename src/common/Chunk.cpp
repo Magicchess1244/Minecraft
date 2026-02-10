@@ -1,28 +1,35 @@
 #include "../../include/common/Chunck.hpp"
-#include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/PerlinNoise.hpp"
+#include <SDL3/SDL_stdinc.h>
 
 constexpr float CaveThreshold = -0.18f;
 constexpr int CaveMinY = 2;
 constexpr int CaveMaxY = 38;
 
-constexpr HeightsDif ContinentelnessHeight[5] = {{0.15f, ChunkPrefab::ySize * 0.8f},
-                                                 {-0.15f, ChunkPrefab::ySize * 0.45f},
-                                                 {-0.35f, ChunkPrefab::ySize * 0.45f},
-                                                 {-0.65f, 30},
-                                                 {-0.9f, 15}};
+constexpr HeightsDif ContinentelnessHeight[5] = {
+    {0.15f, ChunkPrefab::ySize * 0.8f},
+    {-0.15f, ChunkPrefab::ySize * 0.45f},
+    {-0.35f, ChunkPrefab::ySize * 0.45f},
+    {-0.65f, 30},
+    {-0.9f, 15}};
 
 int GetBaseHeight(float ValueNoise) {
   for (int i = 0; i < 5; i++) {
-    if(ValueNoise >= ContinentelnessHeight[i].x){
-      return Lerp(ContinentelnessHeight[i].y, ContinentelnessHeight[i + 1].y, (ValueNoise - ContinentelnessHeight[i + 1].x)/(ContinentelnessHeight[i].x - ContinentelnessHeight[i + 1].x)) + 5;
+    if (ValueNoise >= ContinentelnessHeight[i].x) {
+      return Lerp(ContinentelnessHeight[i].y, ContinentelnessHeight[i + 1].y,
+                  (ValueNoise - ContinentelnessHeight[i + 1].x) /
+                      (ContinentelnessHeight[i].x -
+                       ContinentelnessHeight[i + 1].x)) +
+             5;
     }
   }
   return ContinentelnessHeight[4].y;
 }
-
+int ChunkPrefab::GetHeight(Vector2 Pos) {
+  return BaseHeight + (int)(PerlinNoise2D(Pos, 4, Frecuence) * HeightVar);
+}
 bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
-                               int terrainHeight) {
+                               int terrainHeight, ChunkManager &manager) {
   int localX = worldX - xPos;
   int localY = worldY;
   int localZ = worldZ - zPos;
@@ -31,9 +38,10 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
   if (localX >= 0 && localX < xSize && localY >= 0 && localY < ySize &&
       localZ >= 0 && localZ < zSize) {
     int Index = localX + localY * xSize + localZ * xSize * ySize;
-    auto it = Modifications.find(Index);
-    if (it != Modifications.end()) {
-      return it->second != 0; // 0 is Air (not solid), others are solid
+    Uint8 Modifications =
+        manager.GetMod({(float)worldX, (float)worldY, (float)worldZ});
+    if (Modifications != 255) {
+      return Modifications != 0; // 0 is Air (not solid), others are solid
     }
   }
 
@@ -61,46 +69,33 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
   return true;
 }
 
-void ChunkPrefab::GenerateChunk(ChunkPrefab *negX, ChunkPrefab *posX,
-                                ChunkPrefab *negZ, ChunkPrefab *posZ) {
-  std::vector<int> heights(xSize * zSize);
-  for (Uint8 x = 0; x < xSize; x++) {
-    for (Uint8 z = 0; z < zSize; z++) {
-     // BaseHeight[x * zSize + z] = GetBaseHeight(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 3, 0.08f));
-      heights[x * zSize + z] =
-          BaseHeight +
-          (int)(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 4,
-                            Frecuence) *
-                HeightVar);
-    }
-  }
-
+void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   this->allFaces.clear();
   this->allFaces.reserve(xSize * zSize * 10);
 
   static const int offsets[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-  static const int faceIndices[4] = {3, 2, 1, 0}; // Left, Right, Back, Front
-  ChunkPrefab *neighbors[4] = {negX, posX, negZ, posZ};
+  static const Uint8 faceIndices[4] = {3, 2, 1, 0}; // Left, Right, Back, Front
   Vector3 ChunkWorldPos = {(float)this->xPos, 0, (float)this->zPos};
 
   for (Uint8 x = 0; x < xSize; x++) {
     for (Uint8 z = 0; z < zSize; z++) {
-      int height = heights[x * zSize + z];
+      int height = GetHeight({(float)(xPos + x), (float)(zPos + z)});
 
       for (int y = 0; y < ySize; y++) {
         int worldX = xPos + x;
         int worldY = y;
         int worldZ = zPos + z;
 
-        if (!isSolidBlock(worldX, worldY, worldZ, height))
+        if (!isSolidBlock(worldX, worldY, worldZ, height, manager))
           continue;
 
         // Determine Block ID
         int Index = x + y * xSize + z * xSize * ySize;
-        int BlockID = 1;
-        auto it = Modifications.find(Index);
-        if (it != Modifications.end()) {
-          BlockID = it->second;
+        Uint8 BlockID = 1;
+        Uint8 Modifications =
+            manager.GetMod({(float)worldX, (float)worldY, (float)worldZ});
+        if (Modifications != 255) {
+          BlockID = Modifications;
         } else {
           BlockID = 1; // Grass
           if (height - y > 0)
@@ -108,27 +103,30 @@ void ChunkPrefab::GenerateChunk(ChunkPrefab *negX, ChunkPrefab *posX,
           if (height - y > 3)
             BlockID = 3; // Stone
           if (y == 0)
-            BlockID = 4;
+            BlockID = 4; // Bedrock
         }
 
         // Top Face
         if (y + 1 < ySize) {
-          if (!isSolidBlock(worldX, y + 1, worldZ, height))
+          if (!isSolidBlock(worldX, y + 1, worldZ, height, manager))
             this->allFaces.push_back(
-                {Vector3((float)worldX, (float)worldY, (float)worldZ), 4,
-                 BlockID, BlockDef[BlockID].Water});
+                {Vector3((float)x, (float)worldY, (float)z)
+                     .ToIndex(ChunkPrefab::xSize, ChunkPrefab::ySize),
+                 4, BlockID, BlockDef[BlockID].Water});
         } else {
           this->allFaces.push_back(
-              {Vector3((float)worldX, (float)worldY, (float)worldZ), 4, BlockID,
-               BlockDef[BlockID].Water});
+              {Vector3((float)x, (float)worldY, (float)z)
+                   .ToIndex(ChunkPrefab::xSize, ChunkPrefab::ySize),
+               4, BlockID, BlockDef[BlockID].Water});
         }
 
         // Bottom Face
         if (y > 0) {
-          if (!isSolidBlock(worldX, y - 1, worldZ, height))
+          if (!isSolidBlock(worldX, y - 1, worldZ, height, manager))
             this->allFaces.push_back(
-                {Vector3((float)worldX, (float)worldY, (float)worldZ), 5,
-                 BlockID, BlockDef[BlockID].Water});
+                {Vector3((float)x, (float)worldY, (float)z)
+                     .ToIndex(ChunkPrefab::xSize, ChunkPrefab::ySize),
+                 5, BlockID, BlockDef[BlockID].Water});
         }
 
         // Side Faces
@@ -137,37 +135,14 @@ void ChunkPrefab::GenerateChunk(ChunkPrefab *negX, ChunkPrefab *posX,
           int nz = worldZ + offsets[dir][1];
 
           // For simplicity in culling, we calculate neighbor terrain height
-          int nHeight =
-              //GetBaseHeight(PerlinNoise({(float)(xPos + x), 0, (float)(zPos + z)}, 3, 0.08f)) +
-              BaseHeight +
-              (int)(PerlinNoise({(float)nx, 0, (float)nz}, 4, Frecuence) *
-                    HeightVar);
+          int nHeight = GetHeight({(float)nx, (float)nz});
 
-          bool isSolid = false;
-          if (neighbors[dir]) {
-            // Check neighbor chunk
-            // Only use neighbor chunk if the coordinate is ACTUALLY outside
-            // this chunk's bounds in that direction.
-            // Wait, offsets[dir] moves us 1 unit.
-            // If x=0, dir=0 (left, -1), nx=-1 (relative to worldX).
-            // worldX = xPos + x.
-            // If x=0, worldX=xPos. nx = xPos - 1.
-            // This is definitely outside current chunk.
-            // But if x=1, worldX=xPos+1. nx=xPos. efficient logic:
-            // Is nx inside [xPos, xPos+16)?
-            if (nx >= xPos && nx < xPos + xSize && nz >= zPos &&
-                nz < zPos + zSize) {
-              isSolid = isSolidBlock(nx, y, nz, nHeight);
-            } else {
-              isSolid = neighbors[dir]->isSolidBlock(nx, y, nz, nHeight);
-            }
-          } else {
-            isSolid = isSolidBlock(nx, y, nz, nHeight);
-          }
+          bool isSolid = isSolid = isSolidBlock(nx, y, nz, nHeight, manager);
 
           if (!isSolid) {
             this->allFaces.push_back(
-                {Vector3((float)worldX, (float)worldY, (float)worldZ),
+                {Vector3((float)x, (float)worldY, (float)z)
+                     .ToIndex(ChunkPrefab::xSize, ChunkPrefab::ySize),
                  faceIndices[dir], BlockID, BlockDef[BlockID].Water});
           }
         }
@@ -175,4 +150,6 @@ void ChunkPrefab::GenerateChunk(ChunkPrefab *negX, ChunkPrefab *posX,
     }
   }
   isDirty = false;
+  needsMeshUpdate = true;
+  allFaces.shrink_to_fit();
 }
