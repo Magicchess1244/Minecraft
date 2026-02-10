@@ -113,7 +113,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   } else {
     PlayerDirection.y = 0;
     if (move_up && JumpTimer > 0.2f) {
-      PlayerDirection.y += 2.0f;
+      PlayerDirection.y = 2.0f;
       JumpTimer = 0;
     }
   }
@@ -290,12 +290,14 @@ void GameLoop(GameClient &game) {
   auto lastTime = std::chrono::high_resolution_clock::now();
 
   while (game.GetRunning()) {
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
-    lastTime = currentTime;
+
 
     PlayerAction(p[0], inventorySlot, chunkManager, inventory);
     RendererObject.MainRenderLoop(inventory, inventorySlot, p);
+    
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+    lastTime = currentTime;
   }
 
   std::cout << "Exiting game..." << std::endl;

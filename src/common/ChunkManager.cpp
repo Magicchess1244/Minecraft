@@ -1,17 +1,8 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
 
-constexpr int ySize = 64;
+constexpr float ySize = 64.0f;
 
-// Helper to get chunk without creating it
-ChunkPrefab *GetChunkOrNull(std::unordered_map<Vector3, ChunkPrefab> &chunks,
-                            Vector3 key) {
-  auto it = chunks.find(key);
-  if (it != chunks.end()) {
-    return &it->second;
-  }
-  return nullptr;
-}
 constexpr Biome Biomes[11] = {
     {20, 20, 0, 0, 20, 6},     // Ice
     {40, 20, 20, 0, 20, 6},    // Tundra
@@ -41,8 +32,6 @@ constexpr HeightsDif PeaksAndValiesHeight[6] = {
     {-0.4f, ySize * 0.3f},
     {-0.9f, ySize * 0.1f},
 };
-
-int BlockSize = 50;
 
 ChunkManager::ChunkManager() {
   // cache = new ChunkCache(); // Initialize cache system
@@ -159,12 +148,9 @@ void ChunkManager::Place(Vector3 Pos, int BlockID) {
     return;
   }
 
-  int Index = localX + localY * ChunkPrefab::xSize +
-              localZ * ChunkPrefab::xSize * ChunkPrefab::ySize;
   if (Pos.y != 0)
-    Modifications[Index] = BlockID;
+    Modifications[Pos] = BlockID;
 
-  CurrentChunk.isDirty = true;
   CurrentChunk.GenerateChunk(*this);
 
   // Update neighbors

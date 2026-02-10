@@ -11,7 +11,7 @@ const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
 // When the render distance gets to 12 it crashes, posible fix is tessalation
-constexpr int RenderDistance = 6;
+constexpr int RenderDistance = 12;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
