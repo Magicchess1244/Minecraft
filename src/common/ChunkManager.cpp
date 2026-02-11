@@ -127,7 +127,7 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
   // Use floor to get integer block coordinates for height calculation, matching
   // GenerateChunk grid
   Vector3 floorPos = worldPos.Truncate();
-  int height = chunk.GetHeight({(float) floorPos.x, (float) floorPos.z});
+  int height = chunk.GetHeight({(float)floorPos.x, (float)floorPos.z});
   return chunk.isSolidBlock((int)floorPos.x, (int)floorPos.y, (int)floorPos.z,
                             height, *this);
 }

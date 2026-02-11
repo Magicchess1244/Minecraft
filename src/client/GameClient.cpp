@@ -8,9 +8,9 @@ constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 5.0f;
 float deltaTime = 1.0f;
 float JumpTimer = 0;
+float bodyHeight = 1.8f;
 Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
-
 
 void GameClient::set_seed() {
   /*int res;
@@ -107,7 +107,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   if (move_left || move_right) {
     PlayerDirection.x = move_left ? -1 : 1;
   }
-  if(!OnGround) {
+  if (!OnGround) {
     PlayerDirection.y -= 0.1f;
     PlayerDirection.y = SDL_clamp(PlayerDirection.y, -4, 10);
   } else {
@@ -145,14 +145,14 @@ void PlayerMove(Player &player, Vector3 playerDirection,
   // Collision points relative to camera (player.Position)
   // Assuming camera is at eye level, roughly 1.6 units above feet
   auto isColliding = [&](Vector3 pos) {
-    if (!PLayerColistion) return false;
+    if (!PLayerColistion)
+      return false;
     float r = 0.3f; // player radius
     float eyeHeight = 1.6f;
-    float bodyHeight = 1.8f;
 
     // Points to check: corners of the box at foot level, waist level, and head
     // level
-    float yChecks[] = {-1.6f, -0.8f, 0.1f};
+    float yChecks[] = {-1.4f, -0.8f, 0.1f};
     float xzChecks[] = {-r, r};
 
     for (float yOff : yChecks) {
@@ -181,8 +181,8 @@ void PlayerMove(Player &player, Vector3 playerDirection,
     // 2. Horizontal Movement
     Vector3 Rot = player.Rotation;
     Rot.x = 0;
-    Vector3 Dir =
-        Rot.Forward() * playerDirection.z + Rot.Right() * playerDirection.x;
+    Vector3 Dir = Rot.Forward() * playerDirection.z +
+                  Rot.Right() * playerDirection.x * 0.75f;
 
     if (Dir.LengthSquared() > 0.0001f) {
       Dir = Dir.Normalized() * playerSpeed * deltaTime;
@@ -249,7 +249,7 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   JumpTimer += deltaTime;
   Vector3 RotationDir = {0, 0, 0};
   bool LeftClick = false, RightClick = false;
-  bool OnGround = manager.RayCast(player.Position, {0,-1, 0}, 2).hit;
+  bool OnGround = manager.RayCast(player.Position, {0, -1, 0}, bodyHeight + 0.15f).hit;
   PlayerInput(playerDirection, OnGround, inventorySlot, RotationDir, LeftClick,
               RightClick);
   PlayerRotation(player, RotationDir);
@@ -291,10 +291,9 @@ void GameLoop(GameClient &game) {
 
   while (game.GetRunning()) {
 
-
     PlayerAction(p[0], inventorySlot, chunkManager, inventory);
     RendererObject.MainRenderLoop(inventory, inventorySlot, p);
-    
+
     auto currentTime = std::chrono::high_resolution_clock::now();
     deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
     lastTime = currentTime;

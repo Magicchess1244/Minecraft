@@ -42,7 +42,7 @@ struct RaycastResult {
   Vector3 pos;
   Vector3 prevPos;
 };
-  int BaseHeight(float ValueNoise, int Length, const HeightsDif *Heights);
+int BaseHeight(float ValueNoise, int Length, const HeightsDif *Heights);
 
 class ChunkManager {
 private:
@@ -64,9 +64,11 @@ public:
     }
     return BlockDef[BlockId];
   }
-  Uint8 GetMod(Vector3 Pos){
-    if (Modifications.find(Pos) != Modifications.end()) return Modifications.find(Pos)->second;
-    return 255; // I am sending 255 to indicate its not found might have to change if I add more blocks
+  Uint8 GetMod(Vector3 Pos) {
+    if (Modifications.find(Pos) != Modifications.end())
+      return Modifications.find(Pos)->second;
+    return 255; // I am sending 255 to indicate its not found might have to
+                // change if I add more blocks
   }
   RaycastResult RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
   bool IsSolid(Vector3 worldPos);
