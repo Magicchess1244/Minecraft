@@ -353,25 +353,23 @@ void Renderer::DrawTerrain(Player &player) {
 
           float bid = (float)face.blockID;
 
-          // Vertex 0
-          cache.vertices.push_back(
-              {v0 + worldPos, faceColor, SDL_FPoint{fw, fh}, bid});
-          // Vertex 1
-          cache.vertices.push_back(
-              {v1 + worldPos, faceColor, SDL_FPoint{0.0f, fh}, bid});
-          // Vertex 2
-          cache.vertices.push_back(
-              {v2 + worldPos, faceColor, SDL_FPoint{fw, 0.0f}, bid});
-          // Vertex 3
-          cache.vertices.push_back(
-              {v3 + worldPos, faceColor, SDL_FPoint{0.0f, 0.0f},
-               bid}); // OPTIMIZATION 6: Add all 6 indices at once
+          Vector3 v[4] = {v0, v1, v2, v3};
+          for (int j = 0; j < 4; j++) {
+            SDL_FPoint uv;
+            if (face.side < 2) { // Front/Back: X, Y
+              uv = {Verts[face.side][j].x * fw, Verts[face.side][j].y * fh};
+            } else if (face.side < 4) { // Right/Left: Z, Y
+              uv = {Verts[face.side][j].z * fw, Verts[face.side][j].y * fh};
+            } else { // Top/Bottom: X, Z
+              uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
+            }
+            cache.vertices.push_back({v[j] + worldPos, faceColor, uv, bid});
+          }
           cache.indices.insert(cache.indices.end(),
                                {baseV + 0, baseV + 2, baseV + 1, baseV + 1,
                                 baseV + 2, baseV + 3});
         }
         chunk->needsMeshUpdate = false;
-        
       }
 
       auto &cache = opaqueMeshCache[chunkPosKey];
@@ -443,7 +441,7 @@ void Renderer::DrawTerrain(Player &player) {
       float fw = (float)face.w;
       float fh = (float)face.h;
 
-      if (face.side < 2) {
+      if (face.side < 2) { // Front/Back (+-Z): X, Y
         v0.x *= fw;
         v0.y *= fh;
         v1.x *= fw;
@@ -452,7 +450,7 @@ void Renderer::DrawTerrain(Player &player) {
         v2.y *= fh;
         v3.x *= fw;
         v3.y *= fh;
-      } else if (face.side < 4) {
+      } else if (face.side < 4) { // Right/Left (+-X): Z, Y
         v0.z *= fw;
         v0.y *= fh;
         v1.z *= fw;
@@ -461,7 +459,7 @@ void Renderer::DrawTerrain(Player &player) {
         v2.y *= fh;
         v3.z *= fw;
         v3.y *= fh;
-      } else {
+      } else { // Top/Bottom (+-Y): X, Z
         v0.x *= fw;
         v0.z *= fh;
         v1.x *= fw;
@@ -481,22 +479,19 @@ void Renderer::DrawTerrain(Player &player) {
                           Colors[(int)(face.side / 2)].ToFloat();
       float bid = (float)face.blockID;
 
-      // Assuming Vertex struct is defined elsewhere, e.g., in a header file
-      // struct Vertex {
-      //   Vector3 Position;
-      //   Vector3 Color;
-      //   SDL_FPoint UV;
-      //   float BlockID; // Kept as float for GPU simplicity, but we'll use
-      //   'flat' in shader
-      // };
-      Vertexdata[mesh->BaseVertex + 0] = {WorldVerts[0], faceColor,
-                                          SDL_FPoint{fw, fh}, bid};
-      Vertexdata[mesh->BaseVertex + 1] = {WorldVerts[1], faceColor,
-                                          SDL_FPoint{0.0f, fh}, bid};
-      Vertexdata[mesh->BaseVertex + 2] = {WorldVerts[2], faceColor,
-                                          SDL_FPoint{fw, 0.0f}, bid};
-      Vertexdata[mesh->BaseVertex + 3] = {WorldVerts[3], faceColor,
-                                          SDL_FPoint{0.0f, 0.0f}, bid};
+      Vector3 v[4] = {v0, v1, v2, v3};
+      for (int j = 0; j < 4; j++) {
+        SDL_FPoint uv;
+        if (face.side < 2) { // Front/Back: X, Y
+          uv = {Verts[face.side][j].x * fw, Verts[face.side][j].y * fh};
+        } else if (face.side < 4) { // Right/Left: Z, Y
+          uv = {Verts[face.side][j].z * fw, Verts[face.side][j].y * fh};
+        } else { // Top/Bottom: X, Z
+          uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
+        }
+        Vertexdata[mesh->BaseVertex + j] = {v[j] + face.blockPos, faceColor, uv,
+                                            bid};
+      }
 
       Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
       Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
@@ -654,14 +649,13 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   Matrix proj = Perspective(FOV, aspect, Znear, Zfar);
 
   // mvp.print();
-  SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 0,
-                              proj.getColumnMajorData().data(),
-                              sizeof(float) * proj.getColumnMajorData().size());
+  SDL_PushGPUVertexUniformData(
+      this->runTimeRenderVars.cmdRender, 0, proj.getColumnMajorData().data(),
+      sizeof(float) * proj.getColumnMajorData().size());
 
-  SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 1,
-                              view.getColumnMajorData().data(),
-                              sizeof(float) * view.getColumnMajorData().size());
-
+  SDL_PushGPUVertexUniformData(
+      this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
+      sizeof(float) * view.getColumnMajorData().size());
 
   this->runTimeRenderVars.pass =
       SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
