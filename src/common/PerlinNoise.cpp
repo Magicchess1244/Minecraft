@@ -49,21 +49,28 @@ Vector3 GetGradient(int32_t x, int32_t y, int32_t z, int32_t seed) {
     
     return grad;
 }
-
-
 // Generate a random 2D gradient vector from hash
 Vector2 GetGradient2D(int32_t x, int32_t y, int32_t seed) {
     uint32_t h = hash2D(x, y);
-    // Use hash to select from a set of 8 gradient directions
-    // These are the corners and edge midpoints of a square
-    static const Vector2 gradients[8] = {
-        {1, 0},  {-1, 0},  {0, 1},  {0, -1},
-        {0.707107f, 0.707107f},  {-0.707107f, 0.707107f},
-        {0.707107f, -0.707107f}, {-0.707107f, -0.707107f}
-    };
-    return gradients[h % 8];
+    
+    // Use bits directly - extremely fast, no array lookup needed
+    Vector2 grad;
+    grad.x = (h & 1) ? 1.0f : -1.0f;
+    grad.y = (h & 2) ? 1.0f : -1.0f;
+    
+    // Zero out one component randomly to get axis-aligned gradients
+    // This gives us 4 possibilities: (±1, ±1), (±1, 0), (0, ±1)
+    if ((h >> 2) & 1) {
+        if ((h >> 3) & 1) {
+            grad.x = 0;  // (0, ±1)
+        } else {
+            grad.y = 0;  // (±1, 0)
+        }
+    }
+    // else: keep both components (±1, ±1) for diagonal gradients
+    
+    return grad;
 }
-
 float Fade(float t) { 
     return t * t * t * (t * (t * 6 - 15) + 10); 
 }
@@ -191,4 +198,5 @@ float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency) {
 
 void SetSeed(int givenSeed) { 
     seed = givenSeed; 
+    std::cout << "Seed: " << seed << std::endl;
 }

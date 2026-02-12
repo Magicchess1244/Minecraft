@@ -1,9 +1,13 @@
 //
 #include "../../include/client/GameClient.hpp"
+#include "../../include/common/PerlinNoise.hpp"
+#include <cstdlib>
 
 int main(int argc, char* argv[])
 {
-	srand(static_cast<unsigned int>(time(0)));
+	std::srand(static_cast<unsigned int>(std::time(0)));
+    std::cout << static_cast<unsigned int>(std::time(0)) << std::endl;
+    SetSeed(rand());
 
 	GameClient client;
 

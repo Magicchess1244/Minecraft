@@ -259,7 +259,7 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
 }
 void GameLoop(GameClient &game) {
   game.add_player({
-      {0, 40, 0},
+      {0, ChunkPrefab::ySize, 0},
       {0.0f, 0.0f, 0.0f},
       {255, 0, 0},
   });
@@ -268,7 +268,7 @@ void GameLoop(GameClient &game) {
   // game.MakeClient();
   // game.set_seed();
   // game.set_color();
-  SetSeed(game.get_seed());
+  //SetSeed(game.get_seed());
 
   Vector3 playerDirection = {0, 0};
 
