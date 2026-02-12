@@ -10,12 +10,16 @@ struct DrawnFace {
   Uint16 blockPos;
   Uint8 side;
   Uint8 blockID;
+  Uint8 w;
+  Uint8 h;
   bool Transparent;
 };
 struct TransparentDrawnFace {
   Vector3 blockPos;
   int side;
   int blockID;
+  int w;
+  int h;
 };
 
 class ChunkPrefab {
@@ -39,7 +43,8 @@ public:
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
   void GenerateChunk(ChunkManager &manager);
-  bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight, ChunkManager &manager);
+  bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight,
+                    ChunkManager &manager);
   int GetHeight(Vector2 Pos);
 
 private:

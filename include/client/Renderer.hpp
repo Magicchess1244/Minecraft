@@ -227,6 +227,7 @@ struct Vertex {
   Vector3 Position;
   Vector3 Color;
   SDL_FPoint UV;
+  float BlockID;
 };
 struct Mesh {
   SDL_GPUTransferBuffer *VertextransferBuffer = nullptr;
@@ -257,7 +258,7 @@ struct PipileInitVars {
   SDL_GPUGraphicsPipeline *graphicsPipeline = nullptr;
   SDL_GPUGraphicsPipeline *transparentPipeline = nullptr;
   SDL_GPUVertexBufferDescription vertex_buffer_desc;
-  SDL_GPUVertexAttribute vertex_attributes[3];
+  SDL_GPUVertexAttribute vertex_attributes[4];
   SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
   SDL_GPUShader *vertex_shader;
   SDL_GPUShader *fragment_shader;
@@ -291,7 +292,6 @@ private:
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
 
-  SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
   Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);
   void DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
                 Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata);

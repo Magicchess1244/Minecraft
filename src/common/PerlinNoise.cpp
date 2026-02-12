@@ -2,10 +2,10 @@
 #include <cstdint>
 #include <cmath>
 
-int seed;
+int seed = 5;
 
 // Hash function for generating pseudorandom values
-uint32_t hash(int32_t x, int32_t y, int32_t z, int32_t seed) {
+uint32_t hash(int32_t x, int32_t y, int32_t z) {
     uint32_t h = seed;
     h ^= x * 1619;
     h ^= y * 31337;
@@ -19,7 +19,7 @@ uint32_t hash(int32_t x, int32_t y, int32_t z, int32_t seed) {
 }
 
 // 2D hash function
-uint32_t hash2D(int32_t x, int32_t y, int32_t seed) {
+uint32_t hash2D(int32_t x, int32_t y) {
     uint32_t h = seed;
     h ^= x * 1619;
     h ^= y * 31337;
@@ -30,23 +30,30 @@ uint32_t hash2D(int32_t x, int32_t y, int32_t seed) {
     h ^= h >> 16;
     return h;
 }
-
-// Generate a random gradient vector from hash (3D)
 Vector3 GetGradient(int32_t x, int32_t y, int32_t z, int32_t seed) {
-    uint32_t h = hash(x, y, z, seed);
-    // Use hash to select from a set of 12 gradient directions
-    // These are the edge directions of a cube (normalized)
-    static const Vector3 gradients[12] = {
-        {1, 1, 0},  {-1, 1, 0},  {1, -1, 0},  {-1, -1, 0},
-        {1, 0, 1},  {-1, 0, 1},  {1, 0, -1},  {-1, 0, -1},
-        {0, 1, 1},  {0, -1, 1},  {0, 1, -1},  {0, -1, -1}
-    };
-    return gradients[h % 12];
+    uint32_t h = hash(x, y, z);
+    
+    // Use bits directly - extremely fast, no array lookup needed
+    Vector3 grad;
+    grad.x = (h & 1) ? 1.0f : -1.0f;
+    grad.y = (h & 2) ? 1.0f : -1.0f;
+    grad.z = (h & 4) ? 1.0f : -1.0f;
+    
+    // Zero out one component to match edge-of-cube gradients
+    switch ((h >> 3) & 3) {
+        case 0: grad.x = 0; break;
+        case 1: grad.y = 0; break;
+        case 2: grad.z = 0; break;
+        default: break;  // Keep all three
+    }
+    
+    return grad;
 }
+
 
 // Generate a random 2D gradient vector from hash
 Vector2 GetGradient2D(int32_t x, int32_t y, int32_t seed) {
-    uint32_t h = hash2D(x, y, seed);
+    uint32_t h = hash2D(x, y);
     // Use hash to select from a set of 8 gradient directions
     // These are the corners and edge midpoints of a square
     static const Vector2 gradients[8] = {

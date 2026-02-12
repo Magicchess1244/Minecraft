@@ -155,10 +155,10 @@ bool isFaceInFrustum(const Frustum &frustum, const Vector3 faceVerts[4]) {
 
   return true; // at least partially inside all planes
 }
-SDL_FPoint Renderer::getUV(int tileIndex, int cornerX, int cornerY) {
+SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
   const int tileSize = 16;
   const int atlasSize = 64;
-  const float pixelNudge = 0.0f; // or 0.25f if needed
+  const float pixelNudge = 0.5f;
 
   int tilesPerRow = atlasSize / tileSize;
   int tileX = tileIndex % tilesPerRow;
@@ -215,7 +215,8 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
     Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
                    (ChunkPos.z + 1) * ChunkPrefab::zSize};
 
-    if (!frustum.isChunkInFrustum(Min, Max)) continue;
+    if (!frustum.isChunkInFrustum(Min, Max))
+      continue;
 
     ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
 
@@ -271,7 +272,11 @@ void Renderer::DrawTerrain(Player &player) {
       chunks.push_back(sortedChunkList[currentSortedIdx++].chunk);
     }
 
-    // First pass: Opaque
+    // OPTIMIZATION 1: Pre-calculate total size needed
+    size_t totalOpaqueVertices = 0;
+    size_t totalOpaqueIndices = 0;
+
+    // First pass: Opaque - OPTIMIZED VERSION
     for (auto *chunk : chunks) {
       Vector3 chunkPosKey = {(float)chunk->xPos / 16, 0,
                              (float)chunk->zPos / 16};
@@ -282,52 +287,131 @@ void Renderer::DrawTerrain(Player &player) {
         cache.vertices.clear();
         cache.indices.clear();
 
+        // OPTIMIZATION 2: Count opaque faces first to reserve exact size
+        size_t opaqueCount = 0;
         for (auto &face : chunk->allFaces) {
-          Vector3 blockPos = getCoordinates(face.blockPos);
-          Vector3 worldPos =
-              blockPos + Vector3{(float)chunk->xPos, 0, (float)chunk->zPos};
+          if (!face.Transparent)
+            opaqueCount++;
+        }
+        cache.vertices.reserve(opaqueCount * 4);
+        cache.indices.reserve(opaqueCount * 6);
 
-          if (face.Transparent) continue;// || player.Rotation.Forward().Dot(Direction[face.side]) < 0) continue;
-          
+        // OPTIMIZATION 3: Pre-calculate chunk world position once
+        Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
+
+        // OPTIMIZATION 4: Process faces in single loop
+        for (auto &face : chunk->allFaces) {
+          if (face.Transparent)
+            continue;
+
+          // Pre-calculate block world position
+          Vector3 worldPos = getCoordinates(face.blockPos) + chunkWorldPos;
+
+          // Pre-calculate color once per face
+          Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
+                              Colors[(int)(face.side / 2)].ToFloat();
 
           Uint32 baseV = cache.vertices.size();
 
+          // Scaled vertices based on greedy mesh width/height
+          Vector3 v0 = Verts[face.side][0];
+          Vector3 v1 = Verts[face.side][1];
+          Vector3 v2 = Verts[face.side][2];
+          Vector3 v3 = Verts[face.side][3];
 
-          for (int i = 0; i < 4; i++) {
-            int cx = (i == 0 || i == 2) ? 1 : 0;
-            int cy = (i == 0 || i == 1) ? 1 : 0;
-            cache.vertices.push_back(
-                {Verts[face.side][i] + worldPos,
-                 BlockDef[face.blockID].color.ToFloat() -
-                     Colors[(int)(face.side / 2)].ToFloat(),
-                 getUV(face.blockID, cx, cy)});
+          float fw = (float)face.w;
+          float fh = (float)face.h;
+
+          // Scale based on side orientation
+          if (face.side < 2) { // Front/Back (+-Z): Width=X, Height=Y
+            v0.x *= fw;
+            v0.y *= fh;
+            v1.x *= fw;
+            v1.y *= fh;
+            v2.x *= fw;
+            v2.y *= fh;
+            v3.x *= fw;
+            v3.y *= fh;
+          } else if (face.side < 4) { // Right/Left (+-X): Width=Z, Height=Y
+            v0.z *= fw;
+            v0.y *= fh;
+            v1.z *= fw;
+            v1.y *= fh;
+            v2.z *= fw;
+            v2.y *= fh;
+            v3.z *= fw;
+            v3.y *= fh;
+          } else { // Top/Bottom (+-Y): Width=X, Height=Z
+            v0.x *= fw;
+            v0.z *= fh;
+            v1.x *= fw;
+            v1.z *= fh;
+            v2.x *= fw;
+            v2.z *= fh;
+            v3.x *= fw;
+            v3.z *= fh;
           }
-          cache.indices.push_back(baseV + 0);
-          cache.indices.push_back(baseV + 2);
-          cache.indices.push_back(baseV + 1);
-          cache.indices.push_back(baseV + 1);
-          cache.indices.push_back(baseV + 2);
-          cache.indices.push_back(baseV + 3);
+
+          float bid = (float)face.blockID;
+
+          // Vertex 0
+          cache.vertices.push_back(
+              {v0 + worldPos, faceColor, SDL_FPoint{fw, fh}, bid});
+          // Vertex 1
+          cache.vertices.push_back(
+              {v1 + worldPos, faceColor, SDL_FPoint{0.0f, fh}, bid});
+          // Vertex 2
+          cache.vertices.push_back(
+              {v2 + worldPos, faceColor, SDL_FPoint{fw, 0.0f}, bid});
+          // Vertex 3
+          cache.vertices.push_back(
+              {v3 + worldPos, faceColor, SDL_FPoint{0.0f, 0.0f},
+               bid}); // OPTIMIZATION 6: Add all 6 indices at once
+          cache.indices.insert(cache.indices.end(),
+                               {baseV + 0, baseV + 2, baseV + 1, baseV + 1,
+                                baseV + 2, baseV + 3});
         }
         chunk->needsMeshUpdate = false;
       }
+
       auto &cache = opaqueMeshCache[chunkPosKey];
+      if (!cache.vertices.empty()) {
+        totalOpaqueVertices += cache.vertices.size();
+        totalOpaqueIndices += cache.indices.size();
+      }
+    }
+
+    // OPTIMIZATION 7: Batch copy all opaque geometry at once
+    size_t currentVertexOffset = 0;
+    size_t currentIndexOffset = 0;
+
+    for (auto *chunk : chunks) {
+      Vector3 chunkPosKey = {(float)chunk->xPos / 16, 0,
+                             (float)chunk->zPos / 16};
+      auto &cache = opaqueMeshCache[chunkPosKey];
+
       if (cache.vertices.empty())
         continue;
 
-      // Copy from cache to mapped GPU memory
-      memcpy(&Vertexdata[mesh->BaseVertex], cache.vertices.data(),
+      // OPTIMIZATION 8: Use memcpy for bulk vertex data
+      memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
              cache.vertices.size() * sizeof(Vertex));
+
+      // OPTIMIZATION 9: Batch index offset calculation
+      Uint32 vertexBase = currentVertexOffset;
       for (size_t i = 0; i < cache.indices.size(); i++) {
-        Indexdata[mesh->BaseIndex + i] = cache.indices[i] + mesh->BaseVertex;
+        Indexdata[currentIndexOffset + i] = cache.indices[i] + vertexBase;
       }
 
-      mesh->BaseVertex += cache.vertices.size();
-      mesh->BaseIndex += cache.indices.size();
+      currentVertexOffset += cache.vertices.size();
+      currentIndexOffset += cache.indices.size();
     }
+
+    mesh->BaseVertex = currentVertexOffset;
+    mesh->BaseIndex = currentIndexOffset;
     mesh->OpaqueIndexCount = mesh->BaseIndex;
 
-    // Second pass: Transparent
+    // Second pass: Transparent (unchanged for now)
     std::vector<TransparentDrawnFace> transparentFaces;
     for (auto *chunk : chunks) {
       for (auto &face : chunk->allFaces) {
@@ -335,36 +419,85 @@ void Renderer::DrawTerrain(Player &player) {
           const TransparentDrawnFace TransparentFace{
               getCoordinates(face.blockPos) +
                   Vector3{(float)chunk->xPos, 0, (float)chunk->zPos},
-              face.side,
-              face.blockID,
-          };
+              face.side, face.blockID, face.w, face.h};
           transparentFaces.push_back(TransparentFace);
         }
       }
     }
 
     // Sort transparent faces BACK TO FRONT (furthest first)
-    std::sort(transparentFaces.begin(), transparentFaces.end(),
-          [&](const TransparentDrawnFace &a, const TransparentDrawnFace &b) {
-              float distA = (a.blockPos - player.Position).LengthSquared();
-              float distB = (b.blockPos - player.Position).LengthSquared();
-              return distA > distB;
-          }); 
+    std::sort(
+        transparentFaces.begin(), transparentFaces.end(),
+        [&](const TransparentDrawnFace &a, const TransparentDrawnFace &b) {
+          float distA = (a.blockPos - player.Position).LengthSquared();
+          float distB = (b.blockPos - player.Position).LengthSquared();
+          return distA > distB;
+        });
 
     for (auto &face : transparentFaces) {
       Vector3 WorldVerts[4];
-      for (int i = 0; i < 4; i++)
-        WorldVerts[i] = Verts[face.side][i] + face.blockPos;
+      Vector3 v0 = Verts[face.side][0];
+      Vector3 v1 = Verts[face.side][1];
+      Vector3 v2 = Verts[face.side][2];
+      Vector3 v3 = Verts[face.side][3];
+      float fw = (float)face.w;
+      float fh = (float)face.h;
 
-      for (int i = 0; i < 4; i++) {
-        int cx = (i == 0 || i == 2) ? 1 : 0;
-        int cy = (i == 0 || i == 1) ? 1 : 0;
-        Vertexdata[mesh->BaseVertex + i] = {
-            WorldVerts[i],
-            BlockDef[face.blockID].color.ToFloat() -
-                Colors[(int)(face.side / 2)].ToFloat(),
-            getUV(face.blockID, cx, cy)};
+      if (face.side < 2) {
+        v0.x *= fw;
+        v0.y *= fh;
+        v1.x *= fw;
+        v1.y *= fh;
+        v2.x *= fw;
+        v2.y *= fh;
+        v3.x *= fw;
+        v3.y *= fh;
+      } else if (face.side < 4) {
+        v0.z *= fw;
+        v0.y *= fh;
+        v1.z *= fw;
+        v1.y *= fh;
+        v2.z *= fw;
+        v2.y *= fh;
+        v3.z *= fw;
+        v3.y *= fh;
+      } else {
+        v0.x *= fw;
+        v0.z *= fh;
+        v1.x *= fw;
+        v1.z *= fh;
+        v2.x *= fw;
+        v2.z *= fh;
+        v3.x *= fw;
+        v3.z *= fh;
       }
+
+      WorldVerts[0] = v0 + face.blockPos;
+      WorldVerts[1] = v1 + face.blockPos;
+      WorldVerts[2] = v2 + face.blockPos;
+      WorldVerts[3] = v3 + face.blockPos;
+
+      Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
+                          Colors[(int)(face.side / 2)].ToFloat();
+      float bid = (float)face.blockID;
+
+      // Assuming Vertex struct is defined elsewhere, e.g., in a header file
+      // struct Vertex {
+      //   Vector3 Position;
+      //   Vector3 Color;
+      //   SDL_FPoint UV;
+      //   float BlockID; // Kept as float for GPU simplicity, but we'll use
+      //   'flat' in shader
+      // };
+      Vertexdata[mesh->BaseVertex + 0] = {WorldVerts[0], faceColor,
+                                          SDL_FPoint{fw, fh}, bid};
+      Vertexdata[mesh->BaseVertex + 1] = {WorldVerts[1], faceColor,
+                                          SDL_FPoint{0.0f, fh}, bid};
+      Vertexdata[mesh->BaseVertex + 2] = {WorldVerts[2], faceColor,
+                                          SDL_FPoint{fw, 0.0f}, bid};
+      Vertexdata[mesh->BaseVertex + 3] = {WorldVerts[3], faceColor,
+                                          SDL_FPoint{0.0f, 0.0f}, bid};
+
       Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
       Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
       Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
@@ -392,88 +525,6 @@ void Renderer::DrawTerrain(Player &player) {
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
   }
 }
-/*
-void Renderer::DrawPlayer(SDL_Renderer* Renderer, Vector3 Range,
-std::vector<Player>& PlayerPos)
-{
-        //Other player
-        for (const Player& Position : PlayerPos)
-        {
-                int dx = (int)(Position.Position.x - PlayerPos[0].Position.x);
-                int dy = (int)(Position.Position.y - PlayerPos[0].Position.y);
-
-                bool InsideX = std::abs(dx) <= (Range.x / 2);
-                if (InsideX) {
-                        int RelativeX = (int)((Range.x / 2 - 1 + dx) *
-BlockPixelSize); int RelativeY = (int)((Range.y / 2 - 2 - dy) * BlockPixelSize);
-
-                        SDL_FRect OtherPlayerRect = {
-                                (float)RelativeX,
-                                (float)RelativeY,
-                                (float)BlockPixelSize,
-                                (float)BlockPixelSize * 2
-                        };
-                        SDL_SetRenderDrawColor(Renderer,
-(Uint8)SDL_clamp(PlayerPos[0].color.r, 0, 255),
-(Uint8)SDL_clamp(PlayerPos[0].color.g, 0, 255),
-(Uint8)SDL_clamp(PlayerPos[0].color.b, 0, 255), 255);
-                        SDL_RenderFillRect(Renderer, &OtherPlayerRect);
-                }
-        }
-
-        // Your player
-        SDL_SetRenderDrawColor(Renderer, SDL_clamp(PlayerPos[0].color.r, 0,
-255), SDL_clamp(PlayerPos[0].color.g, 0, 255), SDL_clamp(PlayerPos[0].color.b,
-0, 255), 255); SDL_FRect PlayerRect = { (float)(Range.x / 2 - 1) *
-BlockPixelSize, (float)(Range.y / 2 - 2) * this->BlockPixelSize,
-                (float)this->BlockPixelSize,
-                (float)this->BlockPixelSize * 2
-        };
-        SDL_RenderFillRect(Renderer, &PlayerRect);
-
-        SDL_SetRenderDrawColor(Renderer, SDL_clamp(PlayerPos[0].color.r + 90, 0,
-255), SDL_clamp(PlayerPos[0].color.g + 90, 0, 255),
-SDL_clamp(PlayerPos[0].color.b + 90, 0, 255), 255); SDL_FRect InsidePlayerRect =
-{ (float)(Range.x / 2 - 1) * this->BlockPixelSize + (this->BlockPixelSize *
-0.1f), (float)(Range.y / 2 - 2) * this->BlockPixelSize + (this->BlockPixelSize *
-0.1f), (float)(this->BlockPixelSize * 0.8f), (float)(this->BlockPixelSize *
-0.9f) * 2
-        };
-        SDL_RenderFillRect(Renderer, &InsidePlayerRect);
-
-}
-*/
-/*
-void Renderer::Stats(Player& player)
-{
-        std::string text = std::to_string(player.Position.x) + ", " +
-std::to_string(player.Position.y) + ", " + std::to_string(player.Position.z);
-        SDL_Color White = { 200, 200, 200 };
-
-        if (!this->font) {
-                std::cerr << "Font not loaded!\n";
-                return;
-        }
-
-        if (text.empty()) return;
-
-        SDL_Surface* surface = TTF_RenderText_Blended(this->font, text.c_str(),
-text.length(), White); if (!surface) { std::cerr << "TTF_RenderText_Blended
-failed: \n"; return;
-        }
-
-        //SDL_Texture* texture = SDL_CreateTextureFromSurface(this->renderer,
-surface); if (!texture) { std::cerr << "SDL_CreateTextureFromSurface failed: "
-<< SDL_GetError() << "\n"; SDL_DestroySurface(surface); return;
-        }
-
-        SDL_FRect dstRect{ 10, 10, (float)surface->w, (float)surface->h };
-        //SDL_RenderTexture(this->renderer, texture, NULL, &dstRect);
-
-        //SDL_DestroyTexture(texture);
-        //SDL_DestroySurface(surface);
-}
-*/
 void Renderer::UpdateViewportAndProjection() {
   // Get the actual drawable size (important for high-DPI displays)
   int drawableWidth, drawableHeight;
@@ -592,7 +643,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   depth_target_info.store_op = SDL_GPU_STOREOP_DONT_CARE;
   depth_target_info.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
   depth_target_info.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-  depth_target_info.cycle = false;
+  depth_target_info.cycle = true;
 
   Player player = players[0];
   Matrix model = Rotation({0, 0, 0});
@@ -795,9 +846,10 @@ void Renderer::Init() {
 }
 void Renderer::GenerateBuffer() {
   // Calculate buffer packing
-  int totalChunks = (int)((float)(RenderDistance * 2 + 1) * (RenderDistance * 2 + 1) / 2.0f);
-  for (int i = std::sqrt(totalChunks) + 1; i > 0; i --){
-    if(totalChunks % i){
+  int totalChunks =
+      (int)((float)(RenderDistance * 2 + 1) * (RenderDistance * 2 + 1) / 2.0f);
+  for (int i = std::sqrt(totalChunks) + 1; i > 0; i--) {
+    if (totalChunks % i) {
       chunksPerBuffer = i;
       break;
     }
@@ -872,6 +924,12 @@ void Renderer::VertexGPUInit() {
   this->pipelineInitVars.vertex_attributes[2].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
   this->pipelineInitVars.vertex_attributes[2].offset = sizeof(float) * 6;
+
+  this->pipelineInitVars.vertex_attributes[3].buffer_slot = 0;
+  this->pipelineInitVars.vertex_attributes[3].location = 3;
+  this->pipelineInitVars.vertex_attributes[3].format =
+      SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
+  this->pipelineInitVars.vertex_attributes[3].offset = sizeof(float) * 8;
 }
 void Renderer::LoadTexture() {
   if (!this->basicInitVars.GPU) {
@@ -1053,7 +1111,7 @@ void Renderer::PipelineInit() {
       1; // We only bind one buffer at a time
   pipelineInitVars.pipeline_desc.vertex_input_state.vertex_buffer_descriptions =
       &this->pipelineInitVars.vertex_buffer_desc;
-  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_attributes = 3;
+  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_attributes = 4;
   pipelineInitVars.pipeline_desc.vertex_input_state.vertex_attributes =
       this->pipelineInitVars.vertex_attributes;
 
