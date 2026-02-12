@@ -3,9 +3,23 @@
 layout (location = 0) in vec4 v_color;
 layout (location = 1) in vec2 v_uv;
 layout (location = 2) flat in float v_blockID;
+layout (location = 3) in vec3 PixelPos;
 layout (location = 0) out vec4 FragColor;
 
 layout (set = 2, binding = 0) uniform sampler2D u_texture;
+
+float FogStart = 20;
+float FogEnd = 75;
+vec3 FogColor = {0.5f, 0.5f, 0.5f};
+bool AddFog = true;
+
+float Fog(){
+    float FogRange = FogEnd - FogStart;
+    float FogDist = FogEnd - PixelPos.z;
+    float FogFactor = FogDist / FogRange;
+    FogFactor = clamp(FogFactor, 0, 1);
+    return FogFactor;
+}
 
 void main()
 {
@@ -35,6 +49,10 @@ void main()
 
     // Final atlas coordinates
     vec2 atlasUV = (vec2(tileX, tileY) * tileSize + nudgedUV * tileSize) / atlasSize;
-    
-    FragColor = v_color * texture(u_texture, atlasUV);
+    vec4 FinalColor = v_color * texture(u_texture, atlasUV);
+
+    if(AddFog){
+        FinalColor = mix(vec4(FogColor, 1), FinalColor, Fog());
+    }
+    FragColor = FinalColor;
 }

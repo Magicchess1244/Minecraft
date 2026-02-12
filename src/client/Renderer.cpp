@@ -646,7 +646,6 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   depth_target_info.cycle = true;
 
   Player player = players[0];
-  Matrix model = Rotation({0, 0, 0});
 
   Matrix view = LookAt(player.Rotation, player.Position);
 
@@ -654,13 +653,15 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
       (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
   Matrix proj = Perspective(FOV, aspect, Znear, Zfar);
 
-  // Final MVP matrix
-  Matrix mvp = proj * view * model;
-
   // mvp.print();
   SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 0,
-                               mvp.getColumnMajorData().data(),
-                               sizeof(float) * mvp.getColumnMajorData().size());
+                              proj.getColumnMajorData().data(),
+                              sizeof(float) * proj.getColumnMajorData().size());
+
+  SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 1,
+                              view.getColumnMajorData().data(),
+                              sizeof(float) * view.getColumnMajorData().size());
+
 
   this->runTimeRenderVars.pass =
       SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
@@ -1063,7 +1064,7 @@ void Renderer::ColorTargetDes() {
 }
 void Renderer::PipelineInit() {
   this->pipelineInitVars.vertex_shader =
-      LoadShader(this->basicInitVars.GPU, "Shader.vert", 0, 1, 0, 0);
+      LoadShader(this->basicInitVars.GPU, "Shader.vert", 0, 2, 0, 0);
   if (!this->pipelineInitVars.vertex_shader) {
     SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
   }
