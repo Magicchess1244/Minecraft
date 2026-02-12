@@ -700,11 +700,70 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
 
   SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
 
+  DrawUI(this->runTimeRenderVars.cmdRender, swap_texture);
+
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
     std::cout << "Failed to submit render command buffer\n";
     return;
   }
 }
+void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture) {
+  float size = 0.005f;
+  float aspect =
+      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+  float sizeX = size * 3 / aspect;
+  float sizeY = size;
+
+  Vertex uiVertices[12] = {
+      // Horizontal crosshair line
+      {{-sizeX, -sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{sizeX, -sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{-sizeX, sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{sizeX, -sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{sizeX, sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{-sizeX, sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      // Vertical crosshair line
+      {{-sizeY, -sizeX, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{sizeY, -sizeX, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{-sizeY, sizeX, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{sizeY, -sizeX, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{sizeY, sizeX, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+      {{-sizeY, sizeX, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+  };
+
+  // Upload vertex data to GPU
+  void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
+                                           this->UITransferBuffer, true);
+  SDL_memcpy(mapData, uiVertices, sizeof(uiVertices));
+  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->UITransferBuffer);
+
+  // Copy data to GPU buffer
+  SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
+  SDL_GPUTransferBufferLocation src = {this->UITransferBuffer, 0};
+  SDL_GPUBufferRegion dst = {this->UIBuffer, 0, sizeof(uiVertices)};
+  SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
+  SDL_EndGPUCopyPass(copyPass);
+
+  // Setup color target to load existing content (don't clear)
+  SDL_GPUColorTargetInfo color_target_info;
+  SDL_zero(color_target_info);
+  color_target_info.texture = swap_texture;
+  color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
+  color_target_info.store_op = SDL_GPU_STOREOP_STORE;
+
+  // Begin UI render pass
+  SDL_GPURenderPass *uiPass =
+      SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
+
+  // Bind UI pipeline and draw crosshair
+  SDL_BindGPUGraphicsPipeline(uiPass, this->pipelineInitVars.uiPipeline);
+  SDL_GPUBufferBinding vBinding = {this->UIBuffer, 0};
+  SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
+  SDL_DrawGPUPrimitives(uiPass, 12, 1, 0, 0);
+
+  SDL_EndGPURenderPass(uiPass);
+}
+
 SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
                           Uint32 sampler_count, Uint32 uniform_buffer_count,
                           Uint32 storage_buffer_count,
@@ -1120,6 +1179,42 @@ void Renderer::PipelineInit() {
       false;
   this->pipelineInitVars.transparentPipeline = SDL_CreateGPUGraphicsPipeline(
       this->basicInitVars.GPU, &this->pipelineInitVars.pipeline_desc);
+
+  // UI Pipeline
+  SDL_GPUShader *ui_vert =
+      LoadShader(this->basicInitVars.GPU, "UI.vert", 0, 0, 0, 0);
+  SDL_GPUShader *ui_frag =
+      LoadShader(this->basicInitVars.GPU, "UI.frag", 0, 0, 0, 0);
+
+  SDL_GPUGraphicsPipelineCreateInfo ui_desc =
+      this->pipelineInitVars.pipeline_desc;
+  ui_desc.vertex_shader = ui_vert;
+  ui_desc.fragment_shader = ui_frag;
+  ui_desc.depth_stencil_state.enable_depth_test = false;
+  ui_desc.depth_stencil_state.enable_depth_write = false;
+  ui_desc.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+  ui_desc.target_info.has_depth_stencil_target = false;
+
+  ui_desc.vertex_input_state.num_vertex_attributes =
+      2; // Only Position and Color
+
+  this->pipelineInitVars.uiPipeline =
+      SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &ui_desc);
+
+  SDL_ReleaseGPUShader(this->basicInitVars.GPU, ui_vert);
+  SDL_ReleaseGPUShader(this->basicInitVars.GPU, ui_frag);
+
+  // Create UI Buffer
+  SDL_GPUBufferCreateInfo uiBufferInfo = {};
+  uiBufferInfo.size = sizeof(Vertex) * 12;
+  uiBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+  this->UIBuffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &uiBufferInfo);
+
+  SDL_GPUTransferBufferCreateInfo uiTransferInfo = {};
+  uiTransferInfo.size = sizeof(Vertex) * 12;
+  uiTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  this->UITransferBuffer =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &uiTransferInfo);
 }
 Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
     : gameClient(gameClient), chunkManager(manager) {

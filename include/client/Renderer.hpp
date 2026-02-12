@@ -257,6 +257,7 @@ struct BasicInitVars {
 struct PipileInitVars {
   SDL_GPUGraphicsPipeline *graphicsPipeline = nullptr;
   SDL_GPUGraphicsPipeline *transparentPipeline = nullptr;
+  SDL_GPUGraphicsPipeline *uiPipeline = nullptr;
   SDL_GPUVertexBufferDescription vertex_buffer_desc;
   SDL_GPUVertexAttribute vertex_attributes[4];
   SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
@@ -285,6 +286,8 @@ private:
   SDL_GPUTexture *DepthTexture = nullptr;
   SDL_GPUTexture *TextureAtlas = nullptr;
   SDL_GPUSampler *Sampler = nullptr;
+  SDL_GPUBuffer *UIBuffer = nullptr;
+  SDL_GPUTransferBuffer *UITransferBuffer = nullptr;
   ChunkManager &chunkManager;
   GameClient &gameClient;
   bool fullScreen = false;
@@ -329,6 +332,14 @@ public:
       SDL_ReleaseGPUSampler(this->basicInitVars.GPU, Sampler);
       Sampler = nullptr;
     }
+    if (UIBuffer) {
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, UIBuffer);
+      UIBuffer = nullptr;
+    }
+    if (UITransferBuffer) {
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, UITransferBuffer);
+      UITransferBuffer = nullptr;
+    }
 
     // Release DepthTexture before destroying GPU device
     if (DepthTexture) {
@@ -357,6 +368,7 @@ public:
                    int bufferIndex, int bufferOffset,
                    const Frustum &worldFrustum);
   void DrawTerrain(Player &player);
+  void DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture);
   void MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                       std::vector<Player> &players);
 };

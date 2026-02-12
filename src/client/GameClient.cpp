@@ -1,5 +1,4 @@
 #include "../../include/client/GameClient.hpp"
-#include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
 #include <chrono>
 #include <ostream>
@@ -113,7 +112,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   } else {
     PlayerDirection.y = 0;
     if (move_up && JumpTimer > 0.2f) {
-      PlayerDirection.y = 2.0f;
+      PlayerDirection.y = 0.5f;
       JumpTimer = 0;
     }
   }
@@ -139,8 +138,7 @@ void PlayerRotation(Player &player, Vector3 RotationDir) {
       player.Rotation.y += 360.0f;
   }
 }
-void PlayerMove(Player &player, Vector3 playerDirection,
-                ChunkManager &manager) {
+void PlayerMove(Player &player, Vector3 playerDirection, ChunkManager &manager) {
   // Define player collision box
   // Collision points relative to camera (player.Position)
   // Assuming camera is at eye level, roughly 1.6 units above feet
@@ -172,7 +170,9 @@ void PlayerMove(Player &player, Vector3 playerDirection,
     // 1. Vertical Movement
     if (playerDirection.y != 0) {
       Vector3 nextY = player.Position;
-      nextY.y += playerDirection.y * playerSpeed * deltaTime;
+      // Don't multiply jump by deltaTime to ensure consistent jump height
+      float verticalSpeed = (playerDirection.y > 0) ? playerDirection.y : playerDirection.y * playerSpeed * deltaTime;
+      nextY.y += verticalSpeed;
       if (!isColliding(nextY)) {
         player.Position.y = nextY.y;
       }
@@ -296,6 +296,8 @@ void GameLoop(GameClient &game) {
 
     auto currentTime = std::chrono::high_resolution_clock::now();
     deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+    // Clamp deltaTime to prevent physics issues during lag spikes
+    deltaTime = SDL_clamp(deltaTime, 0.0f, 0.1f); // Max 100ms per frame
     lastTime = currentTime;
   }
 
