@@ -1,12 +1,11 @@
 #include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameClient.hpp"
 #include <SDL3/SDL_gpu.h>
+#include <cmath>
 #include <iostream>
 #include <ostream>
 #include <vector>
 
-constexpr Uint32 vertexSize = sizeof(Vertex) * 4 * 10000;
-constexpr Uint32 indexSize = sizeof(Uint32) * 6 * 10000;
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
@@ -216,7 +215,7 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
     Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
                    (ChunkPos.z + 1) * ChunkPrefab::zSize};
 
-    if ( !frustum.isChunkInFrustum(Min, Max)) continue;
+    if (!frustum.isChunkInFrustum(Min, Max)) continue;
 
     ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
 
@@ -284,13 +283,15 @@ void Renderer::DrawTerrain(Player &player) {
         cache.indices.clear();
 
         for (auto &face : chunk->allFaces) {
-          if (face.Transparent)
-            continue;
-
-          Uint32 baseV = cache.vertices.size();
           Vector3 blockPos = getCoordinates(face.blockPos);
           Vector3 worldPos =
               blockPos + Vector3{(float)chunk->xPos, 0, (float)chunk->zPos};
+
+          if (face.Transparent) continue;// || player.Rotation.Forward().Dot(Direction[face.side]) < 0) continue;
+          
+
+          Uint32 baseV = cache.vertices.size();
+
 
           for (int i = 0; i < 4; i++) {
             int cx = (i == 0 || i == 2) ? 1 : 0;
@@ -310,7 +311,6 @@ void Renderer::DrawTerrain(Player &player) {
         }
         chunk->needsMeshUpdate = false;
       }
-
       auto &cache = opaqueMeshCache[chunkPosKey];
       if (cache.vertices.empty())
         continue;
@@ -795,13 +795,19 @@ void Renderer::Init() {
 }
 void Renderer::GenerateBuffer() {
   // Calculate buffer packing
-  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1) / 2;
+  int totalChunks = (int)((float)(RenderDistance * 2 + 1) * (RenderDistance * 2 + 1) / 2.0f);
+  for (int i = std::sqrt(totalChunks) + 1; i > 0; i --){
+    if(totalChunks % i){
+      chunksPerBuffer = i;
+      break;
+    }
+  }
   this->totalBuffers =
-      (totalChunks + chunksPerBuffer - 1) / chunksPerBuffer; // Ceiling division
+      (totalChunks + chunksPerBuffer) / chunksPerBuffer + 1; // Ceiling division
 
   // Each buffer now holds multiple chunks
-  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 10000;
-  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 10000;
+  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 2000;
+  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 2000;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
   const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
 

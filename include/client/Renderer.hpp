@@ -289,7 +289,7 @@ private:
   bool fullScreen = false;
   Frustum frustum;
   std::vector<Mesh> Terrain;
-  int chunksPerBuffer = 10, totalBuffers = 0;
+  int chunksPerBuffer = 25, totalBuffers = 0;
 
   SDL_FPoint getUV(int tileIndex, int cornerX, int cornerY);
   Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);
