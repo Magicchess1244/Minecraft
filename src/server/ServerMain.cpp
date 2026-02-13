@@ -1,7 +1,8 @@
-#include <iostream>
-int main(int argc, char* argv[])
-{
-    std::cout << "There is no networking wait!";
-    return 1;
+#include "../../include/server/GameServer.hpp"
 
+int main(int argc, char *argv[]) {
+  GameServer server;
+  server.AcceptClients();
+
+  return 0;
 }

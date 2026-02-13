@@ -3,103 +3,133 @@
 
 #include "../common/Common.hpp"
 #include "Renderer.hpp"
+#include <algorithm>
+#include <asio.hpp>
+#include <asio/ip/address_v4.hpp>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <thread>
 
-typedef enum
-{
-	GetSeed,
-	GetColor
-} Commands;
+using asio::ip::tcp;
+#define PORT 12345
 
-class GameClient
-{
+typedef enum { GetSeed, GetColor } Commands;
+
+class GameClient {
 private:
-	unsigned int seed;
-	unsigned int player_count = 0;
-	std::vector<Player> players;
-	//SOCKET server;
-	int server = 0;
-	bool running = true;
+  asio::io_context io;
+  tcp::socket socket;
+  unsigned int seed;
+  unsigned int player_count = 0;
+  std::vector<Player> players;
+  std::mutex players_mutex;
+  bool running = true;
+  int my_id = -1;
+  asio::streambuf read_buffer;
+  std::thread net_thread;
 
 public:
-	GameClient() : seed(0), player_count(0) {}
-	~GameClient() {
-		std::cout << "closing conn" << std::endl;
-	}
+  GameClient() : seed(0), player_count(0), socket(io) {
+    try {
+      tcp::endpoint endpoint(asio::ip::make_address("127.0.0.1"), PORT);
+      this->socket.connect(endpoint);
+      std::cout << "Connected to server at 127.0.0.1:" << PORT << std::endl;
 
-	void set_seed();
-	unsigned int get_seed() const {
-		return seed;
-	}
+      // Receive ID
+      std::string id_str = receiveMessage();
+      if (id_str.find("id:") == 0) {
+        my_id = std::stoi(id_str.substr(3));
+        std::cout << "Assigned ID: " << my_id << std::endl;
+      }
+    } catch (std::exception &e) {
+      std::cerr << "Failed to connect to server: " << e.what() << std::endl;
+    }
+  }
 
-	void get_socket() const {
-	//	return this->server;
-	}
+  void StartListener() {
+    if (!net_thread.joinable()) {
+      net_thread = std::thread(&GameClient::listen, this);
+    }
+  }
 
-	void add_player(Player player) {
-		if (players.size() < MAX_PLAYERS) {
-			this->players.push_back(player);
-			this->player_count++;		
-		}
-		std::cout << "players size: " << players.size() << std::endl;
-	}
-	const std::vector<Player> get_players() {
-		return this->players;
-	}
+  ~GameClient() {
+    running = false;
+    if (net_thread.joinable())
+      net_thread.join();
+    if (this->socket.is_open()) {
+      this->socket.close();
+    }
+    std::cout << "Client disconnected cleanly.\n";
+  }
 
-	void set_color();
-	Color get_color() const {
-		if (players.size() > 0) {
-			return players[0].color;
-		}
+  void listen(); // Declaration for listener thread
 
-		return {0,0,0}; // NIGGAS
-	}
+  void sendCommand(const std::string &command) {
+    asio::error_code error;
+    std::string cmd = command + "\n";
+    asio::write(socket, asio::buffer(cmd), error);
+    if (error) {
+      std::cerr << "Send error: " << error.message() << std::endl;
+    }
+  }
 
-	void MakeClient() {
-		/*
-		WSADATA wsaData;
-		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-			std::cerr << "WSAStartup failed.\n";
-			return;
-		}
+  std::string receiveMessage() {
+    asio::error_code error;
+    size_t n = asio::read_until(socket, read_buffer, '\n', error);
+    if (error) {
+      if (error != asio::error::eof) {
+        std::cerr << "Receive error: " << error.message() << std::endl;
+      }
+      return "";
+    }
+    std::string s;
+    std::istream is(&read_buffer);
+    std::getline(is, s);
+    if (!s.empty() && s.back() == '\r')
+      s.pop_back();
+    return s;
+  }
 
-		SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-		if (serverSocket == INVALID_SOCKET) {
-			std::cerr << "Failed to create socket.\n";
-			return;
-		}
+  void set_seed();
+  unsigned int get_seed() const { return seed; }
 
-		int PORT = 8080;
-		const char* SERVER_IP = "127.0.0.1";
+  void add_player(Player player) {
+    if (players.size() < MAX_PLAYERS) {
+      this->players.push_back(player);
+      this->player_count++;
+    }
+  }
 
-		sockaddr_in server = { 0 };
-		server.sin_family = AF_INET;
-		server.sin_port = htons(PORT);
-		inet_pton(AF_INET, SERVER_IP, &server.sin_addr);
+  const std::vector<Player> &get_players() const { return this->players; }
+  std::vector<Player> &get_players() { return this->players; }
 
-		if (connect(serverSocket, (sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
-			std::cerr << "Failed to connect to the server.\n";
-			closesocket(serverSocket);
-			return;
-		}
+  void set_color();
+  Color get_color() const {
+    if (players.size() > 0) {
+      return players[0].color;
+    }
+    return {0, 0, 0};
+  }
 
-		std::cout << "Connected to the server.\n";
-		this->server = serverSocket;*/
-	}
+  std::mutex &get_mutex() { return players_mutex; }
+  int get_my_id() const { return my_id; }
+  void update_pos();
 
-	bool GetRunning() const {
-		return running;
-	}
-	void Quit() {
-		running = false;
-	}
+  bool GetRunning() const { return running; }
+  void Quit() {
+    running = false;
+    asio::error_code ec;
+    socket.close(ec);
+  }
 };
 
 namespace BitMiner {
-	int FindSlot(std::vector<Slot>& Inventory, short Type);
-	void PlayerInput(Vector3& PlayerDirection, bool OnGround, int& InventorySlots, Vector3& PlayerRot);
-	void PlayerMovement(Player& player, int& inventorySlot);
-	void GameLoop(GameClient& game);
-}
+int FindSlot(std::vector<Slot> &Inventory, short Type);
+void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
+                 Vector3 &PlayerRot);
+void PlayerMovement(Player &player, int &inventorySlot);
+void GameLoop(GameClient &game);
+} // namespace BitMiner
 
 #endif

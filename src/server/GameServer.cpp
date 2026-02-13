@@ -1,76 +1,180 @@
 #include "../../include/server/GameServer.hpp"
+#include <asio.hpp>
+#include <cstdlib>
+#include <ctime>
+#include <iostream>
+#include <thread>
+#include <utility>
 
-void GameServer::handlePlayers(int player, int Id)
-{
-	/*
-	char buf[16] = {};
-	int res = 0;
-	//std::cout << player << std::endl;
-
-	while (true) {
-
-		res = recv(player, buf, sizeof(buf), 0);
-
-		//std::cout << res << std::endl;
-
-		if (res <= 0) {
-			std::cerr << "Client disconnected or error occurred\n";
-			std::cerr << "recv() failed with error: " << WSAGetLastError() << std::endl;
-			return;
-		}
-
-		//std::cout << "Result: " << res << "\n";
-		std::cout << "Buf:" << buf << "\n";
-
-		if (strcmp(buf, "seed") == 0) {
-			std::string seed_str = std::to_string(this->seed);
-			res = send(player, seed_str.c_str(), seed_str.size(), 0);
-			std::cout << res << std::endl;
-
-		}
-		else if (strcmp(buf, "getColor") == 0) {
-			std::string color_str = std::to_string(this->players[Id].color.r) + "," +  
-								   std::to_string(this->players[Id].color.g) + "," +  
-								   std::to_string(this->players[Id].color.b);
-			std::cout << "sending..." << std::endl;
-			res = send(player, color_str.c_str(), color_str.size(), 0);
-
-			std::cout << "Color: " << color_str[0] <<  std::endl;
-		}
-	}*/
+GameServer::GameServer()
+    : acceptor(io, tcp::endpoint(tcp::v4(), PORT)), seed(0), running(true) {
+  std::cout << "Server listening on port " << PORT << " with seed " << seed
+            << "...\n";
+  std::srand(static_cast<unsigned int>(std::time(0)));
+  seed = rand();
 }
 
-void GameServer::AcceptClients()
-{
-	std::unordered_map<int, Color> PlayerColors = {
-		{0, {255, 0, 0} },
-		{1, {0, 255, 0} },
-		{2, {0, 0, 255} },
-		{3, {255, 255, 0} },
-		{4, {255, 0, 255} },
-		{5, {0, 255, 255} },
-		{6, {128, 128, 128} },
-		{7, {255, 165, 0} }
-	};
-	this->MakeServer();
-	std::cout << "Listener: " << listener << "\n";
-/*
-	while (player_count < MAX_PLAYERS) {
-		SOCKET clientSocket = accept(this->listener, NULL, NULL);
+GameServer::~GameServer() {
+  running = false;
+  {
+    std::lock_guard<std::recursive_mutex> lock(players_mutex);
+    for (auto &[id, sock] : client_sockets) {
+      if (sock && sock->is_open()) {
+        asio::error_code ec;
+        sock->close(ec);
+      }
+    }
+  }
+  for (auto &thread : client_threads) {
+    if (thread.joinable())
+      thread.join();
+  }
+  if (acceptor.is_open()) {
+    acceptor.close();
+  }
+  std::cout << "Server shutdown cleanly.\n";
+}
 
-		if (clientSocket == INVALID_SOCKET) {
-			std::cerr << "accept() failed with error: " << WSAGetLastError() << std::endl;
-			continue;
-		}
+void GameServer::set_seed(unsigned int new_seed) {
+  std::cout << "Server seed set to: " << new_seed << std::endl;
+  seed = new_seed;
+}
 
-		this->add_socket(clientSocket, Player{ Vector3{ 0, 24, 0 }, Vector3{ 0, 0, 0 }, PlayerColors[player_count] });
+unsigned int GameServer::get_seed() const { return seed; }
 
-		//std::cout << player_count << " clients connected." << std::endl;
-		//std::cout << "Client connected! Socket: " << clientSocket << std::endl;
+void GameServer::AcceptClients() {
+  try {
+    std::cout << "Waiting for clients..." << std::endl;
+    while (true) {
+      tcp::socket socket(io);
+      acceptor.accept(socket);
+      std::cout << "New client connected: " << socket.remote_endpoint()
+                << std::endl;
 
-		// TODO: no et preocupis nigga
+      int id = next_id++;
+      auto socket_ptr = std::make_shared<tcp::socket>(std::move(socket));
+      {
+        std::lock_guard<std::recursive_mutex> lock(players_mutex);
+        players[id] = Player{id, {0, 0, 0}, {0, 0, 0}, {255, 0, 0}};
+        client_sockets[id] = socket_ptr;
+      }
 
-		handlePlayers(clientSocket, player_count - 1);
-		//std::thread(&GameServer::handlePlayers, this, clientSocket, true, this->player_count - 1).detach();
-	}*/
+      // Send ID to client
+      std::string id_msg = "id:" + std::to_string(id) + "\n";
+      asio::error_code error;
+      asio::write(*socket_ptr, asio::buffer(id_msg), error);
+
+      client_threads.emplace_back(&GameServer::handlePlayers, this, socket_ptr,
+                                  id);
+    }
+  } catch (std::exception &e) {
+    std::cerr << "Exception in AcceptClients: " << e.what() << std::endl;
+  }
+}
+
+void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
+  try {
+    asio::streambuf buffer;
+    while (running && socket->is_open()) {
+      asio::error_code error;
+      size_t n = asio::read_until(*socket, buffer, '\n', error);
+
+      if (error) {
+        if (error != asio::error::eof) {
+          std::cerr << "Read error (Player " << id << "): " << error.message()
+                    << std::endl;
+        } else {
+          std::cout << "Player " << id << " disconnected." << std::endl;
+        }
+        break;
+      }
+
+      std::string message;
+      std::istream is(&buffer);
+      std::getline(is, message);
+
+      if (!message.empty()) {
+        if (message.back() == '\r')
+          message.pop_back(); // Handle CRLF
+
+        if (message.find("seed") != std::string::npos) {
+          std::string s = "s:" + std::to_string(seed) + "\n";
+          asio::write(*socket, asio::buffer(s), error);
+        } else if (message.find("getColor") != std::string::npos) {
+          std::string color = "c:255,0,0\n";
+          asio::write(*socket, asio::buffer(color), error);
+        } else if (message.find("up:") == 0) {
+          size_t first_colon = message.find(':');
+          size_t second_colon = message.find(':', first_colon + 1);
+          if (first_colon != std::string::npos &&
+              second_colon != std::string::npos) {
+            try {
+              int msg_id = std::stoi(message.substr(
+                  first_colon + 1, second_colon - first_colon - 1));
+              std::string pos = message.substr(second_colon + 1);
+
+              size_t first_slash = pos.find('/');
+              size_t last_slash = pos.find_last_of('/');
+              if (first_slash != std::string::npos &&
+                  last_slash != std::string::npos &&
+                  first_slash != last_slash) {
+                float x = std::stof(pos.substr(0, first_slash));
+                float y = std::stof(
+                    pos.substr(first_slash + 1, last_slash - first_slash - 1));
+                float z = std::stof(pos.substr(last_slash + 1));
+
+                std::lock_guard<std::recursive_mutex> lock(players_mutex);
+                players[msg_id].Position = {x, y, z};
+                broadcastPlayers();
+              }
+            } catch (...) {
+              std::cerr << "Error parsing 'up' message: " << message
+                        << std::endl;
+            }
+          }
+        }
+      }
+    }
+  } catch (std::exception &e) {
+    std::cerr << "Client handler exception (Player " << id << "): " << e.what()
+              << std::endl;
+  }
+
+  {
+    std::lock_guard<std::recursive_mutex> lock(players_mutex);
+    players.erase(id);
+    client_sockets.erase(id);
+    broadcastPlayers();
+  }
+
+  if (socket->is_open()) {
+    socket->close();
+  }
+}
+
+void GameServer::broadcastPlayers() {
+  std::string broadcast_msg = "p:";
+  std::vector<std::shared_ptr<tcp::socket>> targets;
+  {
+    std::lock_guard<std::recursive_mutex> lock(players_mutex);
+    for (const auto &[pid, player] : players) {
+      broadcast_msg += std::to_string(pid) + ":" +
+                       std::to_string(player.Position.x) + "/" +
+                       std::to_string(player.Position.y) + "/" +
+                       std::to_string(player.Position.z) + "|";
+    }
+    for (auto &[pid, sock] : client_sockets) {
+      if (sock && sock->is_open()) {
+        targets.push_back(sock);
+      }
+    }
+  }
+  broadcast_msg += "\n";
+
+  for (auto &sock : targets) {
+    asio::error_code ec;
+    // Use write with a timeout or just accept this might block for a bit,
+    // but at least it won't hold the global players_mutex.
+    asio::write(*sock, asio::buffer(broadcast_msg), ec);
+  }
 }

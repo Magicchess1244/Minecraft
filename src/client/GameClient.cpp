@@ -1,7 +1,10 @@
 #include "../../include/client/GameClient.hpp"
+#include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <algorithm>
 #include <chrono>
 #include <ostream>
+#include <string>
 
 constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 5.0f;
@@ -14,49 +17,107 @@ Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
 
 void GameClient::set_seed() {
-  /*int res;
-  char buf[16];
-  unsigned int server_seed = 0;
-  const char* command = "seed";
-  std::cout << "seed" << std::endl;
-  res = send(this->server, command, sizeof(command), 0);
-  if (res <= 0) std::cerr << "Error requesting seed from the server.";
-  res = recv(this->server, buf, sizeof(buf), 0);
-  if (res <= 0) std::cerr << "Error receiving seed from the server.";
-  std::cout << "buf: " << buf << std::endl;
-  server_seed = static_cast<unsigned int>(std::stoi(std::string(buf)));
-  std::cout << "New client seed: " << server_seed << std::endl;
-  srand(server_seed);
-  this->seed = server_seed;*/
+  this->sendCommand("seed");
+  // The seed is received by the main thread before the listener starts,
+  // or by the listener after it starts.
+  // For simplicity, let's keep it sync for now but it's risky.
 }
-void GameClient::set_color() {
-  /*	int res;
-          char buf[11];
-          unsigned int server_color[3] = {};
-          const char* command = "getColor";
 
-          std::cout << "getColor" << std::endl;
+void GameClient::set_color() { this->sendCommand("getColor"); }
 
-          res = send(this->server, command, sizeof(command), 0);
-          if (res <= 0) std::cerr << "Error requesting color from the server.";
-          res = recv(this->server, buf, sizeof(buf), 0);
-          if (res <= 0) std::cerr << "Error receiving color from the server.";
-          else std::cout << "recived" << std::endl;
+void GameClient::listen() {
+  while (running && socket.is_open()) {
+    std::string msg = receiveMessage();
+    if (msg.empty()) {
+      if (running) {
+        std::cerr << "Disconnected from server." << std::endl;
+        running = false;
+      }
+      break;
+    }
 
-          std::cout << "color" << std::endl;
-          int i = 0;
-          for (std::string w : split(buf, ",")) {
-                  server_color[i++] = std::stoi(w);
+    if (msg.find("p:") == 0) {
+      std::lock_guard<std::mutex> lock(players_mutex);
+      std::string data = msg.substr(2);
+      size_t start = 0;
+      size_t end = data.find('|');
+
+      std::vector<int> current_ids;
+
+      while (end != std::string::npos) {
+        std::string player_info = data.substr(start, end - start);
+        size_t id_end = player_info.find(':');
+        if (id_end != std::string::npos) {
+          int id = std::stoi(player_info.substr(0, id_end));
+          std::string pos_str = player_info.substr(id_end + 1);
+
+          if (id != my_id) {
+            current_ids.push_back(id);
+            size_t first = pos_str.find('/');
+            size_t last = pos_str.find_last_of('/');
+            if (first != std::string::npos && last != std::string::npos &&
+                first != last) {
+              float x = std::stof(pos_str.substr(0, first));
+              float y = std::stof(pos_str.substr(first + 1, last - first - 1));
+              float z = std::stof(pos_str.substr(last + 1));
+
+              bool found = false;
+              for (auto &p : players) {
+                if (p.id == id) {
+                  p.Position = {x, y, z};
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) {
+                Player new_player;
+                new_player.id = id;
+                new_player.Position = {x, y, z};
+                new_player.color = {0, 255, 0}; // Other players are green
+                players.push_back(new_player);
+              }
+            }
           }
+        }
+        start = end + 1;
+        end = data.find('|', start);
+      }
 
-          std::cout << "New client color: " << server_color[0] << "," <<
-     server_color[1] <<"," << server_color[2] << std::endl;
-
-          std::cout << "niggas online: " << this->players.size() << std::endl;
-          if (this->players.size() > 0) {
-                  this->players[0].color = Color{ server_color[0],
-     server_color[1], server_color[2] };
-          }*/
+      // Remove players who left
+      players.erase(std::remove_if(players.begin(), players.end(),
+                                   [&](const Player &p) {
+                                     if (p.id == my_id)
+                                       return false;
+                                     return std::find(current_ids.begin(),
+                                                      current_ids.end(),
+                                                      p.id) ==
+                                            current_ids.end();
+                                   }),
+                    players.end());
+    } else if (msg.find("s:") == 0) {
+      unsigned int s = static_cast<unsigned int>(std::stoul(msg.substr(2)));
+      SetSeed(s);
+    } else if (msg.find("c:") == 0) {
+      std::string buf = msg.substr(2);
+      size_t f = buf.find(','), l = buf.find_last_of(',');
+      if (f != std::string::npos && l != std::string::npos && f != l) {
+        unsigned int r = std::stoul(buf.substr(0, f));
+        unsigned int g = std::stoul(buf.substr(f + 1, l - f - 1));
+        unsigned int b = std::stoul(buf.substr(l + 1));
+        std::lock_guard<std::mutex> lock(players_mutex);
+        if (!players.empty())
+          players[0].color = Color{r, g, b};
+      }
+    }
+  }
+}
+void GameClient::update_pos() {
+  auto Player = get_players()[0];
+  std::string Pos = "up:" + std::to_string(my_id) + ":" +
+                    std::to_string(Player.Position.x) + "/" +
+                    std::to_string(Player.Position.y) + "/" +
+                    std::to_string(Player.Position.z);
+  this->sendCommand(Pos);
 }
 
 // UI function
@@ -139,7 +200,8 @@ void PlayerRotation(Player &player, Vector3 RotationDir) {
       player.Rotation.y += 360.0f;
   }
 }
-void PlayerMove(Player &player, Vector3 playerDirection, ChunkManager &manager) {
+void PlayerMove(Player &player, Vector3 playerDirection,
+                ChunkManager &manager) {
   // Define player collision box
   // Collision points relative to camera (player.Position)
   // Assuming camera is at eye level, roughly 1.6 units above feet
@@ -171,7 +233,8 @@ void PlayerMove(Player &player, Vector3 playerDirection, ChunkManager &manager) 
     // 1. Vertical Movement
     if (playerDirection.y != 0) {
       Vector3 nextY = player.Position;
-      float verticalSpeed = SDL_clamp(playerDirection.y * deltaTime, -10, JumpHeight);
+      float verticalSpeed =
+          SDL_clamp(playerDirection.y * deltaTime, -10, JumpHeight);
       nextY.y += verticalSpeed;
       if (!isColliding(nextY)) {
         player.Position.y = nextY.y;
@@ -249,7 +312,8 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   JumpTimer += deltaTime;
   Vector3 RotationDir = {0, 0, 0};
   bool LeftClick = false, RightClick = false;
-  bool OnGround = manager.RayCast(player.Position, {0, -1, 0}, bodyHeight + 0.15f).hit;
+  bool OnGround =
+      manager.RayCast(player.Position, {0, -1, 0}, bodyHeight + 0.15f).hit;
   PlayerInput(playerDirection, OnGround, inventorySlot, RotationDir, LeftClick,
               RightClick);
   PlayerRotation(player, RotationDir);
@@ -259,16 +323,15 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
 }
 void GameLoop(GameClient &game) {
   game.add_player({
+      game.get_my_id(),
       {0, ChunkPrefab::ySize, 0},
       {0.0f, 0.0f, 0.0f},
       {255, 0, 0},
   });
-  auto p = game.get_players();
-
-  // game.MakeClient();
-  // game.set_seed();
-  // game.set_color();
-  //SetSeed(game.get_seed());
+  auto &p = game.get_players();
+  game.set_seed();
+  game.set_color();
+  game.StartListener();
 
   Vector3 playerDirection = {0, 0};
 
@@ -288,8 +351,14 @@ void GameLoop(GameClient &game) {
   Renderer RendererObject(game, chunkManager);
 
   auto lastTime = std::chrono::high_resolution_clock::now();
+  float netTimer = 0.0f;
 
   while (game.GetRunning()) {
+    netTimer += deltaTime;
+    if (netTimer >= 0.05f) { // 20 updates per second
+      game.update_pos();
+      netTimer = 0.0f;
+    }
 
     PlayerAction(p[0], inventorySlot, chunkManager, inventory);
     RendererObject.MainRenderLoop(inventory, inventorySlot, p);

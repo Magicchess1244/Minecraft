@@ -288,6 +288,10 @@ private:
   SDL_GPUSampler *Sampler = nullptr;
   SDL_GPUBuffer *UIBuffer = nullptr;
   SDL_GPUTransferBuffer *UITransferBuffer = nullptr;
+  SDL_GPUBuffer *EntityBuffer = nullptr;
+  SDL_GPUTransferBuffer *EntityTransferBuffer = nullptr;
+  SDL_GPUBuffer *EntityIndexBuffer = nullptr;
+  SDL_GPUTransferBuffer *EntityIndexTransferBuffer = nullptr;
   ChunkManager &chunkManager;
   GameClient &gameClient;
   bool fullScreen = false;
@@ -368,6 +372,7 @@ public:
                    int bufferIndex, int bufferOffset,
                    const Frustum &worldFrustum);
   void DrawTerrain(Player &player);
+  void DrawPlayers(std::vector<Player> &players);
   void DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture);
   void MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                       std::vector<Player> &players);

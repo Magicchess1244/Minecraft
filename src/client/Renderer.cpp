@@ -9,7 +9,7 @@
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 17;
+constexpr int RenderDistance = 6;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
@@ -698,6 +698,8 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
     }
   }
 
+  DrawPlayers(players);
+
   SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
 
   DrawUI(this->runTimeRenderVars.cmdRender, swap_texture);
@@ -711,11 +713,11 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture) {
   float size = 0.005f;
   float aspect =
       (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
-  
+
   // Apply aspect ratio correction to horizontal dimensions
-  float sizeX = size * 5 / aspect;  // Divide by aspect to compensate
+  float sizeX = size * 5 / aspect; // Divide by aspect to compensate
   float sizeY = size;
-  
+
   Vertex uiVertices[12] = {
       // Horizontal crosshair line
       {{-sizeX, -sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
@@ -732,31 +734,31 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture) {
       {{sizeY / aspect, sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
       {{-sizeY / aspect, sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
   };
-  
+
   // Upload vertex data to GPU
   void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
                                            this->UITransferBuffer, true);
   SDL_memcpy(mapData, uiVertices, sizeof(uiVertices));
   SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->UITransferBuffer);
-  
+
   // Copy data to GPU buffer
   SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
   SDL_GPUTransferBufferLocation src = {this->UITransferBuffer, 0};
   SDL_GPUBufferRegion dst = {this->UIBuffer, 0, sizeof(uiVertices)};
   SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
   SDL_EndGPUCopyPass(copyPass);
-  
+
   // Setup color target to load existing content (don't clear)
   SDL_GPUColorTargetInfo color_target_info;
   SDL_zero(color_target_info);
   color_target_info.texture = swap_texture;
   color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
   color_target_info.store_op = SDL_GPU_STOREOP_STORE;
-  
+
   // Begin UI render pass
   SDL_GPURenderPass *uiPass =
       SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
-  
+
   // Bind UI pipeline and draw crosshair
   SDL_BindGPUGraphicsPipeline(uiPass, this->pipelineInitVars.uiPipeline);
   SDL_GPUBufferBinding vBinding = {this->UIBuffer, 0};
@@ -1215,6 +1217,105 @@ void Renderer::PipelineInit() {
   uiTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
   this->UITransferBuffer =
       SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &uiTransferInfo);
+
+  // Create Entity Buffer
+  SDL_GPUBufferCreateInfo entityBufferInfo = {};
+  entityBufferInfo.size =
+      sizeof(Vertex) * 24 * MAX_PLAYERS; // Sufficient for cubes
+  entityBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+  this->EntityBuffer =
+      SDL_CreateGPUBuffer(this->basicInitVars.GPU, &entityBufferInfo);
+
+  SDL_GPUTransferBufferCreateInfo entityTransferInfo = {};
+  entityTransferInfo.size = sizeof(Vertex) * 24 * MAX_PLAYERS;
+  entityTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  this->EntityTransferBuffer =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &entityTransferInfo);
+
+  // Create Entity Index Buffer
+  SDL_GPUBufferCreateInfo entityIndexBufferInfo = {};
+  entityIndexBufferInfo.size = sizeof(Uint32) * 36 * MAX_PLAYERS;
+  entityIndexBufferInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+  this->EntityIndexBuffer =
+      SDL_CreateGPUBuffer(this->basicInitVars.GPU, &entityIndexBufferInfo);
+
+  SDL_GPUTransferBufferCreateInfo entityIndexTransferInfo = {};
+  entityIndexTransferInfo.size = sizeof(Uint32) * 36 * MAX_PLAYERS;
+  entityIndexTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  this->EntityIndexTransferBuffer = SDL_CreateGPUTransferBuffer(
+      this->basicInitVars.GPU, &entityIndexTransferInfo);
+}
+
+void Renderer::DrawPlayers(std::vector<Player> &players) {
+  if (players.size() <= 1)
+    return;
+
+  std::vector<Vertex> verts;
+  std::vector<Uint32> indices;
+
+  int myId = gameClient.get_my_id();
+
+  {
+    std::lock_guard<std::mutex> lock(gameClient.get_mutex());
+    for (const auto &p : players) {
+      if (p.id == myId)
+        continue;
+
+      Vector3 pos = p.Position;
+      Vector3 color = p.color.ToFloat();
+
+      for (int side = 0; side < 6; side++) {
+        Uint32 base = verts.size();
+        for (int i = 0; i < 4; i++) {
+          verts.push_back({Verts[side][i] + pos, color, {0, 0}, 1.0f});
+        }
+        indices.push_back(base + 0);
+        indices.push_back(base + 2);
+        indices.push_back(base + 1);
+        indices.push_back(base + 1);
+        indices.push_back(base + 2);
+        indices.push_back(base + 3);
+      }
+    }
+  }
+
+  if (verts.empty())
+    return;
+
+  // Upload to GPU
+  void *vData =
+      SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
+  SDL_memcpy(vData, verts.data(), verts.size() * sizeof(Vertex));
+  SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer);
+
+  void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU,
+                                         EntityIndexTransferBuffer, true);
+  SDL_memcpy(iData, indices.data(), indices.size() * sizeof(Uint32));
+  SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityIndexTransferBuffer);
+
+  SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(basicInitVars.GPU);
+  SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
+  SDL_GPUTransferBufferLocation vSrc = {EntityTransferBuffer, 0};
+  SDL_GPUBufferRegion vDst = {EntityBuffer, 0,
+                              (Uint32)(verts.size() * sizeof(Vertex))};
+  SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, true);
+  SDL_GPUTransferBufferLocation iSrc = {EntityIndexTransferBuffer, 0};
+  SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0,
+                              (Uint32)(indices.size() * sizeof(Uint32))};
+  SDL_UploadToGPUBuffer(copy, &iSrc, &iDst, true);
+  SDL_EndGPUCopyPass(copy);
+  SDL_SubmitGPUCommandBuffer(cmd);
+
+  // Draw
+  SDL_BindGPUGraphicsPipeline(runTimeRenderVars.pass,
+                              pipelineInitVars.graphicsPipeline);
+  SDL_GPUBufferBinding vBinding = {EntityBuffer, 0};
+  SDL_BindGPUVertexBuffers(runTimeRenderVars.pass, 0, &vBinding, 1);
+  SDL_GPUBufferBinding iBinding = {EntityIndexBuffer, 0};
+  SDL_BindGPUIndexBuffer(runTimeRenderVars.pass, &iBinding,
+                         SDL_GPU_INDEXELEMENTSIZE_32BIT);
+  SDL_DrawGPUIndexedPrimitives(runTimeRenderVars.pass, (Uint32)indices.size(),
+                               1, 0, 0, 0);
 }
 Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
     : gameClient(gameClient), chunkManager(manager) {

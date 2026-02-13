@@ -15,9 +15,9 @@
 constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;
 struct Vector2 {
-  float x,y;
+  float x, y;
 
-  float Dot(Vector2 other){ return this->x * other.x + this->y * other.y;}
+  float Dot(Vector2 other) { return this->x * other.x + this->y * other.y; }
 };
 struct Vector3 {
   float x, y, z;
@@ -273,6 +273,7 @@ struct Color {
   }
 };
 struct Player {
+  int id;
   Vector3 Position;
   Vector3 Rotation;
   Color color;
