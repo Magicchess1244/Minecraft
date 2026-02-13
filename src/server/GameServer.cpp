@@ -84,6 +84,7 @@ void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
                     << std::endl;
         } else {
           std::cout << "Player " << id << " disconnected." << std::endl;
+          next_id--;
         }
         break;
       }
@@ -131,6 +132,42 @@ void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
                         << std::endl;
             }
           }
+        } else if (message.find("mod:") == 0) {
+          // Format: mod:x/y/z:type
+          size_t first_colon = message.find(':');
+          size_t second_colon = message.find(':', first_colon + 1);
+          if (first_colon != std::string::npos &&
+              second_colon != std::string::npos) {
+            try {
+              std::string pos_str = message.substr(
+                  first_colon + 1, second_colon - first_colon - 1);
+              Uint8 type = static_cast<Uint8>(
+                  std::stoi(message.substr(second_colon + 1)));
+
+              size_t first_slash = pos_str.find('/');
+              size_t last_slash = pos_str.find_last_of('/');
+              if (first_slash != std::string::npos &&
+                  last_slash != std::string::npos &&
+                  first_slash != last_slash) {
+                float x = std::stof(pos_str.substr(0, first_slash));
+                float y = std::stof(pos_str.substr(
+                    first_slash + 1, last_slash - first_slash - 1));
+                float z = std::stof(pos_str.substr(last_slash + 1));
+                Vector3 pos = {x, y, z};
+
+                {
+                  std::lock_guard<std::recursive_mutex> lock(players_mutex);
+                  Modifications[pos] = type;
+                }
+                broadcastModification(pos, type);
+              }
+            } catch (...) {
+              std::cerr << "Error parsing 'mod' message: " << message
+                        << std::endl;
+            }
+          }
+        } else if (message.find("gm") == 0) {
+          sendAllModifications(socket);
         }
       }
     }
@@ -175,5 +212,35 @@ void GameServer::broadcastPlayers() {
     // Use write with a timeout or just accept this might block for a bit,
     // but at least it won't hold the global players_mutex.
     asio::write(*sock, asio::buffer(broadcast_msg), ec);
+  }
+}
+
+void GameServer::broadcastModification(Vector3 pos, Uint8 type) {
+  std::string msg = "bm:" + std::to_string(pos.x) + "/" +
+                    std::to_string(pos.y) + "/" + std::to_string(pos.z) + ":" +
+                    std::to_string(type) + "\n";
+  std::vector<std::shared_ptr<tcp::socket>> targets;
+  {
+    std::lock_guard<std::recursive_mutex> lock(players_mutex);
+    for (auto &[pid, sock] : client_sockets) {
+      if (sock && sock->is_open()) {
+        targets.push_back(sock);
+      }
+    }
+  }
+  for (auto &sock : targets) {
+    asio::error_code ec;
+    asio::write(*sock, asio::buffer(msg), ec);
+  }
+}
+
+void GameServer::sendAllModifications(std::shared_ptr<tcp::socket> socket) {
+  std::lock_guard<std::recursive_mutex> lock(players_mutex);
+  for (auto const &[pos, type] : Modifications) {
+    std::string msg = "bm:" + std::to_string(pos.x) + "/" +
+                      std::to_string(pos.y) + "/" + std::to_string(pos.z) +
+                      ":" + std::to_string(type) + "\n";
+    asio::error_code ec;
+    asio::write(*socket, asio::buffer(msg), ec);
   }
 }

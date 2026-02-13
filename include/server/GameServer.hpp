@@ -21,6 +21,7 @@ private:
   std::map<int, std::shared_ptr<tcp::socket>> client_sockets;
   mutable std::recursive_mutex players_mutex;
   std::atomic<int> next_id{0};
+  std::unordered_map<Vector3, Uint8> Modifications;
 
 public:
   GameServer();
@@ -28,8 +29,9 @@ public:
 
   void set_seed(unsigned int new_seed);
   unsigned int get_seed() const;
-
   void AcceptClients();
-  void handlePlayers(std::shared_ptr<tcp::socket> socket, int id);
   void broadcastPlayers();
+  void broadcastModification(Vector3 pos, Uint8 type);
+  void sendAllModifications(std::shared_ptr<tcp::socket> socket);
+  void handlePlayers(std::shared_ptr<tcp::socket> socket, int id);
 };

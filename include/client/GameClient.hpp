@@ -27,6 +27,7 @@ private:
   bool running = true;
   int my_id = -1;
   asio::streambuf read_buffer;
+  std::vector<BlockMod> pending_mods;
   std::thread net_thread;
 
 public:
@@ -113,6 +114,8 @@ public:
   }
 
   std::mutex &get_mutex() { return players_mutex; }
+  std::vector<BlockMod> &get_pending_mods() { return pending_mods; }
+
   int get_my_id() const { return my_id; }
   void update_pos();
 

@@ -234,8 +234,43 @@ struct Matrix {
     return colMajor;
   }
 };
+enum class PlayerColor {
+  RED,
+  GREEN,
+  BLUE,
+  YELLOW,
+  MAGENTA,
+  CYAN,
+  ORANGE,
+  PURPLE,
+  COUNT
+};
+
 struct Color {
-  unsigned int r, g, b;
+  Uint8 r, g, b;
+
+  static Color GetColor(PlayerColor pc) {
+    switch (pc) {
+    case PlayerColor::RED:
+      return {255, 0, 0};
+    case PlayerColor::GREEN:
+      return {0, 255, 0};
+    case PlayerColor::BLUE:
+      return {0, 0, 255};
+    case PlayerColor::YELLOW:
+      return {255, 255, 0};
+    case PlayerColor::MAGENTA:
+      return {255, 0, 255};
+    case PlayerColor::CYAN:
+      return {0, 255, 255};
+    case PlayerColor::ORANGE:
+      return {255, 165, 0};
+    case PlayerColor::PURPLE:
+      return {128, 0, 128};
+    default:
+      return {255, 255, 255};
+    }
+  }
 
   Color operator+(const Color &other) const {
     return {static_cast<Uint8>(SDL_clamp(
@@ -272,6 +307,11 @@ struct Color {
     };
   }
 };
+struct BlockMod {
+  Vector3 pos;
+  Uint8 type;
+};
+
 struct Player {
   int id;
   Vector3 Position;

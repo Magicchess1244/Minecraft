@@ -72,7 +72,9 @@ void GameClient::listen() {
                 Player new_player;
                 new_player.id = id;
                 new_player.Position = {x, y, z};
-                new_player.color = {0, 255, 0}; // Other players are green
+                // Assign color based on ID
+                new_player.color = Color::GetColor(static_cast<PlayerColor>(
+                    id % static_cast<int>(PlayerColor::COUNT)));
                 players.push_back(new_player);
               }
             }
@@ -105,7 +107,37 @@ void GameClient::listen() {
         unsigned int b = std::stoul(buf.substr(l + 1));
         std::lock_guard<std::mutex> lock(players_mutex);
         if (!players.empty())
-          players[0].color = Color{r, g, b};
+          players[0].color = Color{static_cast<Uint8>(r), static_cast<Uint8>(g),
+                                   static_cast<Uint8>(b)};
+      }
+    } else if (msg.find("bm:") == 0) {
+      // Format: bm:x/y/z:type
+      size_t first_colon = msg.find(':');
+      size_t second_colon = msg.find(':', first_colon + 1);
+      if (first_colon != std::string::npos &&
+          second_colon != std::string::npos) {
+        try {
+          std::string pos_str =
+              msg.substr(first_colon + 1, second_colon - first_colon - 1);
+          Uint8 type =
+              static_cast<Uint8>(std::stoi(msg.substr(second_colon + 1)));
+
+          size_t first_slash = pos_str.find('/');
+          size_t last_slash = pos_str.find_last_of('/');
+          if (first_slash != std::string::npos &&
+              last_slash != std::string::npos && first_slash != last_slash) {
+            float x = std::stof(pos_str.substr(0, first_slash));
+            float y = std::stof(
+                pos_str.substr(first_slash + 1, last_slash - first_slash - 1));
+            float z = std::stof(pos_str.substr(last_slash + 1));
+            // Apply modification to local chunk manager
+            // We need access to chunkManager here, but GameClient doesn't have
+            // it easily. Let's assume there's a callback or we add a pointer to
+            // it. For now, let's keep a list of pending mods in GameClient.
+            pending_mods.push_back({{x, y, z}, type});
+          }
+        } catch (...) {
+        }
       }
     }
   }
@@ -267,7 +299,7 @@ void PlayerMove(Player &player, Vector3 playerDirection,
 }
 void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
                        Player &player, int inventorySlot,
-                       std::vector<Slot> &inventory) {
+                       std::vector<Slot> &inventory, GameClient &game) {
   static bool lastLeft = false;
   static bool lastRight = false;
 
@@ -283,6 +315,10 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
     if (Ray.hit) {
       if (justLeft) {
         manager.Place(Ray.pos, 0); // Break block (Air)
+        std::string mod = "mod:" + std::to_string(Ray.pos.x) + "/" +
+                          std::to_string(Ray.pos.y) + "/" +
+                          std::to_string(Ray.pos.z) + ":0";
+        game.sendCommand(mod);
       } else {
         // Prevent placing block inside player's body
         Vector3 placePos = Ray.prevPos;
@@ -299,14 +335,21 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
         }
 
         if (!collides) {
-          manager.Place(placePos, inventory[inventorySlot].Type);
+          Uint8 type = inventory[inventorySlot].Type;
+          manager.Place(placePos, type);
+          std::string mod = "mod:" + std::to_string(placePos.x) + "/" +
+                            std::to_string(placePos.y) + "/" +
+                            std::to_string(placePos.z) + ":" +
+                            std::to_string(type);
+          game.sendCommand(mod);
         }
       }
     }
   }
 }
+
 void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
-                  std::vector<Slot> &inventory) {
+                  std::vector<Slot> &inventory, GameClient &game) {
 
   JumpTimer += deltaTime;
   Vector3 RotationDir = {0, 0, 0};
@@ -318,18 +361,21 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   PlayerRotation(player, RotationDir);
   PlayerMove(player, playerDirection, manager);
   PlayerBreackPlace(LeftClick, RightClick, manager, player, inventorySlot,
-                    inventory);
+                    inventory, game);
 }
 void GameLoop(GameClient &game) {
+  int myId = game.get_my_id();
   game.add_player({
-      game.get_my_id(),
+      myId,
       {0, ChunkPrefab::ySize, 0},
       {0.0f, 0.0f, 0.0f},
-      {255, 0, 0},
+      Color::GetColor(static_cast<PlayerColor>(
+          myId % static_cast<int>(PlayerColor::COUNT))),
   });
   auto &p = game.get_players();
   game.set_seed();
   game.set_color();
+  game.sendCommand("gm"); // Request all world modifications
   game.StartListener();
 
   Vector3 playerDirection = {0, 0};
@@ -340,7 +386,7 @@ void GameLoop(GameClient &game) {
     inventory.push_back({0, 0});
   }
 
-  inventory[0] = {60, 1};
+  inventory[0] = {60, 2};
   inventory[1] = {5, 5};
 
   int inventorySlot = 0;
@@ -353,13 +399,23 @@ void GameLoop(GameClient &game) {
   float netTimer = 0.0f;
 
   while (game.GetRunning()) {
+    // Process pending mods from server
+    {
+      std::lock_guard<std::mutex> lock(game.get_mutex());
+      auto &mods = game.get_pending_mods();
+      for (auto const &m : mods) {
+        chunkManager.Place(m.pos, m.type);
+      }
+      mods.clear();
+    }
+
     netTimer += deltaTime;
     if (netTimer >= 0.05f) { // 20 updates per second
       game.update_pos();
       netTimer = 0.0f;
     }
 
-    PlayerAction(p[0], inventorySlot, chunkManager, inventory);
+    PlayerAction(p[0], inventorySlot, chunkManager, inventory, game);
     RendererObject.MainRenderLoop(inventory, inventorySlot, p);
 
     auto currentTime = std::chrono::high_resolution_clock::now();
