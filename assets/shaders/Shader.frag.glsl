@@ -10,7 +10,7 @@ layout (set = 2, binding = 0) uniform sampler2D u_texture;
 
 float FogStart = 20;
 float FogEnd = 75;
-vec3 FogColor = {0.5f, 0.5f, 0.5f};
+vec3 FogColor = {0.75f, 0.75f, 0.75f};
 bool AddFog = true;
 
 float Fog(){

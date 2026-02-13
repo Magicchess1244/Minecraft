@@ -5,6 +5,8 @@
 
 constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 5.0f;
+constexpr float JumpHeight = 1.5f;
+constexpr float JumpPower = 5.0f;
 float deltaTime = 1.0f;
 float JumpTimer = 0;
 float bodyHeight = 1.8f;
@@ -107,12 +109,11 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
     PlayerDirection.x = move_left ? -1 : 1;
   }
   if (!OnGround) {
-    PlayerDirection.y -= 0.1f;
-    PlayerDirection.y = SDL_clamp(PlayerDirection.y, -4, 10);
+    PlayerDirection.y -= 0.5f;
   } else {
     PlayerDirection.y = 0;
-    if (move_up && JumpTimer > 0.2f) {
-      PlayerDirection.y = 0.5f;
+    if (move_up && JumpTimer > 0.1f) {
+      PlayerDirection.y = JumpHeight * JumpPower;
       JumpTimer = 0;
     }
   }
@@ -170,8 +171,7 @@ void PlayerMove(Player &player, Vector3 playerDirection, ChunkManager &manager) 
     // 1. Vertical Movement
     if (playerDirection.y != 0) {
       Vector3 nextY = player.Position;
-      // Don't multiply jump by deltaTime to ensure consistent jump height
-      float verticalSpeed = (playerDirection.y > 0) ? playerDirection.y : playerDirection.y * playerSpeed * deltaTime;
+      float verticalSpeed = SDL_clamp(playerDirection.y * deltaTime, -10, JumpHeight);
       nextY.y += verticalSpeed;
       if (!isColliding(nextY)) {
         player.Position.y = nextY.y;
