@@ -31,11 +31,12 @@ private:
   std::thread net_thread;
 
 public:
-  GameClient() : seed(0), player_count(0), socket(io) {
+  GameClient(std::string ip = "127.0.0.1")
+      : seed(0), player_count(0), socket(io) {
     try {
-      tcp::endpoint endpoint(asio::ip::make_address("127.0.0.1"), PORT);
+      tcp::endpoint endpoint(asio::ip::make_address(ip), PORT);
       this->socket.connect(endpoint);
-      std::cout << "Connected to server at 127.0.0.1:" << PORT << std::endl;
+      std::cout << "Connected to server at " << ip << ":" << PORT << std::endl;
 
       // Receive ID
       std::string id_str = receiveMessage();
@@ -45,6 +46,7 @@ public:
       }
     } catch (std::exception &e) {
       std::cerr << "Failed to connect to server: " << e.what() << std::endl;
+      running = false;
     }
   }
 
