@@ -8,10 +8,11 @@
 
 GameServer::GameServer()
     : acceptor(io, tcp::endpoint(tcp::v4(), PORT)), seed(0), running(true) {
-  std::cout << "Server listening on port " << PORT << " with seed " << seed
-            << "...\n";
   std::srand(static_cast<unsigned int>(std::time(0)));
   seed = rand();
+
+  std::cout << "Server listening on port " << PORT << " with seed " << seed
+            << "...\n";
 }
 
 GameServer::~GameServer() {
@@ -39,8 +40,6 @@ void GameServer::set_seed(unsigned int new_seed) {
   std::cout << "Server seed set to: " << new_seed << std::endl;
   seed = new_seed;
 }
-
-unsigned int GameServer::get_seed() const { return seed; }
 
 void GameServer::AcceptClients() {
   try {

@@ -22,7 +22,6 @@ void GameClient::set_seed() {
   // or by the listener after it starts.
   // For simplicity, let's keep it sync for now but it's risky.
 }
-
 void GameClient::set_color() { this->sendCommand("getColor"); }
 
 void GameClient::listen() {
@@ -365,7 +364,6 @@ void GameLoop(GameClient &game) {
 
     auto currentTime = std::chrono::high_resolution_clock::now();
     deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
-    // Clamp deltaTime to prevent physics issues during lag spikes
     deltaTime = SDL_clamp(deltaTime, 0.0f, 0.1f); // Max 100ms per frame
     lastTime = currentTime;
   }

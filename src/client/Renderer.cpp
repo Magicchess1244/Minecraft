@@ -10,6 +10,43 @@ const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
 constexpr int RenderDistance = 6;
+const Vector3 PlayerModel[6][4] = {
+    {// Front (+Z)
+     {0.3, -1.62, 0.3},   // bottom-right (feet level)
+     {-0.3, -1.62, 0.3},  // bottom-left
+     {0.3, 0.18, 0.3},    // top-right (head level)
+     {-0.3, 0.18, 0.3}},  // top-left
+    
+    {// Back (-Z)
+     {-0.3, -1.62, -0.3}, // bottom-left
+     {0.3, -1.62, -0.3},  // bottom-right
+     {-0.3, 0.18, -0.3},  // top-left
+     {0.3, 0.18, -0.3}},  // top-right
+    
+    {// Right (+X)
+     {0.3, 0.18, 0.3},    // front-top
+     {0.3, 0.18, -0.3},   // back-top
+     {0.3, -1.62, 0.3},   // front-bottom
+     {0.3, -1.62, -0.3}}, // back-bottom
+    
+    {// Left (-X)
+     {-0.3, 0.18, -0.3},  // back-top
+     {-0.3, 0.18, 0.3},   // front-top
+     {-0.3, -1.62, -0.3}, // back-bottom
+     {-0.3, -1.62, 0.3}}, // front-bottom
+    
+    {// Top (+Y)
+     {-0.3, 0.18, -0.3},  // back-left
+     {0.3, 0.18, -0.3},   // back-right
+     {-0.3, 0.18, 0.3},   // front-left
+     {0.3, 0.18, 0.3}},   // front-right
+    
+    {// Bottom (-Y)
+     {0.3, -1.62, 0.3},   // front-right
+     {0.3, -1.62, -0.3},  // back-right
+     {-0.3, -1.62, 0.3},  // front-left
+     {-0.3, -1.62, -0.3}} // back-left
+};
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
@@ -1267,7 +1304,7 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
       for (int side = 0; side < 6; side++) {
         Uint32 base = verts.size();
         for (int i = 0; i < 4; i++) {
-          verts.push_back({Verts[side][i] + pos, color, {0, 0}, 1.0f});
+          verts.push_back({PlayerModel[side][i] + pos, color, {0, 0}, 1.0f});
         }
         indices.push_back(base + 0);
         indices.push_back(base + 2);
