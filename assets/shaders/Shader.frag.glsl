@@ -8,17 +8,52 @@ layout (location = 0) out vec4 FragColor;
 
 layout (set = 2, binding = 0) uniform sampler2D u_texture;
 
+layout(set = 1, binding = 0, std140) uniform CameraBlock { 
+    vec3 position; 
+    float isUnderwater;
+    float time;
+} cameraBlock;
+
+float NearFog = 50.0f;
+float FarFog = 150.0f;
+
 void main()
 {
     int tileIndex = int(v_blockID + 0.5); 
     float tileX = float(tileIndex % 4);
     float tileY = float(tileIndex / 4);
     
-    vec2 atlasUV = (vec2(tileX, tileY) + fract(v_uv)) * 0.25;
+    vec2 uv = fract(v_uv);
+    
+    // Water effect (Block ID 5)
+    float alpha = 1.0;
+    if (abs(v_blockID - 5.0) < 0.1) {
+        alpha = 0.6;
+        // Scroll UVs for water
+        uv.x += cameraBlock.time * 0.05;
+        uv.y += cameraBlock.time * 0.05;
+    }
+    
+    vec2 atlasUV = (vec2(tileX, tileY) + uv) * 0.25;
     vec4 texColor = texture(u_texture, atlasUV);
     
-    FragColor = v_color * texColor;
-    if (v_blockID < 4.5 || v_blockID > 5.5) {
-        FragColor.a = 1.0;
+    vec3 finalColor = v_color.rgb * texColor.rgb;
+    
+    if (abs(v_blockID - 5.0) < 0.1) {
+        finalColor = mix(finalColor, vec3(0.0, 0.3, 0.7), 0.3); // Add blue tint
     }
+    
+    // DISTANCE FOG (User's custom logic)
+    float dist = v_pos.z;
+    float fogFactor = clamp((dist - NearFog) / (FarFog - NearFog), 0.0, 1.0);
+    vec3 skyColor = vec3(0.45, 0.75, 1.0);
+    finalColor = mix(finalColor, skyColor, fogFactor);
+
+    // Underwater tint
+    if (cameraBlock.isUnderwater > 0.5) {
+        finalColor = mix(finalColor, vec3(0.0, 0.1, 0.4), 0.6); // Deep blue tint
+        finalColor *= 0.8; // Slightly darken
+    }
+
+    FragColor = vec4(finalColor, alpha);
 }

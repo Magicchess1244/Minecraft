@@ -274,12 +274,12 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   return sortedChunkList;
 }
 Vector3 getCoordinates(int pos) {
-  // xSize=16 (2^4), ySize=64 (2^6), zSize=16 (2^4)
+  // xSize=16 (2^4), ySize=128 (2^7), zSize=16 (2^4)
   // Index = x + y * xSize + z * xSize * ySize
-  // Index = x + y * 16 + z * 1024
-  int x = pos & 0xF;         // pos % 16
-  int y = (pos >> 4) & 0x3F; // (pos / 16) % 64
-  int z = (pos >> 10);       // pos / 1024
+  // Index = x + y * 16 + z * 2048
+  int x = pos & 0xF;
+  int y = (pos >> 4) & 0x7F; // (pos / 16) % 128
+  int z = (pos >> 11);       // pos / 2048
   return {(float)x, (float)y, (float)z};
 }
 void Renderer::DrawTerrain(Player &player) {
@@ -422,6 +422,15 @@ void Renderer::DrawTerrain(Player &player) {
     size_t currentVertexOffset = 0;
     size_t currentIndexOffset = 0;
 
+    // Calculate max size based on initialization logic
+    const size_t maxVertices = 4 * 4200 * chunksPerBuffer;
+    const size_t maxIndices = 6 * 4200 * chunksPerBuffer;
+
+    if (!Vertexdata || !Indexdata) {
+      // Mapping failed, skip this buffer
+      continue;
+    }
+
     for (auto *chunk : chunks) {
       Vector3 chunkPosKey = {(float)chunk->xPos / 16, 0,
                              (float)chunk->zPos / 16};
@@ -429,6 +438,14 @@ void Renderer::DrawTerrain(Player &player) {
 
       if (cache.vertices.empty())
         continue;
+
+      // Safety Check: Prevent Buffer Overflow
+      if (currentVertexOffset + cache.vertices.size() > maxVertices ||
+          currentIndexOffset + cache.indices.size() > maxIndices) {
+        // std::cerr << "Buffer full! Skipping remaining chunks in this
+        // batch.\n";
+        break;
+      }
 
       // OPTIMIZATION 8: Use memcpy for bulk vertex data
       memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
@@ -1029,8 +1046,8 @@ void Renderer::GenerateBuffer() {
       (totalChunks + chunksPerBuffer) / chunksPerBuffer + 1; // Ceiling division
 
   // Each buffer now holds multiple chunks
-  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 1200;
-  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 1200;
+  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 4200;
+  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 4200;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
   const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
 

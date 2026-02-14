@@ -165,8 +165,9 @@ int FindSlot(std::vector<Slot> &Inventory, short Type) {
   std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
   return -1;
 }
-void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
-                 Vector3 &PlayerRot, bool &LeftClick, bool &RightClick) {
+void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
+                 int &InventorySlots, Vector3 &PlayerRot, bool &LeftClick,
+                 bool &RightClick) {
   const bool *KeyboardState = SDL_GetKeyboardState(NULL);
   const bool move_foward =
       (KeyboardState[SDL_SCANCODE_W] || KeyboardState[SDL_SCANCODE_UP]);
@@ -199,13 +200,26 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
   if (move_left || move_right) {
     PlayerDirection.x = move_left ? -1 : 1;
   }
-  if (!OnGround) {
-    PlayerDirection.y -= 0.5f;
+
+  if (InWater) {
+    // Swimming mechanics
+    if (move_up) {
+      PlayerDirection.y = 2.5f; // Swim up
+    } else if (move_down) {
+      PlayerDirection.y = -2.5f; // Swim down
+    } else {
+      PlayerDirection.y = -0.1f; // Slow sink in water
+    }
   } else {
-    PlayerDirection.y = 0;
-    if (move_up && JumpTimer > 0.1f) {
-      PlayerDirection.y = JumpHeight * JumpPower;
-      JumpTimer = 0;
+    // Normal gravity and jumping
+    if (!OnGround) {
+      PlayerDirection.y -= 0.5f;
+    } else {
+      PlayerDirection.y = 0;
+      if (move_up && JumpTimer > 0.1f) {
+        PlayerDirection.y = JumpHeight * JumpPower;
+        JumpTimer = 0;
+      }
     }
   }
   if (move_backward || move_foward) {
@@ -369,8 +383,19 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   bool LeftClick = false, RightClick = false;
   bool OnGround =
       manager.RayCast(player.Position, {0, -1, 0}, bodyHeight + 0.15f).hit;
-  PlayerInput(playerDirection, OnGround, inventorySlot, RotationDir, LeftClick,
-              RightClick);
+
+  // Check if player is in water (around their middle/feet)
+  bool InWater = false;
+  try {
+    InWater =
+        (manager.GetBlockID(player.Position - Vector3(0, 0.8f, 0)) == 5) ||
+        (manager.GetBlockID(player.Position) == 5);
+  } catch (...) {
+    InWater = false;
+  }
+
+  PlayerInput(playerDirection, OnGround, InWater, inventorySlot, RotationDir,
+              LeftClick, RightClick);
   PlayerRotation(player, RotationDir);
   PlayerMove(player, playerDirection, manager);
   PlayerBreackPlace(LeftClick, RightClick, manager, player, inventorySlot,
@@ -423,9 +448,17 @@ void GameLoop(GameClient &game) {
     }
 
     netTimer += deltaTime;
+    static float waterTimer = 0.0f;
+    waterTimer += deltaTime;
+
     if (netTimer >= 0.05f) { // 20 updates per second
       game.update_pos();
       netTimer = 0.0f;
+    }
+
+    if (waterTimer >= 0.2f) { // 5 water ticks per second
+      chunkManager.TickWater();
+      waterTimer = 0.0f;
     }
 
     PlayerAction(p[0], inventorySlot, chunkManager, inventory, game);

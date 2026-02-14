@@ -1,7 +1,10 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
 
-constexpr float ySize = 64.0f;
+#include <queue>
+#include <set>
+
+constexpr float ySize = 128.0f;
 
 constexpr Biome Biomes[11] = {
     {20, 20, 0, 0, 20, 6},     // Ice
@@ -172,6 +175,158 @@ void ChunkManager::Place(Vector3 Pos, int BlockID) {
     Vector3 key = {chunkKey.x, 0, chunkKey.z + 1};
     get_chunk(key).GenerateChunk(*this);
   }
+
+  // Water Simulation: If we place water, start simulation.
+  // If we place air, check neighbors for water that might flow in.
+  if (BlockID == 5) {
+    AddActiveWater(Pos);
+  } else if (BlockID == 0) {
+    Vector3 neighbors[5] = {{Pos.x, Pos.y + 1, Pos.z},
+                            {Pos.x + 1, Pos.y, Pos.z},
+                            {Pos.x - 1, Pos.y, Pos.z},
+                            {Pos.x, Pos.y, Pos.z + 1},
+                            {Pos.x, Pos.y, Pos.z - 1}};
+    for (auto &n : neighbors) {
+      if (GetBlockID(n) == 5)
+        AddActiveWater(n);
+    }
+  }
+}
+
+void ChunkManager::AddActiveWater(Vector3 pos) {
+  // Check if already in list to avoid duplicates (could use a set for better
+  // performance)
+  for (auto &p : activeWater) {
+    if (p == pos)
+      return;
+  }
+  activeWater.push_back(pos);
+}
+
+void ChunkManager::TickWater() {
+  if (activeWater.empty())
+    return;
+
+  std::vector<Vector3> nextActive;
+  std::vector<std::pair<Vector3, int>> toPlace;
+
+  // Process a limited number of water blocks per tick to maintain performance
+  int processed = 0;
+  int limit = 200;
+
+  for (auto const &pos : activeWater) {
+    if (processed++ > limit) {
+      nextActive.push_back(pos);
+      continue;
+    }
+
+    // Check if it's still water
+    if (GetBlockID(pos) != 5)
+      continue;
+
+    // 1. Try flow down
+    Vector3 down = {pos.x, pos.y - 1, pos.z};
+    if (pos.y > 0 && GetBlockID(down) == 0) {
+      toPlace.push_back({down, 5});
+      nextActive.push_back(down);
+      // If it can go down, it usually doesn't spread horizontally as much
+      // (Minecraft style)
+    } else {
+      // 2. Try flow sideways
+      Vector3 sides[4] = {{pos.x + 1, pos.y, pos.z},
+                          {pos.x - 1, pos.y, pos.z},
+                          {pos.x, pos.y, pos.z + 1},
+                          {pos.x, pos.y, pos.z - 1}};
+
+      for (auto &s : sides) {
+        if (GetBlockID(s) == 0) {
+          // Simple limit: only spread water if it's not too far from a height
+          // source? For now, let's just spread but it might be infinite.
+          toPlace.push_back({s, 5});
+          nextActive.push_back(s);
+        }
+      }
+    }
+  }
+
+  // Apply changes using SetBlock to avoid redundant generation
+  std::set<Vector3> chunksToUpdate;
+
+  for (auto &tp : toPlace) {
+    SetBlock(tp.first, tp.second,
+             false); // Don't update neighbors during simulation to be faster
+
+    Vector3 cKey = {(float)floor(tp.first.x / 16.0f), 0,
+                    (float)floor(tp.first.z / 16.0f)};
+    chunksToUpdate.insert(cKey);
+  }
+
+  // Now regenerate only the affected chunks once
+  for (auto const &cKey : chunksToUpdate) {
+    get_chunk(cKey).GenerateChunk(*this);
+  }
+
+  activeWater = nextActive;
+}
+
+void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
+  Vector3 chunkKey = {(float)floor(Pos.x / 16.0f), 0,
+                      (float)floor(Pos.z / 16.0f)};
+  chunkKey.y = 0;
+
+  auto it = Chunks.find(chunkKey);
+  if (it == Chunks.end())
+    return;
+
+  if (Pos.y < 0 || Pos.y >= 128)
+    return;
+
+  Modifications[Pos] = BlockID;
+
+  // Update the block in the chunk immediately if it exists
+  if (!it->second.blocks.empty()) {
+    int lx = (int)floor(Pos.x) - it->second.xPos;
+    int ly = (int)floor(Pos.y);
+    int lz = (int)floor(Pos.z) - it->second.zPos;
+    if (lx >= 0 && lx < 16 && ly >= 0 && ly < 128 && lz >= 0 && lz < 16) {
+      it->second.blocks[lx + ly * 16 + lz * 16 * 128] = BlockID;
+      it->second.needsMeshUpdate = true;
+    }
+  }
+
+  if (updateNeighbors) {
+    // Basic neighbor handling if needed
+    // ...
+  }
+}
+
+Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
+  Vector3 chunkKey = {(float)floor(Pos.x / 16.0f), 0,
+                      (float)floor(Pos.z / 16.0f)};
+  auto it = Chunks.find(chunkKey);
+
+  // Safety check: Chunk must exist and have data
+  if (it == Chunks.end() || it->second.blocks.empty()) {
+    return (Pos.y < 35) ? 5 : 0;
+  }
+
+  int lx = (int)floor(Pos.x) - it->second.xPos;
+  int ly = (int)floor(Pos.y);
+  int lz = (int)floor(Pos.z) - it->second.zPos;
+
+  // Strict bounds check
+  if (lx < 0 || lx >= 16 || ly < 0 || ly >= 128 || lz < 0 || lz >= 16) {
+    return 0; // Out of chunk bounds
+  }
+
+  int idx = lx + ly * 16 + lz * 16 * 128;
+
+  // Double safety check on vector size
+  if (idx < 0 || idx >= (int)it->second.blocks.size()) {
+    return 0;
+  }
+
+  return it->second.blocks[idx];
 }
 
 /*

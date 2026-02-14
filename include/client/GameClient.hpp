@@ -56,8 +56,10 @@ public:
 
   ~GameClient() {
     running = false;
+    io.stop(); // Stop all asynchronous operations
     if (this->socket.is_open()) {
       asio::error_code ec;
+      this->socket.shutdown(tcp::socket::shutdown_both, ec);
       this->socket.close(ec);
     }
     if (net_thread.joinable())

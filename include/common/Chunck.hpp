@@ -26,7 +26,7 @@ class ChunkPrefab {
 public:
   static constexpr Uint8 xSize = 16;
   static constexpr Uint8 zSize = 16;
-  static constexpr Uint8 ySize = 64;
+  static constexpr Uint8 ySize = 128;
   static constexpr float Frecuence = 0.03f;
   static constexpr Uint8 BaseHeight = 35;
   static constexpr Uint8 HeightVar = 30;
@@ -36,6 +36,7 @@ public:
 
   // Flat 3D array for much faster access (10-100x faster than unordered_map)
   std::vector<DrawnFace> allFaces;
+  std::vector<Uint8> blocks; // Persistent block data for collision/raycasting
 
   bool isDirty = false; // Track if chunk needs saving
   bool needsMeshUpdate = true;

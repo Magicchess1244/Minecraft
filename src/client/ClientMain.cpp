@@ -15,12 +15,14 @@ int main(int argc, char *argv[]) {
     ip = "127.0.0.1";
   }
 
-  GameClient client(ip);
+  {
+    GameClient client(ip);
 
-  if (client.GetRunning()) {
-    BitMiner::GameLoop(client);
-  } else {
-    std::cout << "Could not connect to server. Exiting." << std::endl;
+    if (client.GetRunning()) {
+      BitMiner::GameLoop(client);
+    } else {
+      std::cout << "Could not connect to server. Exiting." << std::endl;
+    }
   }
 
   SDL_Quit();

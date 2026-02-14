@@ -28,14 +28,17 @@ typedef struct {
   float y;
 } HeightsDif;
 
-constexpr int BlockNum = 6;
+constexpr int BlockNum = 9;
 const Block BlockDef[BlockNum] = {
     {"Air", 0, {255, 178, 255}, {0, 0}, false, false},
     {"Grass", 1, {255, 255, 255}, {0, 0}, true, false},
     {"Dirt", 2, {255, 255, 255}, {1, 3}, true, false},
     {"Stone", 3, {255, 255, 255}, {4, 64}, false, false},
     {"Bedrock", 4, {255, 255, 255}, {0, 3}, false, false},
-    {"Water", 5, {0, 102, 204}, {0, 0}, false, true}};
+    {"Water", 5, {0, 102, 204}, {0, 0}, false, true},
+    {"Wood", 6, {255, 255, 255}, {0, 0}, false, false},
+    {"Leaves", 7, {255, 255, 255}, {0, 0}, false, false},
+    {"Sand", 8, {255, 255, 255}, {0, 0}, true, false}};
 
 struct RaycastResult {
   bool hit;
@@ -54,6 +57,9 @@ private:
 public:
   ChunkManager();
   ~ChunkManager();
+
+  void TickWater();
+  void AddActiveWater(Vector3 pos);
 
   ChunkPrefab &get_chunk(Vector3 key);
   Biome GetBiome(float Humudity, float Temperature);
@@ -74,6 +80,12 @@ public:
   RaycastResult RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
   bool IsSolid(Vector3 worldPos);
   void Place(Vector3 Pos, int BlockID);
+  void SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors = true);
+  Uint8 GetBlockID(Vector3 Pos);
+
+private:
+  std::vector<Vector3> activeWater;
+  float waterTickTimer = 0.0f;
 };
 /*
 namespace ChunckManager {

@@ -68,6 +68,13 @@ struct Vector3 {
 
   bool operator!=(const Vector3 &other) const { return !(*this == other); }
 
+  bool operator<(const Vector3 &other) const {
+    if (x != other.x)
+      return x < other.x;
+    if (y != other.y)
+      return y < other.y;
+    return z < other.z;
+  }
   bool operator>(const Vector3 &other) const {
     return x > other.x && y > other.y && z > other.z;
   }
