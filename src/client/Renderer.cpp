@@ -10,42 +10,43 @@ const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
 constexpr int RenderDistance = 6;
+constexpr float PlayerRad = 0.4;
 const Vector3 PlayerModel[6][4] = {
-    {// Front (+Z)
-     {0.3, -1.62, 0.3},   // bottom-right (feet level)
-     {-0.3, -1.62, 0.3},  // bottom-left
-     {0.3, 0.18, 0.3},    // top-right (head level)
-     {-0.3, 0.18, 0.3}},  // top-left
-    
-    {// Back (-Z)
-     {-0.3, -1.62, -0.3}, // bottom-left
-     {0.3, -1.62, -0.3},  // bottom-right
-     {-0.3, 0.18, -0.3},  // top-left
-     {0.3, 0.18, -0.3}},  // top-right
-    
-    {// Right (+X)
-     {0.3, 0.18, 0.3},    // front-top
-     {0.3, 0.18, -0.3},   // back-top
-     {0.3, -1.62, 0.3},   // front-bottom
-     {0.3, -1.62, -0.3}}, // back-bottom
-    
-    {// Left (-X)
-     {-0.3, 0.18, -0.3},  // back-top
-     {-0.3, 0.18, 0.3},   // front-top
-     {-0.3, -1.62, -0.3}, // back-bottom
-     {-0.3, -1.62, 0.3}}, // front-bottom
-    
-    {// Top (+Y)
-     {-0.3, 0.18, -0.3},  // back-left
-     {0.3, 0.18, -0.3},   // back-right
-     {-0.3, 0.18, 0.3},   // front-left
-     {0.3, 0.18, 0.3}},   // front-right
-    
-    {// Bottom (-Y)
-     {0.3, -1.62, 0.3},   // front-right
-     {0.3, -1.62, -0.3},  // back-right
-     {-0.3, -1.62, 0.3},  // front-left
-     {-0.3, -1.62, -0.3}} // back-left
+    {                                // Front (+Z)
+     {PlayerRad, -1.62, PlayerRad},  // bottom-right (feet level)
+     {-PlayerRad, -1.62, PlayerRad}, // bottom-left
+     {PlayerRad, 0.18, PlayerRad},   // top-right (head level)
+     {-PlayerRad, 0.18, PlayerRad}}, // top-left
+
+    {                                 // Back (-Z)
+     {-PlayerRad, -1.62, -PlayerRad}, // bottom-left
+     {PlayerRad, -1.62, -PlayerRad},  // bottom-right
+     {-PlayerRad, 0.18, -PlayerRad},  // top-left
+     {PlayerRad, 0.18, -PlayerRad}},  // top-right
+
+    {                                 // Right (+X)
+     {PlayerRad, 0.18, PlayerRad},    // front-top
+     {PlayerRad, 0.18, -PlayerRad},   // back-top
+     {PlayerRad, -1.62, PlayerRad},   // front-bottom
+     {PlayerRad, -1.62, -PlayerRad}}, // back-bottom
+
+    {                                 // Left (-X)
+     {-PlayerRad, 0.18, -PlayerRad},  // back-top
+     {-PlayerRad, 0.18, PlayerRad},   // front-top
+     {-PlayerRad, -1.62, -PlayerRad}, // back-bottom
+     {-PlayerRad, -1.62, PlayerRad}}, // front-bottom
+
+    {                                // Top (+Y)
+     {-PlayerRad, 0.18, -PlayerRad}, // back-left
+     {PlayerRad, 0.18, -PlayerRad},  // back-right
+     {-PlayerRad, 0.18, PlayerRad},  // front-left
+     {PlayerRad, 0.18, PlayerRad}},  // front-right
+
+    {                                 // Bottom (-Y)
+     {PlayerRad, -1.62, PlayerRad},   // front-right
+     {PlayerRad, -1.62, -PlayerRad},  // back-right
+     {-PlayerRad, -1.62, PlayerRad},  // front-left
+     {-PlayerRad, -1.62, -PlayerRad}} // back-left
 };
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
@@ -100,6 +101,7 @@ const Color Colors[3] = {
     {25, 25, 25}, // Right / Left
     {50, 50, 50}, // Top / Bottom
 };
+
 Matrix Perspective(float Fov, float Aspect, float Near, float Far) {
   Matrix m(4, 4, 0.0f);
   float tanHalfFov = std::tan(Fov * PI / 360.0f);
@@ -581,7 +583,7 @@ void Renderer::UpdateViewportAndProjection() {
   this->frustum =
       Frustum().createFrustumFromCamera(aspect, tanHalfFov, Znear, Zfar);
 }
-void Renderer::EventManager(Player &player) {
+void Renderer::EventManager(Player &player, int &inventorySlot) {
   while (SDL_PollEvent(&this->basicInitVars.event)) {
     switch (this->basicInitVars.event.type) {
     case SDL_EVENT_QUIT:
@@ -591,6 +593,14 @@ void Renderer::EventManager(Player &player) {
 
     case SDL_EVENT_WINDOW_RESIZED: {
       UpdateViewportAndProjection();
+      break;
+    }
+    case SDL_EVENT_MOUSE_WHEEL: {
+      if (this->basicInitVars.event.wheel.y > 0) {
+        inventorySlot = (inventorySlot + 7) % 8; // Previous
+      } else if (this->basicInitVars.event.wheel.y < 0) {
+        inventorySlot = (inventorySlot + 1) % 8; // Next
+      }
       break;
     }
     case SDL_EVENT_KEY_DOWN: {
@@ -615,9 +625,9 @@ void Renderer::EventManager(Player &player) {
     }
   }
 }
-void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
+void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
                               std::vector<Player> &players) {
-  EventManager(players[0]);
+  EventManager(players[0], inventorySlot);
 
   // Transform frustum to world space based on player position and rotation
   // Create a fresh frustum in camera space
@@ -739,53 +749,115 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
 
   SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
 
-  DrawUI(this->runTimeRenderVars.cmdRender, swap_texture);
+  DrawUI(this->runTimeRenderVars.cmdRender, swap_texture, inventory,
+         inventorySlot);
 
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
     std::cout << "Failed to submit render command buffer\n";
     return;
   }
 }
-void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture) {
-  float size = 0.005f;
+void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
+                      const std::vector<Slot> &inventory, int inventorySlot) {
   float aspect =
       (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
 
-  // Apply aspect ratio correction to horizontal dimensions
-  float sizeX = size * 5 / aspect; // Divide by aspect to compensate
-  float sizeY = size;
+  // Crosshair size
+  float crossSize = 0.02f;
+  float sizeX = crossSize / aspect;
+  float sizeY = crossSize;
 
-  Vertex uiVertices[12] = {
-      // Horizontal crosshair line
-      {{-sizeX, -sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{sizeX, -sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{-sizeX, sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{sizeX, -sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{sizeX, sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{-sizeX, sizeY, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      // Vertical crosshair line
-      {{-sizeY / aspect, -sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{sizeY / aspect, -sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{-sizeY / aspect, sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{sizeY / aspect, -sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{sizeY / aspect, sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
-      {{-sizeY / aspect, sizeX * aspect, 0.0f}, {1.0f, 1.0f, 1.0f}, {0, 0}, 0},
+  std::vector<Vertex> uiVertices;
+
+  // 1. Crosshair (using thin lines/rects)
+  auto addRect = [&](float x, float y, float w, float h, Vector3 color,
+                     float blockID = 0) {
+    uiVertices.push_back({{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
+    uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+    uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+    uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+    uiVertices.push_back({{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
+    uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
   };
+
+  // Crosshair lines
+  float thickness = 0.002f;
+  // Horizontal
+  addRect(-sizeX, -thickness, sizeX * 2, thickness * 2, {1, 1, 1});
+  // Vertical
+  addRect(-thickness / aspect, -sizeY, thickness * 2 / aspect, sizeY * 2,
+          {1, 1, 1});
+
+  // 2. Inventory / Hotbar
+  float hotbarHeight = 0.12f;
+  float slotCount = 8;
+  float slotSpacing = 0.01f;
+  // Logical width (same as height for square slots)
+  float logicalSlotSize = hotbarHeight - 2 * slotSpacing;
+  float logicalTotalWidth =
+      slotCount * logicalSlotSize + (slotCount + 1) * slotSpacing;
+
+  float hotbarWidthNDC = logicalTotalWidth / aspect;
+  float hotbarX = -hotbarWidthNDC / 2.0f;
+  float hotbarY = -0.95f;
+
+  // Background
+  addRect(hotbarX, hotbarY, hotbarWidthNDC, hotbarHeight, {0.1f, 0.1f, 0.1f});
+
+  for (int i = 0; i < slotCount; i++) {
+    float xNDC =
+        hotbarX + (slotSpacing + i * (logicalSlotSize + slotSpacing)) / aspect;
+    float yNDC = hotbarY + slotSpacing;
+    float wNDC = logicalSlotSize / aspect;
+    float hNDC = logicalSlotSize;
+
+    // Slot background
+    Vector3 bgColor = (i == inventorySlot) ? Vector3{0.4f, 0.4f, 0.4f}
+                                           : Vector3{0.2f, 0.2f, 0.2f};
+    addRect(xNDC, yNDC, wNDC, hNDC, bgColor);
+
+    // Border highlight
+    if (i == inventorySlot) {
+      float b = 0.005f;
+      float bX = b / aspect;
+      float bY = b;
+      // top
+      addRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
+      // bottom
+      addRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
+      // left
+      addRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
+      // right
+      addRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
+    }
+
+    // Item icon
+    if (i < inventory.size() && inventory[i].Type != 0) {
+      float iconPadding = 0.015f;
+      float pX = iconPadding / aspect;
+      float pY = iconPadding;
+      addRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
+              (float)inventory[i].Type);
+    }
+  }
+
+  size_t Length = uiVertices.size();
 
   // Upload vertex data to GPU
   void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
                                            this->UITransferBuffer, true);
-  SDL_memcpy(mapData, uiVertices, sizeof(uiVertices));
+  SDL_memcpy(mapData, uiVertices.data(), uiVertices.size() * sizeof(Vertex));
   SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->UITransferBuffer);
 
   // Copy data to GPU buffer
   SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
   SDL_GPUTransferBufferLocation src = {this->UITransferBuffer, 0};
-  SDL_GPUBufferRegion dst = {this->UIBuffer, 0, sizeof(uiVertices)};
+  SDL_GPUBufferRegion dst = {this->UIBuffer, 0,
+                             (Uint32)(uiVertices.size() * sizeof(Vertex))};
   SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
   SDL_EndGPUCopyPass(copyPass);
 
-  // Setup color target to load existing content (don't clear)
+  // Setup color target to load existing content
   SDL_GPUColorTargetInfo color_target_info;
   SDL_zero(color_target_info);
   color_target_info.texture = swap_texture;
@@ -796,11 +868,17 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture) {
   SDL_GPURenderPass *uiPass =
       SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
 
-  // Bind UI pipeline and draw crosshair
+  // Bind UI pipeline and textures
   SDL_BindGPUGraphicsPipeline(uiPass, this->pipelineInitVars.uiPipeline);
+
+  // Bind Texture Atlas and Sampler for UI
+  SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
+                                                 this->Sampler};
+  SDL_BindGPUFragmentSamplers(uiPass, 0, &samplerBinding, 1);
+
   SDL_GPUBufferBinding vBinding = {this->UIBuffer, 0};
   SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
-  SDL_DrawGPUPrimitives(uiPass, 12, 1, 0, 0);
+  SDL_DrawGPUPrimitives(uiPass, (Uint32)uiVertices.size(), 1, 0, 0);
   SDL_EndGPURenderPass(uiPass);
 }
 SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
@@ -1223,34 +1301,59 @@ void Renderer::PipelineInit() {
   SDL_GPUShader *ui_vert =
       LoadShader(this->basicInitVars.GPU, "UI.vert", 0, 0, 0, 0);
   SDL_GPUShader *ui_frag =
-      LoadShader(this->basicInitVars.GPU, "UI.frag", 0, 0, 0, 0);
+      LoadShader(this->basicInitVars.GPU, "UI.frag", 1, 0, 0, 0);
 
-  SDL_GPUGraphicsPipelineCreateInfo ui_desc =
-      this->pipelineInitVars.pipeline_desc;
+  SDL_GPUGraphicsPipelineCreateInfo ui_desc;
+  SDL_zero(ui_desc);
+
   ui_desc.vertex_shader = ui_vert;
   ui_desc.fragment_shader = ui_frag;
-  ui_desc.depth_stencil_state.enable_depth_test = false;
-  ui_desc.depth_stencil_state.enable_depth_write = false;
-  ui_desc.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+
+  ui_desc.target_info.num_color_targets = 1;
+  ui_desc.target_info.color_target_descriptions =
+      this->pipelineInitVars.colorTargetDescriptions;
   ui_desc.target_info.has_depth_stencil_target = false;
 
-  ui_desc.vertex_input_state.num_vertex_attributes =
-      2; // Only Position and Color
+  ui_desc.depth_stencil_state.enable_depth_test = false;
+  ui_desc.depth_stencil_state.enable_depth_write = false;
 
-  this->pipelineInitVars.uiPipeline =
-      SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &ui_desc);
+  ui_desc.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+  ui_desc.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+  ui_desc.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
 
-  SDL_ReleaseGPUShader(this->basicInitVars.GPU, ui_vert);
-  SDL_ReleaseGPUShader(this->basicInitVars.GPU, ui_frag);
+  ui_desc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+
+  ui_desc.vertex_input_state.num_vertex_buffers = 1;
+  ui_desc.vertex_input_state.vertex_buffer_descriptions =
+      &this->pipelineInitVars.vertex_buffer_desc;
+  ui_desc.vertex_input_state.num_vertex_attributes = 4;
+  ui_desc.vertex_input_state.vertex_attributes =
+      this->pipelineInitVars.vertex_attributes;
+
+  if (!ui_vert || !ui_frag) {
+    SDL_Log("UI Shaders failed to load! vert: %p, frag: %p", (void *)ui_vert,
+            (void *)ui_frag);
+  } else {
+    this->pipelineInitVars.uiPipeline =
+        SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &ui_desc);
+    if (!this->pipelineInitVars.uiPipeline) {
+      SDL_Log("Failed to create UI pipeline: %s", SDL_GetError());
+    }
+  }
+
+  if (ui_vert)
+    SDL_ReleaseGPUShader(this->basicInitVars.GPU, ui_vert);
+  if (ui_frag)
+    SDL_ReleaseGPUShader(this->basicInitVars.GPU, ui_frag);
 
   // Create UI Buffer
   SDL_GPUBufferCreateInfo uiBufferInfo = {};
-  uiBufferInfo.size = sizeof(Vertex) * 12;
+  uiBufferInfo.size = sizeof(Vertex) * 2048; // Increased from 12 to 2048
   uiBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
   this->UIBuffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &uiBufferInfo);
 
   SDL_GPUTransferBufferCreateInfo uiTransferInfo = {};
-  uiTransferInfo.size = sizeof(Vertex) * 12;
+  uiTransferInfo.size = sizeof(Vertex) * 2048; // Increased from 12 to 2048
   uiTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
   this->UITransferBuffer =
       SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &uiTransferInfo);
@@ -1282,7 +1385,6 @@ void Renderer::PipelineInit() {
   this->EntityIndexTransferBuffer = SDL_CreateGPUTransferBuffer(
       this->basicInitVars.GPU, &entityIndexTransferInfo);
 }
-
 void Renderer::DrawPlayers(std::vector<Player> &players) {
   if (players.size() <= 1)
     return;

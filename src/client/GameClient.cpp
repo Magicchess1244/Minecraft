@@ -239,7 +239,7 @@ void PlayerMove(Player &player, Vector3 playerDirection,
   auto isColliding = [&](Vector3 pos) {
     if (!PLayerColistion)
       return false;
-    float r = 0.3f; // player radius
+    float r = 0.4f; // player radius
     float eyeHeight = 1.6f;
 
     // Points to check: corners of the box at foot level, waist level, and head

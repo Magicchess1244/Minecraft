@@ -3,11 +3,9 @@
 
 #include "../common/Common.hpp"
 #include "Renderer.hpp"
-#include <algorithm>
 #include <asio.hpp>
 #include <asio/ip/address_v4.hpp>
 #include <iostream>
-#include <map>
 #include <mutex>
 #include <thread>
 
@@ -123,9 +121,7 @@ public:
 
   bool GetRunning() const { return running; }
   void Quit() {
-    running = false;
-    asio::error_code ec;
-    socket.close(ec);
+    this->running = false;
   }
 };
 

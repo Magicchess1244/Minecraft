@@ -311,7 +311,7 @@ private:
   void PipelineInit();
   void ColorTargetDes();
   void LoadTexture();
-  void EventManager(Player &player);
+  void EventManager(Player &player, int &inventorySlot);
 
 public:
   Renderer(GameClient &gameClient, ChunkManager &manager);
@@ -325,8 +325,18 @@ public:
                                    mesh.VertextransferBuffer);
     }
 
-    SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
-                                   pipelineInitVars.graphicsPipeline);
+    if (pipelineInitVars.graphicsPipeline) {
+      SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
+                                     pipelineInitVars.graphicsPipeline);
+    }
+    if (pipelineInitVars.transparentPipeline) {
+      SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
+                                     pipelineInitVars.transparentPipeline);
+    }
+    if (pipelineInitVars.uiPipeline) {
+      SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
+                                     pipelineInitVars.uiPipeline);
+    }
 
     if (TextureAtlas) {
       SDL_ReleaseGPUTexture(this->basicInitVars.GPU, TextureAtlas);
@@ -343,6 +353,24 @@ public:
     if (UITransferBuffer) {
       SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, UITransferBuffer);
       UITransferBuffer = nullptr;
+    }
+    if (EntityBuffer) {
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, EntityBuffer);
+      EntityBuffer = nullptr;
+    }
+    if (EntityTransferBuffer) {
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   EntityTransferBuffer);
+      EntityTransferBuffer = nullptr;
+    }
+    if (EntityIndexBuffer) {
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, EntityIndexBuffer);
+      EntityIndexBuffer = nullptr;
+    }
+    if (EntityIndexTransferBuffer) {
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   EntityIndexTransferBuffer);
+      EntityIndexTransferBuffer = nullptr;
     }
 
     // Release DepthTexture before destroying GPU device
@@ -373,7 +401,8 @@ public:
                    const Frustum &worldFrustum);
   void DrawTerrain(Player &player);
   void DrawPlayers(std::vector<Player> &players);
-  void DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture);
-  void MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
+  void DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
+              const std::vector<Slot> &inventory, int inventorySlot);
+  void MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
                       std::vector<Player> &players);
 };
