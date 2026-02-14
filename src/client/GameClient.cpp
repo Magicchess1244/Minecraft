@@ -163,8 +163,7 @@ int FindSlot(std::vector<Slot> &Inventory, short Type) {
     index++;
   }
   std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
-  // FIXME: return Option<int>
-  return 0;
+  return -1;
 }
 void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots,
                  Vector3 &PlayerRot, bool &LeftClick, bool &RightClick) {
@@ -314,10 +313,21 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
         manager.RayCast(player.Position, player.Rotation.Forward(), 10);
     if (Ray.hit) {
       if (justLeft) {
+        if (Ray.BlockID == 4)
+          return; // Can't break bedrock
+
         manager.Place(Ray.pos, 0); // Break block (Air)
         std::string mod = "mod:" + std::to_string(Ray.pos.x) + "/" +
                           std::to_string(Ray.pos.y) + "/" +
                           std::to_string(Ray.pos.z) + ":0";
+
+        int slotIdx = FindSlot(inventory, Ray.BlockID);
+        if (slotIdx != -1) {
+          if (inventory[slotIdx].Amount == 0) {
+            inventory[slotIdx].Type = Ray.BlockID;
+          }
+          inventory[slotIdx].Amount++;
+        }
         game.sendCommand(mod);
       } else {
         // Prevent placing block inside player's body
@@ -334,8 +344,11 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
           }
         }
 
-        if (!collides) {
+        if (!collides && inventory[inventorySlot].Amount > 0) {
           Uint8 type = inventory[inventorySlot].Type;
+          inventory[inventorySlot].Amount--;
+          if (inventory[inventorySlot].Amount == 0)
+            inventory[inventorySlot].Type = 0;
           manager.Place(placePos, type);
           std::string mod = "mod:" + std::to_string(placePos.x) + "/" +
                             std::to_string(placePos.y) + "/" +

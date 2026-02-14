@@ -84,7 +84,6 @@ void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
                     << std::endl;
         } else {
           std::cout << "Player " << id << " disconnected." << std::endl;
-          next_id--;
         }
         break;
       }

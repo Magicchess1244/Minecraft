@@ -56,11 +56,12 @@ public:
 
   ~GameClient() {
     running = false;
+    if (this->socket.is_open()) {
+      asio::error_code ec;
+      this->socket.close(ec);
+    }
     if (net_thread.joinable())
       net_thread.join();
-    if (this->socket.is_open()) {
-      this->socket.close();
-    }
     std::cout << "Client disconnected cleanly.\n";
   }
 
@@ -120,9 +121,7 @@ public:
   void update_pos();
 
   bool GetRunning() const { return running; }
-  void Quit() {
-    this->running = false;
-  }
+  void Quit() { this->running = false; }
 };
 
 namespace BitMiner {

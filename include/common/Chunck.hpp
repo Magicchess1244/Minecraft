@@ -45,6 +45,8 @@ public:
   void GenerateChunk(ChunkManager &manager);
   bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight,
                     ChunkManager &manager);
+  Uint8 GetBlockID(int worldX, int worldY, int worldZ, int terrainHeight,
+                   ChunkManager &manager);
   int GetHeight(Vector2 Pos);
 
 private:

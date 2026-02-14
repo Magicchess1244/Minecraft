@@ -41,39 +41,46 @@ int ChunkPrefab::GetHeight(Vector2 Pos) {
 
 bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
                                int terrainHeight, ChunkManager &manager) {
-  int localX = worldX - xPos;
-  int localY = worldY;
-  int localZ = worldZ - zPos;
+  Uint8 blockID = GetBlockID(worldX, worldY, worldZ, terrainHeight, manager);
+  return blockID != 0 &&
+         blockID != 5; // Air and Water are not solid (for collision)
+}
 
+Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
+                              int terrainHeight, ChunkManager &manager) {
   // Priority 1: User modifications (placing/breaking)
   Uint8 Modifications =
       manager.GetMod({(float)worldX, (float)worldY, (float)worldZ});
   if (Modifications != 255) {
-    return Modifications != 0; // 0 is Air (not solid), others are solid
+    return Modifications;
   }
 
   // Priority 2: World boundaries
   if (worldY < 0 || worldY >= ySize)
-    return false;
+    return 0; // Air
   if (worldY == 0)
-    return true; // Bedrock floor
+    return 4; // Bedrock floor
 
   // Priority 3: Natural terrain
   if (worldY > terrainHeight)
-    return false;
-  if (worldY < CaveMinY)
-    return true;
+    return 0; // Air
 
   // Priority 4: Caves
-  if (worldY <= CaveMaxY) {
+  if (worldY >= CaveMinY && worldY <= CaveMaxY) {
     float caveNoise = PerlinNoise(
         {(float)worldX * 0.1f, (float)worldY * 0.1f, (float)worldZ * 0.1f}, 3,
         0.5f);
     if (caveNoise < CaveThreshold)
-      return false;
+      return 0; // Air
   }
 
-  return true;
+  // Determine block type by height
+  if (terrainHeight - worldY > 3)
+    return 3; // Stone
+  else if (terrainHeight - worldY > 0)
+    return 2; // Dirt
+
+  return 1; // Grass
 }
 
 void ChunkPrefab::GenerateChunk(ChunkManager &manager) {

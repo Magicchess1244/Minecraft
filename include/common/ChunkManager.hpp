@@ -41,6 +41,7 @@ struct RaycastResult {
   bool hit;
   Vector3 pos;
   Vector3 prevPos;
+  Uint8 BlockID;
 };
 int BaseHeight(float ValueNoise, int Length, const HeightsDif *Heights);
 

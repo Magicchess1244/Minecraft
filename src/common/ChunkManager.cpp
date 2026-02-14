@@ -110,8 +110,11 @@ RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
 
       int Height = CurrentChunk->GetHeight({NewPos.x, NewPos.z});
       if (CurrentChunk->isSolidBlock((int)NewPos.x, (int)NewPos.y,
-                                     (int)NewPos.z, Height, *this))
-        return {true, NewPos, LastPos};
+                                     (int)NewPos.z, Height, *this)) {
+        Uint8 blockID = CurrentChunk->GetBlockID((int)NewPos.x, (int)NewPos.y,
+                                                 (int)NewPos.z, Height, *this);
+        return {true, NewPos, LastPos, blockID};
+      }
 
       LastPos = NewPos;
     }
