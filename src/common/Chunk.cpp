@@ -3,8 +3,8 @@
 #include <SDL3/SDL_stdinc.h>
 
 constexpr float CaveThreshold = -0.18f;
-constexpr int CaveMinY = 2;
-constexpr int CaveMaxY = 38;
+constexpr int CaveMinY = 5;
+constexpr int CaveMaxY = 50;
 
 const Vector3 Direction[6] = {
     {0, 0, 1},  // Front
@@ -16,8 +16,8 @@ const Vector3 Direction[6] = {
 };
 
 constexpr HeightsDif ContinentelnessHeight[5] = {
-    {0.65f, 100}, // Huge Mountains
-    {0.25f, 60},  // Hills
+    {0.3f, 100},  // Huge Mountains
+    {0.f, 60},    // Hills
     {-0.35f, 38}, // Plains (near sea level)
     {-0.45f, 25}, // Shallow Water / Beach
     {-0.9f, 15}}; // Deep Ocean
@@ -129,15 +129,40 @@ Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
 void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   this->allFaces.clear();
 
-  static const int offsets[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-  static const Uint8 faceIndices[4] = {3, 2, 1, 0}; // Left, Right, Back, Front
+  // 1. Generate Height Map
+  std::vector<int> heightCache;
+  GenerateHeightMap(heightCache);
 
-  // ========== OPTIMIZATION 1: Cache all heights (including neighbors)
-  // ========== We need heights for neighbors too, so cache (xSize+2) x
-  // (zSize+2)
+  // 2. Generate Cave Density Map
+  std::vector<float> caveDensityCache;
+  GenerateCaveMap(caveDensityCache);
+
+  // 3. Generate Modification Map
+  std::vector<Uint8> modCache;
+  GenerateModMap(modCache, manager);
+
+  // 4. Populate Blocks (Main Terrain Logic)
+  std::vector<bool> solidCache(xSize * ySize * zSize, false);
+  PopulateBlocks(heightCache, caveDensityCache, modCache, solidCache, manager);
+
+  // 5. Water Spread Logic
+  SimulateWaterSpread(solidCache);
+
+  // 6. Vegetation (Trees)
+  GenerateVegetation(heightCache, modCache, solidCache);
+
+  // 7. Generate Mesh
+  GenerateMesh(solidCache, heightCache, manager);
+
+  isDirty = false;
+  needsMeshUpdate = true;
+  allFaces.shrink_to_fit();
+}
+
+void ChunkPrefab::GenerateHeightMap(std::vector<int> &heightCache) {
   const int heightCacheWidth = xSize + 2;
   const int heightCacheDepth = zSize + 2;
-  std::vector<int> heightCache(heightCacheWidth * heightCacheDepth);
+  heightCache.resize(heightCacheWidth * heightCacheDepth);
 
   for (int x = -1; x <= xSize; x++) {
     for (int z = -1; z <= zSize; z++) {
@@ -145,11 +170,10 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       heightCache[cacheIdx] = GetHeight({(float)(xPos + x), (float)(zPos + z)});
     }
   }
+}
 
-  // ========== OPTIMIZATION 2: Cache cave "density" for the entire chunk
-  // ==========
-  std::vector<float> caveDensityCache(xSize * (CaveMaxY - CaveMinY + 1) *
-                                      zSize);
+void ChunkPrefab::GenerateCaveMap(std::vector<float> &caveDensityCache) {
+  caveDensityCache.resize(xSize * (CaveMaxY - CaveMinY + 1) * zSize);
   for (int y = CaveMinY; y <= CaveMaxY; y++) {
     for (int x = 0; x < xSize; x++) {
       for (int z = 0; z < zSize; z++) {
@@ -169,10 +193,11 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       }
     }
   }
+}
 
-  // ========== OPTIMIZATION 3: Cache modifications for the entire chunk
-  // ==========
-  std::vector<Uint8> modCache(xSize * ySize * zSize, 255);
+void ChunkPrefab::GenerateModMap(std::vector<Uint8> &modCache,
+                                 ChunkManager &manager) {
+  modCache.assign(xSize * ySize * zSize, 255);
   for (int y = 0; y < ySize; y++) {
     for (int x = 0; x < xSize; x++) {
       for (int z = 0; z < zSize; z++) {
@@ -184,12 +209,18 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       }
     }
   }
+}
 
-  // ========== OPTIMIZATION 4: Cache solidity and block IDs ==========
+void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
+                                 const std::vector<float> &caveDensityCache,
+                                 const std::vector<Uint8> &modCache,
+                                 std::vector<bool> &solidCache,
+                                 ChunkManager &manager) {
   if (this->blocks.size() != (size_t)xSize * ySize * zSize) {
     this->blocks.assign(xSize * ySize * zSize, 0);
   }
-  std::vector<bool> solidCache(xSize * ySize * zSize, false);
+
+  const int heightCacheWidth = xSize + 2;
 
   for (int x = 0; x < xSize; x++) {
     for (int z = 0; z < zSize; z++) {
@@ -202,86 +233,74 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
         int idx = x + y * xSize + z * xSize * ySize;
 
         Uint8 mod = modCache[idx];
-
-        // Check if solid
         bool isSolid = false;
         Uint8 blockID = 0;
 
-        // Priority 1: User modifications
         if (mod != 255) {
           isSolid = (mod != 0 && mod != 5);
           blockID = mod;
         } else {
-          // Priority 2: World boundaries
-          if (y < 0 || y >= ySize) {
+          if (y == 0) {
+            isSolid = true;
+            blockID = 4; // Bedrock
+          } else if (y < 0 || y >= ySize) {
             isSolid = false;
-          } else if (y == 0) {
-            isSolid = true; // Bedrock floor
-            blockID = 4;    // Bedrock
           } else {
-            // Priority 3: Natural terrain
             const int seaLevel = 35;
             float cont = PerlinNoise2D(
                 {(float)worldX * 0.005f, (float)worldZ * 0.005f}, 3, 0.5f);
-            float temp = PerlinNoise2D(
-                {(float)worldX * 0.01f, (float)worldZ * 0.01f}, 2, 0.5f);
 
-            if (y > height) {
-              // Above terrain: Check for Water
-              if (y < seaLevel) {
-                isSolid = false; // Water is not solid for collision
-                blockID = 5;     // Water
+            bool isCave = false;
+            if (y >= CaveMinY && y <= CaveMaxY) {
+              int cIdx = x + (y - CaveMinY) * xSize +
+                         z * xSize * (CaveMaxY - CaveMinY + 1);
+              if (caveDensityCache[cIdx] < 0.015f) {
+                isCave = true;
+              }
+            }
+
+            if (y > height || isCave) {
+              if (y < seaLevel && cont < -0.1f) {
+                isSolid = false;
+                blockID = 5; // Water
               } else {
                 isSolid = false;
                 blockID = 0; // Air
               }
             } else {
-              // Below/At terrain level
               isSolid = true;
 
               const int beachLevel = 37;
-              if (height <= beachLevel) {
-                blockID = 8; // Sand in ocean bed, river bed, and beaches
-              } else if (height - y > 3) {
+              bool isBeach = (height <= beachLevel &&
+                              height >= beachLevel - 3 && cont < -0.1f);
+              bool isUnderwaterFloor = (height < seaLevel);
+
+              if (height - y > 3) {
                 blockID = 3; // Stone
+              } else if (isBeach || isUnderwaterFloor) {
+                blockID = 8; // Sand
               } else if (height - y > 0) {
                 blockID = 2; // Dirt
               } else {
                 blockID = 1; // Grass
               }
             }
-
-            // Priority 4: Caves (only in solid ground)
-            if (isSolid && y >= CaveMinY && y <= CaveMaxY) {
-              int cIdx = x + (y - CaveMinY) * xSize +
-                         z * xSize * (CaveMaxY - CaveMinY + 1);
-              float caveDensity = caveDensityCache[cIdx];
-              if (caveDensity < 0.05f) {
-                isSolid = false;
-                blockID = 0; // Air
-              }
-            }
           }
         }
-
         solidCache[idx] = isSolid;
         this->blocks[idx] = blockID;
       }
     }
   }
+}
 
-  // ========== OPTIMIZATION 4.2: Water Spread Pass ==========
-  // If a block is Air but next to Water (and below sea level), fill it
-  // ========== OPTIMIZATION 4.2: Water Spread Pass ==========
-  // If a block is Air but next to Water (and below sea level), fill it
-  // Safe iteration: skip edges to avoid boundary checks crashes
+void ChunkPrefab::SimulateWaterSpread(std::vector<bool> &solidCache) {
   const int seaLevel = 35;
   for (int x = 1; x < xSize - 1; x++) {
     for (int z = 1; z < zSize - 1; z++) {
-      for (int y = 1; y < seaLevel - 1; y++) { // Avoid top/bottom too
+      for (int y = 1; y < seaLevel - 1; y++) {
         int idx = x + y * xSize + z * xSize * ySize;
         if (this->blocks[idx] == 0) { // Air
-          // Check neighbors safely
           bool nearWater = false;
           if (this->blocks[idx - 1] == 5)
             nearWater = true;
@@ -302,8 +321,12 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       }
     }
   }
+}
 
-  // ========== OPTIMIZATION 4.5: Structure Pass (Trees) ==========
+void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
+                                     const std::vector<Uint8> &modCache,
+                                     std::vector<bool> &solidCache) {
+  const int heightCacheWidth = xSize + 2;
   for (int x = 2; x < xSize - 2; x++) {
     for (int z = 2; z < zSize - 2; z++) {
       int heightIdx = (x + 1) + (z + 1) * heightCacheWidth;
@@ -312,25 +335,21 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       if (height < CaveMinY || height > ySize - 10)
         continue;
 
-      // Deterministic tree placement
       float treeNoise = PerlinNoise2D(
           {(float)(xPos + x) * 0.5f, (float)(zPos + z) * 0.5f}, 1, 0.5f);
-      if (treeNoise > 0.75f) { // 5% chance of tree
-        // Check if on grass
+      if (treeNoise > 0.65f && treeNoise < 0.7f) {
         int idx = x + height * xSize + z * xSize * ySize;
         if (this->blocks[idx] == 1) { // On Grass
-          // Place trunk
           int trunkHeight = 4 + (int)(treeNoise * 4.0f);
           for (int ty = 1; ty <= trunkHeight; ty++) {
             if (height + ty < ySize) {
               int tidx = x + (height + ty) * xSize + z * xSize * ySize;
-              if (modCache[tidx] == 255) { // Only if not modified by player
+              if (modCache[tidx] == 255) {
                 solidCache[tidx] = true;
                 this->blocks[tidx] = 6; // Wood
               }
             }
           }
-          // Place leaves
           for (int ly = trunkHeight - 1; ly <= trunkHeight + 1; ly++) {
             for (int lx = -2; lx <= 2; lx++) {
               for (int lz = -2; lz <= 2; lz++) {
@@ -339,7 +358,6 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
                     nz < zSize) {
                   int lidx = nx + ny * xSize + nz * xSize * ySize;
                   if (this->blocks[lidx] == 0 && modCache[lidx] == 255) {
-                    // Spherical-ish canopy
                     if (lx * lx + lz * lz +
                             (ly - trunkHeight) * (ly - trunkHeight) <=
                         5) {
@@ -355,10 +373,15 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       }
     }
   }
+}
 
-  // ========== OPTIMIZATION 5: Cache neighbor solidity (including neighbor
-  // chunks) ========== For neighbors outside the chunk, we need to check them
-  // separately
+void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
+                               const std::vector<int> &heightCache,
+                               ChunkManager &manager) {
+  static const int offsets[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+  static const Uint8 faceIndices[4] = {3, 2, 1, 0}; // Left, Right, Back, Front
+
+  // For neighbors outside the chunk, we need to check them separately
   auto isNeighborSolid = [&](int worldX, int worldY, int worldZ,
                              int neighborHeight) -> bool {
     int localX = worldX - xPos;
@@ -375,12 +398,10 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
     return isSolidBlock(worldX, worldY, worldZ, neighborHeight, manager);
   };
 
-  // ========== OPTIMIZATION 6: Estimate face count and reserve ==========
-  // Rough estimate: assume ~6 faces per surface block
-  int estimatedFaces = xSize * zSize * 8;
+  int estimatedFaces =
+      xSize * zSize * 8; // Adjust estimation based on new complexity
   this->allFaces.reserve(estimatedFaces);
 
-  // ========== OPTIMIZATION 7: Generate faces using greedy meshing ==========
   for (int side = 0; side < 6; side++) {
     int d = (side < 2) ? 2 : (side < 4 ? 0 : 1); // normal axis
     int u, v;
@@ -509,8 +530,4 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       }
     }
   }
-
-  isDirty = false;
-  needsMeshUpdate = true;
-  allFaces.shrink_to_fit();
 }

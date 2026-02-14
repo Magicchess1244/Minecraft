@@ -18,5 +18,5 @@ void main() {
     v_color = vec4(a_color, 1.0);
     v_uv = a_uv;
     v_blockID = a_blockID;
-    v_pos = a_position;
+    v_pos = gl_Position.xyz;
 }

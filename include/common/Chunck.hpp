@@ -51,8 +51,19 @@ public:
   int GetHeight(Vector2 Pos);
 
 private:
-  // void GenerateChunkCaves();
-  void VisableFaces();
+  void GenerateHeightMap(std::vector<int> &heightCache);
+  void GenerateCaveMap(std::vector<float> &caveDensityCache);
+  void GenerateModMap(std::vector<Uint8> &modCache, ChunkManager &manager);
+  void PopulateBlocks(const std::vector<int> &heightCache,
+                      const std::vector<float> &caveDensityCache,
+                      const std::vector<Uint8> &modCache,
+                      std::vector<bool> &solidCache, ChunkManager &manager);
+  void SimulateWaterSpread(std::vector<bool> &solidCache);
+  void GenerateVegetation(const std::vector<int> &heightCache,
+                          const std::vector<Uint8> &modCache,
+                          std::vector<bool> &solidCache);
+  void GenerateMesh(const std::vector<bool> &solidCache,
+                    const std::vector<int> &heightCache, ChunkManager &manager);
 };
 
 #endif
