@@ -213,31 +213,38 @@ SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
   SDL_FPoint point = {(float)u, (float)v};
   return point;
 }
-auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color, float blockID){
-    this->uiVars.uiVertices.push_back({{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
+                       float blockID) {
+  this->uiVars.uiVertices.push_back(
+      {{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
+  this->uiVars.uiVertices.push_back(
+      {{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+  this->uiVars.uiVertices.push_back(
+      {{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+  this->uiVars.uiVertices.push_back(
+      {{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+  this->uiVars.uiVertices.push_back(
+      {{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
+  this->uiVars.uiVertices.push_back(
+      {{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
 }
-void Renderer::UICrossHair(){
-    // Crosshair size
+void Renderer::UICrossHair() {
+  // Crosshair size
   float crossSize = 0.02f;
   float sizeX = crossSize / this->runTimeRenderVars.aspect;
   float sizeY = crossSize;
-
 
   // Crosshair lines
   float thickness = 0.002f;
   // Horizontal
   AddRect(-sizeX, -thickness, sizeX * 2, thickness * 2, {1, 1, 1});
   // Vertical
-  AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY, thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2,
-          {1, 1, 1});
+  AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY,
+          thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2, {1, 1, 1});
 }
-void Renderer::UIInventory(const std::vector<Slot> &inventory, int inventorySlot){
-    // 2. Inventory / Hotbar
+void Renderer::UIInventory(const std::vector<Slot> &inventory,
+                           int inventorySlot) {
+  // 2. Inventory / Hotbar
   float hotbarHeight = 0.12f;
   float slotCount = 8;
   float slotSpacing = 0.01f;
@@ -254,8 +261,8 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory, int inventorySlot
   AddRect(hotbarX, hotbarY, hotbarWidthNDC, hotbarHeight, {0.1f, 0.1f, 0.1f});
 
   for (int i = 0; i < slotCount; i++) {
-    float xNDC =
-        hotbarX + (slotSpacing + i * (logicalSlotSize + slotSpacing)) / this->runTimeRenderVars.aspect;
+    float xNDC = hotbarX + (slotSpacing + i * (logicalSlotSize + slotSpacing)) /
+                               this->runTimeRenderVars.aspect;
     float yNDC = hotbarY + slotSpacing;
     float wNDC = logicalSlotSize / this->runTimeRenderVars.aspect;
     float hNDC = logicalSlotSize;
@@ -292,23 +299,26 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory, int inventorySlot
 }
 void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
                       const std::vector<Slot> &inventory, int inventorySlot) {
-                    
+
   UICrossHair();
   UIInventory(inventory, inventorySlot);
 
   size_t Length = uiVars.uiVertices.size();
 
   // Upload vertex data to GPU
-  void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
-                                           this->uiVars.UIVertexTransferBuffer, true);
-  SDL_memcpy(mapData, uiVars.uiVertices.data(), uiVars.uiVertices.size() * sizeof(Vertex));
-  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
+  void *mapData = SDL_MapGPUTransferBuffer(
+      this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
+  SDL_memcpy(mapData, uiVars.uiVertices.data(),
+             uiVars.uiVertices.size() * sizeof(Vertex));
+  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                             this->uiVars.UIVertexTransferBuffer);
 
   // Copy data to GPU buffer
   SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
   SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer, 0};
-  SDL_GPUBufferRegion dst = {this->uiVars.UIVertexBuffer, 0,
-                             (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
+  SDL_GPUBufferRegion dst = {
+      this->uiVars.UIVertexBuffer, 0,
+      (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
   SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
   SDL_EndGPUCopyPass(copyPass);
 
@@ -333,7 +343,8 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
 
   SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
   SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
-  SDL_DrawGPUPrimitives(uiPass, (Uint32)this->uiVars.uiVertices.size(), 1, 0, 0);
+  SDL_DrawGPUPrimitives(uiPass, (Uint32)this->uiVars.uiVertices.size(), 1, 0,
+                        0);
   SDL_EndGPURenderPass(uiPass);
 
   this->uiVars.uiVertices.clear();
@@ -660,8 +671,20 @@ void Renderer::DrawTerrain(Player &player) {
       Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
       Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
       Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
-      mesh->BaseVertex += 4;
       mesh->BaseIndex += 6;
+
+      if (face.blockID == 5) {
+        Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
+        Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 1;
+        Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 2;
+
+        Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
+        Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 3;
+        Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 2;
+        mesh->BaseIndex += 6;
+      }
+
+      mesh->BaseVertex += 4;
     }
     mesh->TransparentIndexCount = mesh->BaseIndex - mesh->OpaqueIndexCount;
 
@@ -681,7 +704,7 @@ void Renderer::DrawTerrain(Player &player) {
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
   }
 }
-void Renderer::DrawBg(std::vector<Player> &players){
+void Renderer::DrawBg(std::vector<Player> &players) {
   this->runTimeRenderVars.cmdCopy =
       SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
@@ -700,7 +723,8 @@ void Renderer::DrawBg(std::vector<Player> &players){
 
   SDL_WaitAndAcquireGPUSwapchainTexture(
       this->runTimeRenderVars.cmdRender, this->basicInitVars.window,
-      &this->runTimeRenderVars.swap_texture, &this->basicInitVars.Width, &this->basicInitVars.Height);
+      &this->runTimeRenderVars.swap_texture, &this->basicInitVars.Width,
+      &this->basicInitVars.Height);
 
   if (this->runTimeRenderVars.swap_texture == NULL) {
     std::cout << "La swap_texture no s'ha fet be\n";
@@ -742,11 +766,10 @@ void Renderer::DrawBg(std::vector<Player> &players){
       this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
       sizeof(float) * view.getColumnMajorData().size());
 
-
   Uint32 water = (this->chunkManager.GetBlockID(player.Position) == 5) ? 1 : 0;
 
-  SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0,
-                                 &water, sizeof(Uint32));
+  SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0, &water,
+                                 sizeof(Uint32));
 
   this->runTimeRenderVars.pass =
       SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
@@ -939,8 +962,8 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
   this->runTimeRenderVars.aspect =
       (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
   float tanHalfFov = tan(FOV * PI / 360.0f);
-  Frustum worldFrustum =
-      Frustum::createFrustumFromCamera(this->runTimeRenderVars.aspect, tanHalfFov, Znear, Zfar);
+  Frustum worldFrustum = Frustum::createFrustumFromCamera(
+      this->runTimeRenderVars.aspect, tanHalfFov, Znear, Zfar);
 
   // Transform to world space using player's position and rotation
   worldFrustum.transformToWorldSpace(players[0].Position, players[0].Rotation);
@@ -950,8 +973,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
 
   DrawBg(players);
 
-  DrawUI(this->runTimeRenderVars.cmdRender, inventory,
-         inventorySlot);
+  DrawUI(this->runTimeRenderVars.cmdRender, inventory, inventorySlot);
 
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
     std::cout << "Failed to submit render command buffer\n";
@@ -1427,7 +1449,8 @@ void Renderer::PipelineInit() {
   SDL_GPUBufferCreateInfo uiBufferInfo = {};
   uiBufferInfo.size = sizeof(Vertex) * 2048; // Increased from 12 to 2048
   uiBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-  this->uiVars.UIVertexBuffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &uiBufferInfo);
+  this->uiVars.UIVertexBuffer =
+      SDL_CreateGPUBuffer(this->basicInitVars.GPU, &uiBufferInfo);
 
   SDL_GPUTransferBufferCreateInfo uiTransferInfo = {};
   uiTransferInfo.size = sizeof(Vertex) * 2048; // Increased from 12 to 2048
