@@ -205,11 +205,12 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
   if (InWater) {
     // Swimming mechanics
     if (move_up) {
-      PlayerDirection.y = 4.0f; // Swim up
+      PlayerDirection.y = JumpHeight * JumpPower; // Swim up
     } else if (move_down) {
-      PlayerDirection.y = -6.0f;// Swim down
+      PlayerDirection.y -= 2.0f;// Swim down
+      PlayerDirection.y = std::clamp(playerDirection.y, -6.0f , 0.f);
     } else {
-      PlayerDirection.y = -2.0f; // Slow sink in water
+      PlayerDirection.y = -2.5f; // Slow sink in water
     }
   } else {
     // Normal gravity and jumping

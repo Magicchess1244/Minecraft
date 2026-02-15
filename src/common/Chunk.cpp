@@ -15,13 +15,14 @@ const Vector3 Direction[6] = {
     {0, -1, 0}  // Bottom
 };
 
-constexpr HeightsDif ContinentelnessHeight[6] = {
-    {0.5f, 120},  // Extreme Mountains
-    {0.3f, 100},  // Huge Mountains
-    {0.0f, 60},   // Hills
+constexpr HeightsDif ContinentelnessHeight[7] = {
+    {0.7f, 120},  // Extreme Mountains
+    {0.4f, 100},  // Huge Mountains
+    {0.15f, 50},   // Hills
+    {-0.15f, 38}, // Plains (near sea level)
+    {-0.25f, 25}, // Shallow Water / Beach
     {-0.35f, 38}, // Plains (near sea level)
-    {-0.45f, 25}, // Shallow Water / Beach
-    {-0.9f, 15}}; // Deep Ocean
+    {-1.0f, 15}}; // Deep Ocean
 
 float SampleSpline(float value, const HeightsDif *spline, int length) {
   if (value >= spline[0].x)
@@ -338,7 +339,7 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
 
       float treeNoise = PerlinNoise2D(
           {(float)(xPos + x) * 0.5f, (float)(zPos + z) * 0.5f}, 1, 0.5f);
-      if (treeNoise > 0.65f && treeNoise < 0.7f) {
+      if (treeNoise > 0.65f && treeNoise < 0.7f || treeNoise > 0.9f) {
         int idx = x + height * xSize + z * xSize * ySize;
         if (this->blocks[idx] == 1) { // On Grass
           int trunkHeight = 4 + (int)(treeNoise * 4.0f);
@@ -434,22 +435,23 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
             int worldY = nx[1];
             int worldZ = nx[2] + zPos;
 
-            bool neighborInBounds = (nx[0] >= 0 && nx[0] < xSize && 
-                                    nx[1] >= 0 && nx[1] < ySize &&
-                                    nx[2] >= 0 && nx[2] < zSize);
+            bool neighborInBounds =
+                (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
+                 nx[2] >= 0 && nx[2] < zSize);
 
             Uint8 nBid = 0;
-            
+
             if (neighborInBounds) {
               // Neighbor is within current chunk - use local cache
               int nIdx = nx[0] + nx[1] * xSize + nx[2] * xSize * ySize;
               nBid = this->blocks[nIdx];
             } else if (worldY >= 0 && worldY < ySize) {
-              // Neighbor is outside chunk - calculate using same logic as PopulateBlocks
-              
+              // Neighbor is outside chunk - calculate using same logic as
+              // PopulateBlocks
+
               // Calculate terrain height for neighbor position
               int height = GetHeight({(float)worldX, (float)worldZ});
-              
+
               // Check for bedrock
               if (worldY == 0) {
                 nBid = 4; // Bedrock
@@ -457,22 +459,24 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
                 const int seaLevel = 35;
                 float cont = PerlinNoise2D(
                     {(float)worldX * 0.005f, (float)worldZ * 0.005f}, 3, 0.5f);
-                
+
                 // Check for caves using same logic
                 bool isCave = false;
                 if (worldY >= CaveMinY && worldY <= CaveMaxY) {
-                  float n1 = PerlinNoise(
-                      {(float)worldX * 0.08f, (float)worldY * 0.08f, (float)worldZ * 0.08f},
-                      2, 0.5f);
-                  float n2 = PerlinNoise(
-                      {(float)worldX * 0.1f + 100.0f, (float)worldY * 0.1f, (float)worldZ * 0.1f},
-                      2, 0.5f);
+                  float n1 =
+                      PerlinNoise({(float)worldX * 0.08f, (float)worldY * 0.08f,
+                                   (float)worldZ * 0.08f},
+                                  2, 0.5f);
+                  float n2 =
+                      PerlinNoise({(float)worldX * 0.1f + 100.0f,
+                                   (float)worldY * 0.1f, (float)worldZ * 0.1f},
+                                  2, 0.5f);
                   float density = (n1 * n1) + (n2 * n2);
                   if (density < 0.015f) {
                     isCave = true;
                   }
                 }
-                
+
                 // Determine block type using same logic as PopulateBlocks
                 if (worldY > height || isCave) {
                   if (worldY < seaLevel && cont < -0.1f) {
@@ -486,7 +490,7 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
                   bool isBeach = (height <= beachLevel &&
                                   height >= beachLevel - 3 && cont < -0.1f);
                   bool isUnderwaterFloor = (height < seaLevel);
-                  
+
                   if (height - worldY > 3) {
                     nBid = 3; // Stone
                   } else if (isBeach || isUnderwaterFloor) {
@@ -504,7 +508,7 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
             }
 
             // Determine visibility based on block types
-            if (bid == 5) {          
+            if (bid == 5) {
               // Water: only show faces against air
               visible = (nBid == 0);
             } else {

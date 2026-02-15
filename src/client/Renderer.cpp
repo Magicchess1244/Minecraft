@@ -677,7 +677,6 @@ void Renderer::DrawTerrain(Player &player) {
         Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
         Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 1;
         Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 2;
-
         Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
         Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 3;
         Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 2;
