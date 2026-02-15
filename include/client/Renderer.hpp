@@ -275,12 +275,20 @@ struct RunTimeRenderVars {
   SDL_GPUCopyPass *copyPass = nullptr;
   SDL_GPUCommandBuffer *cmdRender = nullptr;
   SDL_GPUCommandBuffer *cmdCopy = nullptr;
+  float aspect = 0;
 };
 class GameClient;
 
 struct CachedChunkMesh {
   std::vector<Vertex> vertices;
   std::vector<Uint32> indices;
+};
+struct UIVars{
+  std::vector<Vertex> uiVertices;
+  SDL_GPUBuffer *UIVertexBuffer = nullptr;
+  SDL_GPUBuffer *UIIndexBuffer = nullptr;
+  SDL_GPUTransferBuffer *UIVertexTransferBuffer = nullptr;
+  SDL_GPUTransferBuffer *UIIndexTransferBuffer = nullptr;
 };
 class Renderer {
 private:
@@ -291,8 +299,7 @@ private:
   SDL_GPUTexture *DepthTexture = nullptr;
   SDL_GPUTexture *TextureAtlas = nullptr;
   SDL_GPUSampler *Sampler = nullptr;
-  SDL_GPUBuffer *UIBuffer = nullptr;
-  SDL_GPUTransferBuffer *UITransferBuffer = nullptr;
+  UIVars uiVars;
   SDL_GPUBuffer *EntityBuffer = nullptr;
   SDL_GPUTransferBuffer *EntityTransferBuffer = nullptr;
   SDL_GPUBuffer *EntityIndexBuffer = nullptr;
@@ -307,6 +314,8 @@ private:
   Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);
   void DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
                 Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata);
+  auto AddRect(float x, float y, float w, float h, Vector3 color, float blockID = 0);
+  void UICrossHair();
   std::vector<ChunkDistance> SortChunks(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();
@@ -351,13 +360,13 @@ public:
       SDL_ReleaseGPUSampler(this->basicInitVars.GPU, Sampler);
       Sampler = nullptr;
     }
-    if (UIBuffer) {
-      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, UIBuffer);
-      UIBuffer = nullptr;
+    if (this->uiVars.UIVertexBuffer) {
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexBuffer);
+      this->uiVars.UIVertexBuffer = nullptr;
     }
-    if (UITransferBuffer) {
-      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, UITransferBuffer);
-      UITransferBuffer = nullptr;
+    if (this->uiVars.UIVertexTransferBuffer) {
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
+      this->uiVars.UIVertexTransferBuffer = nullptr;
     }
     if (EntityBuffer) {
       SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, EntityBuffer);

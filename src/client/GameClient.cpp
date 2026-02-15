@@ -205,9 +205,9 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
   if (InWater) {
     // Swimming mechanics
     if (move_up) {
-      PlayerDirection.y = 2.5f; // Swim up
+      PlayerDirection.y = 4.0f; // Swim up
     } else if (move_down) {
-      PlayerDirection.y = -2.5f; // Swim down
+      PlayerDirection.y = -6.0f;// Swim down
     } else {
       PlayerDirection.y = -2.0f; // Slow sink in water
     }

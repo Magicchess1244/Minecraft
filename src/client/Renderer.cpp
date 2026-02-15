@@ -722,7 +722,8 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
       this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
       sizeof(float) * view.getColumnMajorData().size());
 
-  Uint32 water = (player.Inwater) ? 1 : 0;
+
+  Uint32 water = (this->chunkManager.GetBlockID(player.Position) == 5) ? 1 : 0;
 
   SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0,
                                  &water, sizeof(Uint32));
@@ -780,36 +781,36 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
     return;
   }
 }
-void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
-                      const std::vector<Slot> &inventory, int inventorySlot) {
-  float aspect =
-      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
-
-  // Crosshair size
+auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color, float blockID){
+    this->uiVars.uiVertices.push_back({{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+}
+void Renderer::UICrossHair(){
+    // Crosshair size
   float crossSize = 0.02f;
-  float sizeX = crossSize / aspect;
+  float sizeX = crossSize / this->runTimeRenderVars.aspect;
   float sizeY = crossSize;
 
-  std::vector<Vertex> uiVertices;
-
-  // 1. Crosshair (using thin lines/rects)
-  auto addRect = [&](float x, float y, float w, float h, Vector3 color,
-                     float blockID = 0) {
-    uiVertices.push_back({{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
-    uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
-    uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
-    uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
-    uiVertices.push_back({{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
-    uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
-  };
 
   // Crosshair lines
   float thickness = 0.002f;
   // Horizontal
-  addRect(-sizeX, -thickness, sizeX * 2, thickness * 2, {1, 1, 1});
+  AddRect(-sizeX, -thickness, sizeX * 2, thickness * 2, {1, 1, 1});
   // Vertical
-  addRect(-thickness / aspect, -sizeY, thickness * 2 / aspect, sizeY * 2,
+  AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY, thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2,
           {1, 1, 1});
+}
+void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
+                      const std::vector<Slot> &inventory, int inventorySlot) {
+  this->uiVars.uiVertices.clear();
+  this->runTimeRenderVars.aspect =
+      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+                    
+  UICrossHair();
 
   // 2. Inventory / Hotbar
   float hotbarHeight = 0.12f;
@@ -820,63 +821,63 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
   float logicalTotalWidth =
       slotCount * logicalSlotSize + (slotCount + 1) * slotSpacing;
 
-  float hotbarWidthNDC = logicalTotalWidth / aspect;
+  float hotbarWidthNDC = logicalTotalWidth / this->runTimeRenderVars.aspect;
   float hotbarX = -hotbarWidthNDC / 2.0f;
   float hotbarY = -0.95f;
 
   // Background
-  addRect(hotbarX, hotbarY, hotbarWidthNDC, hotbarHeight, {0.1f, 0.1f, 0.1f});
+  AddRect(hotbarX, hotbarY, hotbarWidthNDC, hotbarHeight, {0.1f, 0.1f, 0.1f});
 
   for (int i = 0; i < slotCount; i++) {
     float xNDC =
-        hotbarX + (slotSpacing + i * (logicalSlotSize + slotSpacing)) / aspect;
+        hotbarX + (slotSpacing + i * (logicalSlotSize + slotSpacing)) / this->runTimeRenderVars.aspect;
     float yNDC = hotbarY + slotSpacing;
-    float wNDC = logicalSlotSize / aspect;
+    float wNDC = logicalSlotSize / this->runTimeRenderVars.aspect;
     float hNDC = logicalSlotSize;
 
     // Slot background
     Vector3 bgColor = (i == inventorySlot) ? Vector3{0.4f, 0.4f, 0.4f}
                                            : Vector3{0.2f, 0.2f, 0.2f};
-    addRect(xNDC, yNDC, wNDC, hNDC, bgColor);
+    AddRect(xNDC, yNDC, wNDC, hNDC, bgColor);
 
     // Border highlight
     if (i == inventorySlot) {
       float b = 0.005f;
-      float bX = b / aspect;
+      float bX = b / this->runTimeRenderVars.aspect;
       float bY = b;
       // top
-      addRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
+      AddRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
       // bottom
-      addRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
+      AddRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
       // left
-      addRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
+      AddRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
       // right
-      addRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
+      AddRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
     }
 
     // Item icon
     if (i < inventory.size() && inventory[i].Type != 0) {
       float iconPadding = 0.015f;
-      float pX = iconPadding / aspect;
+      float pX = iconPadding / this->runTimeRenderVars.aspect;
       float pY = iconPadding;
-      addRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
+      AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
               (float)inventory[i].Type);
     }
   }
 
-  size_t Length = uiVertices.size();
+  size_t Length = uiVars.uiVertices.size();
 
   // Upload vertex data to GPU
   void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
-                                           this->UITransferBuffer, true);
-  SDL_memcpy(mapData, uiVertices.data(), uiVertices.size() * sizeof(Vertex));
-  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->UITransferBuffer);
+                                           this->uiVars.UIVertexTransferBuffer, true);
+  SDL_memcpy(mapData, uiVars.uiVertices.data(), uiVars.uiVertices.size() * sizeof(Vertex));
+  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
 
   // Copy data to GPU buffer
   SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
-  SDL_GPUTransferBufferLocation src = {this->UITransferBuffer, 0};
-  SDL_GPUBufferRegion dst = {this->UIBuffer, 0,
-                             (Uint32)(uiVertices.size() * sizeof(Vertex))};
+  SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer, 0};
+  SDL_GPUBufferRegion dst = {this->uiVars.UIVertexBuffer, 0,
+                             (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
   SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
   SDL_EndGPUCopyPass(copyPass);
 
@@ -899,9 +900,9 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
                                                  this->Sampler};
   SDL_BindGPUFragmentSamplers(uiPass, 0, &samplerBinding, 1);
 
-  SDL_GPUBufferBinding vBinding = {this->UIBuffer, 0};
+  SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
   SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
-  SDL_DrawGPUPrimitives(uiPass, (Uint32)uiVertices.size(), 1, 0, 0);
+  SDL_DrawGPUPrimitives(uiPass, (Uint32)this->uiVars.uiVertices.size(), 1, 0, 0);
   SDL_EndGPURenderPass(uiPass);
 }
 SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
@@ -1372,12 +1373,12 @@ void Renderer::PipelineInit() {
   SDL_GPUBufferCreateInfo uiBufferInfo = {};
   uiBufferInfo.size = sizeof(Vertex) * 2048; // Increased from 12 to 2048
   uiBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-  this->UIBuffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &uiBufferInfo);
+  this->uiVars.UIVertexBuffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &uiBufferInfo);
 
   SDL_GPUTransferBufferCreateInfo uiTransferInfo = {};
   uiTransferInfo.size = sizeof(Vertex) * 2048; // Increased from 12 to 2048
   uiTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-  this->UITransferBuffer =
+  this->uiVars.UIVertexTransferBuffer =
       SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &uiTransferInfo);
 
   // Create Entity Buffer

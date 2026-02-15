@@ -14,7 +14,7 @@ layout(set = 3, binding = 0, std140) uniform Water { uint water; } inWater;
 float NearFog = 50.0;
 float FarFog = 150.0;
 float NearFogInWater = 5.0;
-float FarFogInWater = 12.0;
+float FarFogInWater = 20.0;
 
 void main()
 {
@@ -49,7 +49,7 @@ void main()
     float dist = v_pos.z;
     float fogFactor = clamp((dist - NearFogInWater) / (FarFogInWater - NearFogInWater), 0.0, 1.0);
     vec3 skyColor = vec3(0.45, 0.75, 1.0);
-    finalColor = mix(finalColor, skyColor, fogFactor);
+    //finalColor = mix(finalColor, skyColor, fogFactor);
 
     finalColor = mix(finalColor, vec3(0.0, 0.1, 0.5), 0.5); // Deep blue tint
     finalColor *= 0.9; // Slightly darken
