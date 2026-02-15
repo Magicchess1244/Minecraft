@@ -275,6 +275,7 @@ struct RunTimeRenderVars {
   SDL_GPUCopyPass *copyPass = nullptr;
   SDL_GPUCommandBuffer *cmdRender = nullptr;
   SDL_GPUCommandBuffer *cmdCopy = nullptr;
+  SDL_GPUTexture *swap_texture = nullptr;
   float aspect = 0;
 };
 class GameClient;
@@ -311,12 +312,11 @@ private:
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
 
-  Vector3 rotate(const Vector3 &pos, const Vector3 &Angle);
-  void DrawFace(Player &player, Vector3 blocks, int blockID, int Side,
-                Mesh *mesh, Vertex *Vertexdata, Uint32 *Indexdata);
   auto AddRect(float x, float y, float w, float h, Vector3 color, float blockID = 0);
   void UICrossHair();
+  void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
   std::vector<ChunkDistance> SortChunks(Player &player);
+  void DrawTerrain(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();
   void Init();
@@ -410,13 +410,11 @@ public:
   };
 
   void Stats(Player &player);
-  void RenderChunk(ChunkPrefab &chunk, Player &player, int chunkIndex,
-                   int bufferIndex, int bufferOffset,
-                   const Frustum &worldFrustum);
-  void DrawTerrain(Player &player);
+  void DrawBg(std::vector<Player> &players);
   void DrawPlayers(std::vector<Player> &players);
-  void DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
+  void DrawUI(SDL_GPUCommandBuffer *cmd,
               const std::vector<Slot> &inventory, int inventorySlot);
+      
   void MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
                       std::vector<Player> &players);
 };

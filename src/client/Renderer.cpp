@@ -213,26 +213,130 @@ SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
   SDL_FPoint point = {(float)u, (float)v};
   return point;
 }
-Vector3 Renderer::rotate(const Vector3 &pos, const Vector3 &Angle) {
-  Vector3 angleRadians = Angle.AngleToRadians();
-  float cx = cos(angleRadians.x), sx = sin(angleRadians.x);
-  float cy = cos(angleRadians.y), sy = sin(angleRadians.y);
-  float cz = cos(angleRadians.z), sz = sin(angleRadians.z);
+auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color, float blockID){
+    this->uiVars.uiVertices.push_back({{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
+    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+}
+void Renderer::UICrossHair(){
+    // Crosshair size
+  float crossSize = 0.02f;
+  float sizeX = crossSize / this->runTimeRenderVars.aspect;
+  float sizeY = crossSize;
 
-  Vector3 result;
 
-  // Row 1
-  result.x = pos.x * (cy * cz) + pos.y * (-cy * sz) + pos.z * (sy);
+  // Crosshair lines
+  float thickness = 0.002f;
+  // Horizontal
+  AddRect(-sizeX, -thickness, sizeX * 2, thickness * 2, {1, 1, 1});
+  // Vertical
+  AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY, thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2,
+          {1, 1, 1});
+}
+void Renderer::UIInventory(const std::vector<Slot> &inventory, int inventorySlot){
+    // 2. Inventory / Hotbar
+  float hotbarHeight = 0.12f;
+  float slotCount = 8;
+  float slotSpacing = 0.01f;
+  // Logical width (same as height for square slots)
+  float logicalSlotSize = hotbarHeight - 2 * slotSpacing;
+  float logicalTotalWidth =
+      slotCount * logicalSlotSize + (slotCount + 1) * slotSpacing;
 
-  // Row 2
-  result.y = pos.x * (sx * sy * cz + cx * sz) +
-             pos.y * (-sx * sy * sz + cx * cz) + pos.z * (-sx * cy);
+  float hotbarWidthNDC = logicalTotalWidth / this->runTimeRenderVars.aspect;
+  float hotbarX = -hotbarWidthNDC / 2.0f;
+  float hotbarY = -0.95f;
 
-  // Row 3
-  result.z = pos.x * (-cx * sy * cz + sx * sz) +
-             pos.y * (cx * sy * sz + sx * cz) + pos.z * (cx * cy);
+  // Background
+  AddRect(hotbarX, hotbarY, hotbarWidthNDC, hotbarHeight, {0.1f, 0.1f, 0.1f});
 
-  return result;
+  for (int i = 0; i < slotCount; i++) {
+    float xNDC =
+        hotbarX + (slotSpacing + i * (logicalSlotSize + slotSpacing)) / this->runTimeRenderVars.aspect;
+    float yNDC = hotbarY + slotSpacing;
+    float wNDC = logicalSlotSize / this->runTimeRenderVars.aspect;
+    float hNDC = logicalSlotSize;
+
+    // Slot background
+    Vector3 bgColor = (i == inventorySlot) ? Vector3{0.4f, 0.4f, 0.4f}
+                                           : Vector3{0.2f, 0.2f, 0.2f};
+    AddRect(xNDC, yNDC, wNDC, hNDC, bgColor);
+
+    // Border highlight
+    if (i == inventorySlot) {
+      float b = 0.005f;
+      float bX = b / this->runTimeRenderVars.aspect;
+      float bY = b;
+      // top
+      AddRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
+      // bottom
+      AddRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
+      // left
+      AddRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
+      // right
+      AddRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
+    }
+
+    // Item icon
+    if (i < inventory.size() && inventory[i].Type != 0) {
+      float iconPadding = 0.015f;
+      float pX = iconPadding / this->runTimeRenderVars.aspect;
+      float pY = iconPadding;
+      AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
+              (float)inventory[i].Type);
+    }
+  }
+}
+void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
+                      const std::vector<Slot> &inventory, int inventorySlot) {
+                    
+  UICrossHair();
+  UIInventory(inventory, inventorySlot);
+
+  size_t Length = uiVars.uiVertices.size();
+
+  // Upload vertex data to GPU
+  void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
+                                           this->uiVars.UIVertexTransferBuffer, true);
+  SDL_memcpy(mapData, uiVars.uiVertices.data(), uiVars.uiVertices.size() * sizeof(Vertex));
+  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
+
+  // Copy data to GPU buffer
+  SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
+  SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer, 0};
+  SDL_GPUBufferRegion dst = {this->uiVars.UIVertexBuffer, 0,
+                             (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
+  SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
+  SDL_EndGPUCopyPass(copyPass);
+
+  // Setup color target to load existing content
+  SDL_GPUColorTargetInfo color_target_info;
+  SDL_zero(color_target_info);
+  color_target_info.texture = this->runTimeRenderVars.swap_texture;
+  color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
+  color_target_info.store_op = SDL_GPU_STOREOP_STORE;
+
+  // Begin UI render pass
+  SDL_GPURenderPass *uiPass =
+      SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
+
+  // Bind UI pipeline and textures
+  SDL_BindGPUGraphicsPipeline(uiPass, this->pipelineInitVars.uiPipeline);
+
+  // Bind Texture Atlas and Sampler for UI
+  SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
+                                                 this->Sampler};
+  SDL_BindGPUFragmentSamplers(uiPass, 0, &samplerBinding, 1);
+
+  SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
+  SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
+  SDL_DrawGPUPrimitives(uiPass, (Uint32)this->uiVars.uiVertices.size(), 1, 0, 0);
+  SDL_EndGPURenderPass(uiPass);
+
+  this->uiVars.uiVertices.clear();
 }
 std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   Vector3 PlayerChunk = (player.Position / 16).Truncate();
@@ -577,90 +681,7 @@ void Renderer::DrawTerrain(Player &player) {
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
   }
 }
-void Renderer::UpdateViewportAndProjection() {
-  // Get the actual drawable size (important for high-DPI displays)
-  int drawableWidth, drawableHeight;
-  SDL_GetWindowSizeInPixels(this->basicInitVars.window, &drawableWidth,
-                            &drawableHeight);
-
-  this->basicInitVars.Width = drawableWidth;
-  this->basicInitVars.Height = drawableHeight;
-
-  std::cout << "Updating viewport to: " << drawableWidth << "x"
-            << drawableHeight << std::endl;
-
-  // Recreate depth texture with new size
-  if (this->DepthTexture) {
-    SDL_ReleaseGPUTexture(this->basicInitVars.GPU, this->DepthTexture);
-  }
-  this->DepthTexture = CreateDepthTexture(drawableWidth, drawableHeight);
-
-  // Update frustum for new aspect ratio
-  float aspect = (float)drawableWidth / (float)drawableHeight;
-  float tanHalfFov = tan(FOV * PI / 360.0f);
-  this->frustum =
-      Frustum().createFrustumFromCamera(aspect, tanHalfFov, Znear, Zfar);
-}
-void Renderer::EventManager(Player &player, int &inventorySlot) {
-  while (SDL_PollEvent(&this->basicInitVars.event)) {
-    switch (this->basicInitVars.event.type) {
-    case SDL_EVENT_QUIT:
-      // Handle quitting the game
-      this->gameClient.Quit();
-      break;
-
-    case SDL_EVENT_WINDOW_RESIZED: {
-      UpdateViewportAndProjection();
-      break;
-    }
-    case SDL_EVENT_MOUSE_WHEEL: {
-      if (this->basicInitVars.event.wheel.y > 0) {
-        inventorySlot = (inventorySlot + 7) % 8; // Previous
-      } else if (this->basicInitVars.event.wheel.y < 0) {
-        inventorySlot = (inventorySlot + 1) % 8; // Next
-      }
-      break;
-    }
-    case SDL_EVENT_KEY_DOWN: {
-      SDL_Keycode key = this->basicInitVars.event.key.scancode;
-
-      if (key == SDL_SCANCODE_ESCAPE) {
-        this->gameClient.Quit();
-        break;
-      } else if (key == SDL_SCANCODE_F11) {
-
-        this->fullScreen = !this->fullScreen;
-        std::cout << "Toggling fullscreen: "
-                  << (this->fullScreen ? "ON" : "OFF") << std::endl;
-
-        SDL_SetWindowFullscreen(this->basicInitVars.window, this->fullScreen);
-
-        // Update screen size immediately
-        UpdateViewportAndProjection();
-      }
-      break;
-    }
-    }
-  }
-}
-void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
-                              std::vector<Player> &players) {
-  EventManager(players[0], inventorySlot);
-
-  // Transform frustum to world space based on player position and rotation
-  // Create a fresh frustum in camera space
-  float frustumAspect =
-      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
-  float tanHalfFov = tan(FOV * PI / 360.0f);
-  Frustum worldFrustum =
-      Frustum::createFrustumFromCamera(frustumAspect, tanHalfFov, Znear, Zfar);
-
-  // Transform to world space using player's position and rotation
-  worldFrustum.transformToWorldSpace(players[0].Position, players[0].Rotation);
-
-  // Store the world-space frustum for use in DrawTerrain
-  this->frustum = worldFrustum;
-
+void Renderer::DrawBg(std::vector<Player> &players){
   this->runTimeRenderVars.cmdCopy =
       SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
@@ -677,12 +698,11 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
   this->runTimeRenderVars.cmdRender =
       SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
-  SDL_GPUTexture *swap_texture;
   SDL_WaitAndAcquireGPUSwapchainTexture(
       this->runTimeRenderVars.cmdRender, this->basicInitVars.window,
-      &swap_texture, &this->basicInitVars.Width, &this->basicInitVars.Height);
+      &this->runTimeRenderVars.swap_texture, &this->basicInitVars.Width, &this->basicInitVars.Height);
 
-  if (swap_texture == NULL) {
+  if (this->runTimeRenderVars.swap_texture == NULL) {
     std::cout << "La swap_texture no s'ha fet be\n";
     SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender);
     return; // CRITICAL: Must return here!
@@ -692,7 +712,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
   color_target_info.clear_color = SDL_FColor{0.1f, 0.79f, 1.0f, 1.0f};
   color_target_info.load_op = SDL_GPU_LOADOP_CLEAR;
   color_target_info.store_op = SDL_GPU_STOREOP_STORE;
-  color_target_info.texture = swap_texture;
+  color_target_info.texture = this->runTimeRenderVars.swap_texture;
 
   // Setup depth buffer for proper depth testing
   SDL_GPUDepthStencilTargetInfo depth_target_info;
@@ -772,8 +792,165 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
   DrawPlayers(players);
 
   SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
+}
+void Renderer::DrawPlayers(std::vector<Player> &players) {
+  if (players.size() <= 1)
+    return;
 
-  DrawUI(this->runTimeRenderVars.cmdRender, swap_texture, inventory,
+  std::vector<Vertex> verts;
+  std::vector<Uint32> indices;
+
+  int myId = gameClient.get_my_id();
+
+  {
+    std::lock_guard<std::mutex> lock(gameClient.get_mutex());
+    for (const auto &p : players) {
+      if (p.id == myId)
+        continue;
+
+      Vector3 pos = p.Position;
+      Vector3 color = p.color.ToFloat();
+
+      for (int side = 0; side < 6; side++) {
+        Uint32 base = verts.size();
+        for (int i = 0; i < 4; i++) {
+          verts.push_back({PlayerModel[side][i] + pos, color, {0, 0}, 1.0f});
+        }
+        indices.push_back(base + 0);
+        indices.push_back(base + 2);
+        indices.push_back(base + 1);
+        indices.push_back(base + 1);
+        indices.push_back(base + 2);
+        indices.push_back(base + 3);
+      }
+    }
+  }
+
+  if (verts.empty())
+    return;
+
+  // Upload to GPU
+  void *vData =
+      SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
+  SDL_memcpy(vData, verts.data(), verts.size() * sizeof(Vertex));
+  SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer);
+
+  void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU,
+                                         EntityIndexTransferBuffer, true);
+  SDL_memcpy(iData, indices.data(), indices.size() * sizeof(Uint32));
+  SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityIndexTransferBuffer);
+
+  SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(basicInitVars.GPU);
+  SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
+  SDL_GPUTransferBufferLocation vSrc = {EntityTransferBuffer, 0};
+  SDL_GPUBufferRegion vDst = {EntityBuffer, 0,
+                              (Uint32)(verts.size() * sizeof(Vertex))};
+  SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, true);
+  SDL_GPUTransferBufferLocation iSrc = {EntityIndexTransferBuffer, 0};
+  SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0,
+                              (Uint32)(indices.size() * sizeof(Uint32))};
+  SDL_UploadToGPUBuffer(copy, &iSrc, &iDst, true);
+  SDL_EndGPUCopyPass(copy);
+  SDL_SubmitGPUCommandBuffer(cmd);
+
+  // Draw
+  SDL_BindGPUGraphicsPipeline(runTimeRenderVars.pass,
+                              pipelineInitVars.graphicsPipeline);
+  SDL_GPUBufferBinding vBinding = {EntityBuffer, 0};
+  SDL_BindGPUVertexBuffers(runTimeRenderVars.pass, 0, &vBinding, 1);
+  SDL_GPUBufferBinding iBinding = {EntityIndexBuffer, 0};
+  SDL_BindGPUIndexBuffer(runTimeRenderVars.pass, &iBinding,
+                         SDL_GPU_INDEXELEMENTSIZE_32BIT);
+  SDL_DrawGPUIndexedPrimitives(runTimeRenderVars.pass, (Uint32)indices.size(),
+                               1, 0, 0, 0);
+}
+void Renderer::UpdateViewportAndProjection() {
+  // Get the actual drawable size (important for high-DPI displays)
+  int drawableWidth, drawableHeight;
+  SDL_GetWindowSizeInPixels(this->basicInitVars.window, &drawableWidth,
+                            &drawableHeight);
+
+  this->basicInitVars.Width = drawableWidth;
+  this->basicInitVars.Height = drawableHeight;
+
+  std::cout << "Updating viewport to: " << drawableWidth << "x"
+            << drawableHeight << std::endl;
+
+  // Recreate depth texture with new size
+  if (this->DepthTexture) {
+    SDL_ReleaseGPUTexture(this->basicInitVars.GPU, this->DepthTexture);
+  }
+  this->DepthTexture = CreateDepthTexture(drawableWidth, drawableHeight);
+
+  // Update frustum for new aspect ratio
+  float aspect = (float)drawableWidth / (float)drawableHeight;
+  float tanHalfFov = tan(FOV * PI / 360.0f);
+  this->frustum =
+      Frustum().createFrustumFromCamera(aspect, tanHalfFov, Znear, Zfar);
+}
+void Renderer::EventManager(Player &player, int &inventorySlot) {
+  while (SDL_PollEvent(&this->basicInitVars.event)) {
+    switch (this->basicInitVars.event.type) {
+    case SDL_EVENT_QUIT:
+      // Handle quitting the game
+      this->gameClient.Quit();
+      break;
+
+    case SDL_EVENT_WINDOW_RESIZED: {
+      UpdateViewportAndProjection();
+      break;
+    }
+    case SDL_EVENT_MOUSE_WHEEL: {
+      if (this->basicInitVars.event.wheel.y > 0) {
+        inventorySlot = (inventorySlot + 7) % 8; // Previous
+      } else if (this->basicInitVars.event.wheel.y < 0) {
+        inventorySlot = (inventorySlot + 1) % 8; // Next
+      }
+      break;
+    }
+    case SDL_EVENT_KEY_DOWN: {
+      SDL_Keycode key = this->basicInitVars.event.key.scancode;
+
+      if (key == SDL_SCANCODE_ESCAPE) {
+        this->gameClient.Quit();
+        break;
+      } else if (key == SDL_SCANCODE_F11) {
+
+        this->fullScreen = !this->fullScreen;
+        std::cout << "Toggling fullscreen: "
+                  << (this->fullScreen ? "ON" : "OFF") << std::endl;
+
+        SDL_SetWindowFullscreen(this->basicInitVars.window, this->fullScreen);
+
+        // Update screen size immediately
+        UpdateViewportAndProjection();
+      }
+      break;
+    }
+    }
+  }
+}
+void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
+                              std::vector<Player> &players) {
+  EventManager(players[0], inventorySlot);
+
+  // Transform frustum to world space based on player position and rotation
+  // Create a fresh frustum in camera space
+  this->runTimeRenderVars.aspect =
+      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+  float tanHalfFov = tan(FOV * PI / 360.0f);
+  Frustum worldFrustum =
+      Frustum::createFrustumFromCamera(this->runTimeRenderVars.aspect, tanHalfFov, Znear, Zfar);
+
+  // Transform to world space using player's position and rotation
+  worldFrustum.transformToWorldSpace(players[0].Position, players[0].Rotation);
+
+  // Store the world-space frustum for use in DrawTerrain
+  this->frustum = worldFrustum;
+
+  DrawBg(players);
+
+  DrawUI(this->runTimeRenderVars.cmdRender, inventory,
          inventorySlot);
 
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
@@ -781,130 +958,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
     return;
   }
 }
-auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color, float blockID){
-    this->uiVars.uiVertices.push_back({{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
-    this->uiVars.uiVertices.push_back({{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
-}
-void Renderer::UICrossHair(){
-    // Crosshair size
-  float crossSize = 0.02f;
-  float sizeX = crossSize / this->runTimeRenderVars.aspect;
-  float sizeY = crossSize;
 
-
-  // Crosshair lines
-  float thickness = 0.002f;
-  // Horizontal
-  AddRect(-sizeX, -thickness, sizeX * 2, thickness * 2, {1, 1, 1});
-  // Vertical
-  AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY, thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2,
-          {1, 1, 1});
-}
-void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *swap_texture,
-                      const std::vector<Slot> &inventory, int inventorySlot) {
-  this->uiVars.uiVertices.clear();
-  this->runTimeRenderVars.aspect =
-      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
-                    
-  UICrossHair();
-
-  // 2. Inventory / Hotbar
-  float hotbarHeight = 0.12f;
-  float slotCount = 8;
-  float slotSpacing = 0.01f;
-  // Logical width (same as height for square slots)
-  float logicalSlotSize = hotbarHeight - 2 * slotSpacing;
-  float logicalTotalWidth =
-      slotCount * logicalSlotSize + (slotCount + 1) * slotSpacing;
-
-  float hotbarWidthNDC = logicalTotalWidth / this->runTimeRenderVars.aspect;
-  float hotbarX = -hotbarWidthNDC / 2.0f;
-  float hotbarY = -0.95f;
-
-  // Background
-  AddRect(hotbarX, hotbarY, hotbarWidthNDC, hotbarHeight, {0.1f, 0.1f, 0.1f});
-
-  for (int i = 0; i < slotCount; i++) {
-    float xNDC =
-        hotbarX + (slotSpacing + i * (logicalSlotSize + slotSpacing)) / this->runTimeRenderVars.aspect;
-    float yNDC = hotbarY + slotSpacing;
-    float wNDC = logicalSlotSize / this->runTimeRenderVars.aspect;
-    float hNDC = logicalSlotSize;
-
-    // Slot background
-    Vector3 bgColor = (i == inventorySlot) ? Vector3{0.4f, 0.4f, 0.4f}
-                                           : Vector3{0.2f, 0.2f, 0.2f};
-    AddRect(xNDC, yNDC, wNDC, hNDC, bgColor);
-
-    // Border highlight
-    if (i == inventorySlot) {
-      float b = 0.005f;
-      float bX = b / this->runTimeRenderVars.aspect;
-      float bY = b;
-      // top
-      AddRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
-      // bottom
-      AddRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
-      // left
-      AddRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
-      // right
-      AddRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
-    }
-
-    // Item icon
-    if (i < inventory.size() && inventory[i].Type != 0) {
-      float iconPadding = 0.015f;
-      float pX = iconPadding / this->runTimeRenderVars.aspect;
-      float pY = iconPadding;
-      AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
-              (float)inventory[i].Type);
-    }
-  }
-
-  size_t Length = uiVars.uiVertices.size();
-
-  // Upload vertex data to GPU
-  void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
-                                           this->uiVars.UIVertexTransferBuffer, true);
-  SDL_memcpy(mapData, uiVars.uiVertices.data(), uiVars.uiVertices.size() * sizeof(Vertex));
-  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
-
-  // Copy data to GPU buffer
-  SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
-  SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer, 0};
-  SDL_GPUBufferRegion dst = {this->uiVars.UIVertexBuffer, 0,
-                             (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
-  SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
-  SDL_EndGPUCopyPass(copyPass);
-
-  // Setup color target to load existing content
-  SDL_GPUColorTargetInfo color_target_info;
-  SDL_zero(color_target_info);
-  color_target_info.texture = swap_texture;
-  color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
-  color_target_info.store_op = SDL_GPU_STOREOP_STORE;
-
-  // Begin UI render pass
-  SDL_GPURenderPass *uiPass =
-      SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
-
-  // Bind UI pipeline and textures
-  SDL_BindGPUGraphicsPipeline(uiPass, this->pipelineInitVars.uiPipeline);
-
-  // Bind Texture Atlas and Sampler for UI
-  SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                 this->Sampler};
-  SDL_BindGPUFragmentSamplers(uiPass, 0, &samplerBinding, 1);
-
-  SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
-  SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
-  SDL_DrawGPUPrimitives(uiPass, (Uint32)this->uiVars.uiVertices.size(), 1, 0, 0);
-  SDL_EndGPURenderPass(uiPass);
-}
 SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
                           Uint32 sampler_count, Uint32 uniform_buffer_count,
                           Uint32 storage_buffer_count,
@@ -1408,77 +1462,7 @@ void Renderer::PipelineInit() {
   this->EntityIndexTransferBuffer = SDL_CreateGPUTransferBuffer(
       this->basicInitVars.GPU, &entityIndexTransferInfo);
 }
-void Renderer::DrawPlayers(std::vector<Player> &players) {
-  if (players.size() <= 1)
-    return;
 
-  std::vector<Vertex> verts;
-  std::vector<Uint32> indices;
-
-  int myId = gameClient.get_my_id();
-
-  {
-    std::lock_guard<std::mutex> lock(gameClient.get_mutex());
-    for (const auto &p : players) {
-      if (p.id == myId)
-        continue;
-
-      Vector3 pos = p.Position;
-      Vector3 color = p.color.ToFloat();
-
-      for (int side = 0; side < 6; side++) {
-        Uint32 base = verts.size();
-        for (int i = 0; i < 4; i++) {
-          verts.push_back({PlayerModel[side][i] + pos, color, {0, 0}, 1.0f});
-        }
-        indices.push_back(base + 0);
-        indices.push_back(base + 2);
-        indices.push_back(base + 1);
-        indices.push_back(base + 1);
-        indices.push_back(base + 2);
-        indices.push_back(base + 3);
-      }
-    }
-  }
-
-  if (verts.empty())
-    return;
-
-  // Upload to GPU
-  void *vData =
-      SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
-  SDL_memcpy(vData, verts.data(), verts.size() * sizeof(Vertex));
-  SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer);
-
-  void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU,
-                                         EntityIndexTransferBuffer, true);
-  SDL_memcpy(iData, indices.data(), indices.size() * sizeof(Uint32));
-  SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityIndexTransferBuffer);
-
-  SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(basicInitVars.GPU);
-  SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
-  SDL_GPUTransferBufferLocation vSrc = {EntityTransferBuffer, 0};
-  SDL_GPUBufferRegion vDst = {EntityBuffer, 0,
-                              (Uint32)(verts.size() * sizeof(Vertex))};
-  SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, true);
-  SDL_GPUTransferBufferLocation iSrc = {EntityIndexTransferBuffer, 0};
-  SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0,
-                              (Uint32)(indices.size() * sizeof(Uint32))};
-  SDL_UploadToGPUBuffer(copy, &iSrc, &iDst, true);
-  SDL_EndGPUCopyPass(copy);
-  SDL_SubmitGPUCommandBuffer(cmd);
-
-  // Draw
-  SDL_BindGPUGraphicsPipeline(runTimeRenderVars.pass,
-                              pipelineInitVars.graphicsPipeline);
-  SDL_GPUBufferBinding vBinding = {EntityBuffer, 0};
-  SDL_BindGPUVertexBuffers(runTimeRenderVars.pass, 0, &vBinding, 1);
-  SDL_GPUBufferBinding iBinding = {EntityIndexBuffer, 0};
-  SDL_BindGPUIndexBuffer(runTimeRenderVars.pass, &iBinding,
-                         SDL_GPU_INDEXELEMENTSIZE_32BIT);
-  SDL_DrawGPUIndexedPrimitives(runTimeRenderVars.pass, (Uint32)indices.size(),
-                               1, 0, 0, 0);
-}
 Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
     : gameClient(gameClient), chunkManager(manager) {
   TextureAtlas = nullptr;
