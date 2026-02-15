@@ -15,9 +15,10 @@ const Vector3 Direction[6] = {
     {0, -1, 0}  // Bottom
 };
 
-constexpr HeightsDif ContinentelnessHeight[5] = {
+constexpr HeightsDif ContinentelnessHeight[6] = {
+    {0.5f, 120},  // Extreme Mountains
     {0.3f, 100},  // Huge Mountains
-    {0.f, 60},    // Hills
+    {0.0f, 60},   // Hills
     {-0.35f, 38}, // Plains (near sea level)
     {-0.45f, 25}, // Shallow Water / Beach
     {-0.9f, 15}}; // Deep Ocean
@@ -378,26 +379,6 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
 void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
                                const std::vector<int> &heightCache,
                                ChunkManager &manager) {
-  static const int offsets[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-  static const Uint8 faceIndices[4] = {3, 2, 1, 0}; // Left, Right, Back, Front
-
-  // For neighbors outside the chunk, we need to check them separately
-  auto isNeighborSolid = [&](int worldX, int worldY, int worldZ,
-                             int neighborHeight) -> bool {
-    int localX = worldX - xPos;
-    int localZ = worldZ - zPos;
-
-    // Check if neighbor is within current chunk
-    if (localX >= 0 && localX < xSize && localZ >= 0 && localZ < zSize &&
-        worldY >= 0 && worldY < ySize) {
-      int idx = localX + worldY * xSize + localZ * xSize * ySize;
-      return solidCache[idx];
-    }
-
-    // Neighbor is outside chunk, use original function
-    return isSolidBlock(worldX, worldY, worldZ, neighborHeight, manager);
-  };
-
   int estimatedFaces =
       xSize * zSize * 8; // Adjust estimation based on new complexity
   this->allFaces.reserve(estimatedFaces);
@@ -448,24 +429,86 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
             else if (side == 5)
               nx[1]--; // Bottom (-Y)
 
-            Uint8 nBid = 0;
-            Vector3 worldN = {(float)(nx[0] + xPos), (float)nx[1],
-                              (float)(nx[2] + zPos)};
+            // Convert to world coordinates
+            int worldX = nx[0] + xPos;
+            int worldY = nx[1];
+            int worldZ = nx[2] + zPos;
 
-            if (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
-                nx[2] >= 0 && nx[2] < zSize) {
+            bool neighborInBounds = (nx[0] >= 0 && nx[0] < xSize && 
+                                    nx[1] >= 0 && nx[1] < ySize &&
+                                    nx[2] >= 0 && nx[2] < zSize);
+
+            Uint8 nBid = 0;
+            
+            if (neighborInBounds) {
+              // Neighbor is within current chunk - use local cache
               int nIdx = nx[0] + nx[1] * xSize + nx[2] * xSize * ySize;
               nBid = this->blocks[nIdx];
+            } else if (worldY >= 0 && worldY < ySize) {
+              // Neighbor is outside chunk - calculate using same logic as PopulateBlocks
+              
+              // Calculate terrain height for neighbor position
+              int height = GetHeight({(float)worldX, (float)worldZ});
+              
+              // Check for bedrock
+              if (worldY == 0) {
+                nBid = 4; // Bedrock
+              } else {
+                const int seaLevel = 35;
+                float cont = PerlinNoise2D(
+                    {(float)worldX * 0.005f, (float)worldZ * 0.005f}, 3, 0.5f);
+                
+                // Check for caves using same logic
+                bool isCave = false;
+                if (worldY >= CaveMinY && worldY <= CaveMaxY) {
+                  float n1 = PerlinNoise(
+                      {(float)worldX * 0.08f, (float)worldY * 0.08f, (float)worldZ * 0.08f},
+                      2, 0.5f);
+                  float n2 = PerlinNoise(
+                      {(float)worldX * 0.1f + 100.0f, (float)worldY * 0.1f, (float)worldZ * 0.1f},
+                      2, 0.5f);
+                  float density = (n1 * n1) + (n2 * n2);
+                  if (density < 0.015f) {
+                    isCave = true;
+                  }
+                }
+                
+                // Determine block type using same logic as PopulateBlocks
+                if (worldY > height || isCave) {
+                  if (worldY < seaLevel && cont < -0.1f) {
+                    nBid = 5; // Water
+                  } else {
+                    nBid = 0; // Air
+                  }
+                } else {
+                  // Solid terrain
+                  const int beachLevel = 37;
+                  bool isBeach = (height <= beachLevel &&
+                                  height >= beachLevel - 3 && cont < -0.1f);
+                  bool isUnderwaterFloor = (height < seaLevel);
+                  
+                  if (height - worldY > 3) {
+                    nBid = 3; // Stone
+                  } else if (isBeach || isUnderwaterFloor) {
+                    nBid = 8; // Sand
+                  } else if (height - worldY > 0) {
+                    nBid = 2; // Dirt
+                  } else {
+                    nBid = 1; // Grass
+                  }
+                }
+              }
             } else {
-              // Neighbor chunk check: ALWAYS use manager.GetBlockID for
-              // boundaries
-              nBid = manager.GetBlockID(worldN);
+              // Outside Y bounds
+              nBid = 0; // Air
             }
 
-            if (bid == 5) {          // Water
-              visible = (nBid == 0); // Only show water faces against air
+            // Determine visibility based on block types
+            if (bid == 5) {          
+              // Water: only show faces against air
+              visible = (nBid == 0);
             } else {
-              // Opaque blocks show against Air or Water (transparent)
+              // Opaque blocks: show against air or water (transparent blocks)
               visible = (nBid == 0 || nBid == 5);
             }
 

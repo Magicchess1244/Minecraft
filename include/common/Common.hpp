@@ -324,6 +324,7 @@ struct Player {
   Vector3 Position;
   Vector3 Rotation;
   Color color;
+  bool Inwater = false;
 };
 struct Slot {
   short Amount;

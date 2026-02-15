@@ -157,12 +157,13 @@ int FindSlot(std::vector<Slot> &Inventory, short Type) {
   int index = 0;
   for (Slot slot : Inventory) {
     if ((slot.Type == Type || slot.Type == 0) && slot.Amount < 64) {
-      //std::cout << "Found slot" << index << std::endl;
+      // std::cout << "Found slot" << index << std::endl;
       return index;
     }
     index++;
   }
-  //std::cout << "Inventory full, cannot add item of type: " << Type << std::endl;
+  // std::cout << "Inventory full, cannot add item of type: " << Type <<
+  // std::endl;
   return -1;
 }
 void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
@@ -208,7 +209,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
     } else if (move_down) {
       PlayerDirection.y = -2.5f; // Swim down
     } else {
-      PlayerDirection.y = -0.3f; // Slow sink in water
+      PlayerDirection.y = -2.0f; // Slow sink in water
     }
   } else {
     // Normal gravity and jumping
@@ -381,20 +382,37 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   JumpTimer += deltaTime;
   Vector3 RotationDir = {0, 0, 0};
   bool LeftClick = false, RightClick = false;
+  float bounds = 0.3f;
   bool OnGround =
-      manager.RayCast(player.Position, {0, -1, 0}, bodyHeight + 0.15f).hit;
+      manager.RayCast(player.Position, {0, -1, 0}, bodyHeight + 0.15f).hit ||
+      manager
+          .RayCast(player.Position + Vector3(bounds, 0, 0), {0, -1, 0},
+                   bodyHeight + 0.15f)
+          .hit ||
+      manager
+          .RayCast(player.Position + Vector3(-bounds, 0, 0), {0, -1, 0},
+                   bodyHeight + 0.15f)
+          .hit ||
+      manager
+          .RayCast(player.Position + Vector3(0, 0, bounds), {0, -1, 0},
+                   bodyHeight + 0.15f)
+          .hit ||
+      manager
+          .RayCast(player.Position + Vector3(0, 0, -bounds), {0, -1, 0},
+                   bodyHeight + 0.15f)
+          .hit;
 
   // Check if player is in water (around their middle/feet)
-  bool InWater = false;
+  player.Inwater = false;
   try {
-    InWater =
+    player.Inwater =
         (manager.GetBlockID(player.Position - Vector3(0, 0.8f, 0)) == 5) ||
         (manager.GetBlockID(player.Position) == 5);
   } catch (...) {
-    InWater = false;
+    player.Inwater = false;
   }
 
-  PlayerInput(playerDirection, OnGround, InWater, inventorySlot, RotationDir,
+  PlayerInput(playerDirection, OnGround, player.Inwater, inventorySlot, RotationDir,
               LeftClick, RightClick);
   PlayerRotation(player, RotationDir);
   PlayerMove(player, playerDirection, manager);

@@ -141,40 +141,45 @@ struct Frustum {
 
   // Check if an axis-aligned bounding box (AABB) is inside or intersecting the
   // frustum Uses the "p-vertex/n-vertex" test for each plane
-  bool isChunkInFrustum(const Vector3 &minPoint,
-                        const Vector3 &maxPoint) const {
+bool isChunkInFrustum(const Vector3 &minPoint,
+                      const Vector3 &maxPoint, 
+                      float tolerance = 5.0f) const {
+    
     // Get all 8 corners of the AABB
-    Vector3 corners[8] = {
-        {minPoint.x, minPoint.y, minPoint.z}, // 0: min corner
-        {maxPoint.x, minPoint.y, minPoint.z}, // 1
-        {minPoint.x, maxPoint.y, minPoint.z}, // 2
-        {maxPoint.x, maxPoint.y, minPoint.z}, // 3
-        {minPoint.x, minPoint.y, maxPoint.z}, // 4
-        {maxPoint.x, minPoint.y, maxPoint.z}, // 5
-        {minPoint.x, maxPoint.y, maxPoint.z}, // 6
-        {maxPoint.x, maxPoint.y, maxPoint.z}  // 7: max corner
+    const Vector3 corners[8] = {
+        {minPoint.x, minPoint.y, minPoint.z},
+        {maxPoint.x, minPoint.y, minPoint.z},
+        {minPoint.x, maxPoint.y, minPoint.z},
+        {maxPoint.x, maxPoint.y, minPoint.z},
+        {minPoint.x, minPoint.y, maxPoint.z},
+        {maxPoint.x, minPoint.y, maxPoint.z},
+        {minPoint.x, maxPoint.y, maxPoint.z},
+        {maxPoint.x, maxPoint.y, maxPoint.z}
     };
-
+    
     // Check all 6 frustum planes
-    const Plane *planes[6] = {&nearFace,  &farFace, &leftFace,
-                              &rightFace, &topFace, &bottomFace};
-
-    for (const Plane *plane : planes) {
-      int outsideCount = 0;
-      for (int i = 0; i < 8; ++i) {
-        // A negative distance means outside
-        if (plane->getSignedDistanceToPlane(corners[i]) < 0.0f) {
-          ++outsideCount;
+    const Plane* const planes[6] = {
+        &nearFace, &farFace, &leftFace,
+        &rightFace, &topFace, &bottomFace
+    };
+    
+    // For each plane, check if ALL corners are outside
+    for (int p = 0; p < 6; ++p) {
+        bool allOutside = true;
+        for (int i = 0; i < 8; ++i) {
+            // If ANY corner is inside (or within tolerance), chunk might be visible
+            if (planes[p]->getSignedDistanceToPlane(corners[i]) >= -tolerance) {
+                allOutside = false;
+                break; // Early exit - found a corner inside this plane
+            }
         }
-      }
-      // If all 8 corners are outside this plane, cull the chunk
-      if (outsideCount == 8) {
-        return false;
-      }
+        // If all corners are outside ANY single plane, the chunk is completely outside
+        if (allOutside) {
+            return false;
+        }
     }
-
-    return true; // At least partially inside all planes
-  }
+    return true; // Chunk intersects or is inside the frustum
+}
 
   // Transform frustum from camera space to world space
   // This rotates and translates the frustum to match the camera's position and

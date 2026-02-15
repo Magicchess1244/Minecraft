@@ -1,6 +1,7 @@
 #include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameClient.hpp"
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_stdinc.h>
 #include <cmath>
 #include <iostream>
 #include <ostream>
@@ -9,7 +10,7 @@
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 6;
+constexpr int RenderDistance = 8;
 constexpr float PlayerRad = 0.4;
 const Vector3 PlayerModel[6][4] = {
     {                                // Front (+Z)
@@ -721,6 +722,11 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
       this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
       sizeof(float) * view.getColumnMajorData().size());
 
+  Uint32 water = (player.Inwater) ? 1 : 0;
+
+  SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0,
+                                 &water, sizeof(Uint32));
+
   this->runTimeRenderVars.pass =
       SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
                              &color_target_info, 1, &depth_target_info);
@@ -1034,8 +1040,7 @@ void Renderer::Init() {
 }
 void Renderer::GenerateBuffer() {
   // Calculate buffer packing
-  int totalChunks =
-      (int)((float)(RenderDistance * 2 + 1) * (RenderDistance * 2 + 1) / 2.0f);
+  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
   for (int i = std::sqrt(totalChunks) + 1; i > 0; i--) {
     if (totalChunks % i) {
       chunksPerBuffer = i;
@@ -1043,11 +1048,11 @@ void Renderer::GenerateBuffer() {
     }
   }
   this->totalBuffers =
-      (totalChunks + chunksPerBuffer) / chunksPerBuffer + 1; // Ceiling division
+      (totalChunks + chunksPerBuffer) / chunksPerBuffer; // Ceiling division
 
   // Each buffer now holds multiple chunks
-  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 4200;
-  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 4200;
+  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 2000;
+  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 2000;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
   const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
 
@@ -1256,7 +1261,7 @@ void Renderer::PipelineInit() {
     SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
   }
   this->pipelineInitVars.fragment_shader =
-      LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 0, 0, 0);
+      LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 1, 0, 1);
   if (!this->pipelineInitVars.fragment_shader) {
     SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
   }
