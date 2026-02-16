@@ -4,6 +4,7 @@ layout (location = 0) in vec4 v_color;
 layout (location = 1) in vec2 v_uv;
 layout (location = 2) flat in float v_blockID;
 layout (location = 3) in vec3 v_pos;
+layout (location = 4) flat in float v_light;
 layout (location = 0) out vec4 FragColor;
 
 layout (set = 2, binding = 0) uniform sampler2D u_texture;
@@ -31,7 +32,8 @@ void main()
   vec4 texColor = texture(u_texture, atlasUV);
   
   vec3 finalColor = v_color.rgb * texColor.rgb;
-  
+
+
   if (abs(v_blockID - 5.0) < 0.1) {
     finalColor = mix(finalColor, vec3(0.0, 0.3, 0.7), 0.3); // Add blue tint
       alpha = 0.6;
@@ -54,6 +56,9 @@ void main()
     finalColor = mix(finalColor, vec3(0.0, 0.1, 0.6), 0.3); // Deep blue tint
     finalColor *= 0.9; // Slightly darken
   }
+
+  float lightLevel = clamp(v_light / 15.0, 0.2, 1.0);
+  finalColor *= lightLevel;
 
   FragColor = vec4(finalColor, alpha);
 }

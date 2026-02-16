@@ -1,7 +1,6 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
 
-#include <queue>
 #include <set>
 
 constexpr float ySize = 128.0f;

@@ -233,6 +233,7 @@ struct Vertex {
   Vector3 Color;
   SDL_FPoint UV;
   float BlockID;
+  float LightLevel = 15;
 };
 struct Mesh {
   SDL_GPUTransferBuffer *VertextransferBuffer = nullptr;
@@ -264,7 +265,7 @@ struct PipileInitVars {
   SDL_GPUGraphicsPipeline *transparentPipeline = nullptr;
   SDL_GPUGraphicsPipeline *uiPipeline = nullptr;
   SDL_GPUVertexBufferDescription vertex_buffer_desc;
-  SDL_GPUVertexAttribute vertex_attributes[4];
+  SDL_GPUVertexAttribute vertex_attributes[5];
   SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
   SDL_GPUShader *vertex_shader;
   SDL_GPUShader *fragment_shader;

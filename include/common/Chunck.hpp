@@ -12,6 +12,7 @@ struct DrawnFace {
   Uint8 blockID;
   Uint8 w;
   Uint8 h;
+  Uint8 LightLevel;
   bool Transparent;
 };
 struct TransparentDrawnFace {
@@ -20,6 +21,10 @@ struct TransparentDrawnFace {
   int blockID;
   int w;
   int h;
+};
+struct LightData {
+    Uint8 sunlight : 4;   // 0-15
+    Uint8 blockLight : 4; // 0-15
 };
 
 class ChunkPrefab {
@@ -37,6 +42,7 @@ public:
   // Flat 3D array for much faster access (10-100x faster than unordered_map)
   std::vector<DrawnFace> allFaces;
   std::vector<Uint8> blocks; // Persistent block data for collision/raycasting
+  std::vector<LightData> lightData; // Same size as blocks
 
   bool isDirty = false; // Track if chunk needs saving
   bool needsMeshUpdate = true;
@@ -49,6 +55,7 @@ public:
   Uint8 GetBlockID(int worldX, int worldY, int worldZ, int terrainHeight,
                    ChunkManager &manager);
   int GetHeight(Vector2 Pos);
+  void GenerateMesh(ChunkManager &manager);
 
 private:
   void GenerateHeightMap(std::vector<int> &heightCache);
@@ -62,7 +69,9 @@ private:
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Uint8> &modCache,
                           std::vector<bool> &solidCache);
-  void GenerateMesh(ChunkManager &manager);
+void GenerateLighting();
+Uint8 GetCombinedLight(int x, int y, int z, ChunkManager &manager);
+void PropagateSunlight();
 };
 
 #endif

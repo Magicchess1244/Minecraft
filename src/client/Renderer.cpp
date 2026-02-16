@@ -510,7 +510,7 @@ void Renderer::DrawTerrain(Player &player) {
             } else { // Top/Bottom: X, Z
               uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
             }
-            cache.vertices.push_back({v[j] + worldPos, faceColor, uv, bid});
+            cache.vertices.push_back({v[j] + worldPos, faceColor, uv, bid, (float)face.LightLevel});
           }
           // Use direct push for indices (6 values)
           cache.indices.push_back(baseV + 0);
@@ -535,8 +535,8 @@ void Renderer::DrawTerrain(Player &player) {
     size_t currentIndexOffset = 0;
 
     // Calculate max size based on initialization logic
-    const size_t maxVertices = 4 * 4200 * chunksPerBuffer;
-    const size_t maxIndices = 6 * 4200 * chunksPerBuffer;
+    const size_t maxVertices = 4 * 2100 * chunksPerBuffer;
+    const size_t maxIndices = 6 * 2100 * chunksPerBuffer;
 
     if (!Vertexdata || !Indexdata) {
       // Mapping failed, skip this buffer
@@ -551,11 +551,8 @@ void Renderer::DrawTerrain(Player &player) {
       if (cache.vertices.empty())
         continue;
 
-      // Safety Check: Prevent Buffer Overflow
       if (currentVertexOffset + cache.vertices.size() > maxVertices ||
           currentIndexOffset + cache.indices.size() > maxIndices) {
-        // std::cerr << "Buffer full! Skipping remaining chunks in this
-        // batch.\n";
         break;
       }
 
@@ -587,7 +584,7 @@ void Renderer::DrawTerrain(Player &player) {
     // Second pass: Transparent - collect and sort
     std::vector<TransparentDrawnFace> transparentFaces;
     transparentFaces.reserve(
-        2500); // Pre-allocate for ultra-high render distance
+        500); // Pre-allocate for ultra-high render distance
 
     for (auto *chunk : chunks) {
       for (auto &face : chunk->allFaces) {
@@ -670,7 +667,7 @@ void Renderer::DrawTerrain(Player &player) {
           uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
         }
         Vertexdata[mesh->BaseVertex + j] = {v[j] + face.blockPos, faceColor, uv,
-                                            bid};
+                                            bid, 15.0f};
       }
 
       Uint32 bv = mesh->BaseVertex;
@@ -1146,8 +1143,8 @@ void Renderer::GenerateBuffer() {
       (totalChunks + chunksPerBuffer) / chunksPerBuffer; // Ceiling division
 
   // Each buffer now holds multiple chunks
-  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 2000;
-  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 2000;
+  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 2100;
+  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 2100;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
   const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
 
@@ -1188,36 +1185,42 @@ void Renderer::GenerateBuffer() {
   }
 }
 void Renderer::VertexGPUInit() {
-  // describe the vertex attribute
   this->pipelineInitVars.vertex_buffer_desc.slot = 0;
   this->pipelineInitVars.vertex_buffer_desc.input_rate =
       SDL_GPU_VERTEXINPUTRATE_VERTEX;
   this->pipelineInitVars.vertex_buffer_desc.instance_step_rate = 0;
   this->pipelineInitVars.vertex_buffer_desc.pitch = sizeof(Vertex);
-
+  
   this->pipelineInitVars.vertex_attributes[0].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[0].location = 0;
   this->pipelineInitVars.vertex_attributes[0].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
   this->pipelineInitVars.vertex_attributes[0].offset = 0;
-
+  
   this->pipelineInitVars.vertex_attributes[1].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[1].location = 1;
   this->pipelineInitVars.vertex_attributes[1].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
   this->pipelineInitVars.vertex_attributes[1].offset = sizeof(float) * 3;
-
+  
   this->pipelineInitVars.vertex_attributes[2].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[2].location = 2;
   this->pipelineInitVars.vertex_attributes[2].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
   this->pipelineInitVars.vertex_attributes[2].offset = sizeof(float) * 6;
-
+  
   this->pipelineInitVars.vertex_attributes[3].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[3].location = 3;
   this->pipelineInitVars.vertex_attributes[3].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
   this->pipelineInitVars.vertex_attributes[3].offset = sizeof(float) * 8;
+  
+  // ADD THIS - Attribute 4 for light
+  this->pipelineInitVars.vertex_attributes[4].buffer_slot = 0;
+  this->pipelineInitVars.vertex_attributes[4].location = 4;
+  this->pipelineInitVars.vertex_attributes[4].format =
+      SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
+  this->pipelineInitVars.vertex_attributes[4].offset = sizeof(float) * 9;
 }
 void Renderer::LoadTexture() {
   if (!this->basicInitVars.GPU) {
@@ -1356,7 +1359,7 @@ void Renderer::PipelineInit() {
     SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
   }
   this->pipelineInitVars.fragment_shader =
-      LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 1, 0, 1);
+      LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 1, 0, 0);
   if (!this->pipelineInitVars.fragment_shader) {
     SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
   }
@@ -1399,7 +1402,7 @@ void Renderer::PipelineInit() {
       1; // We only bind one buffer at a time
   pipelineInitVars.pipeline_desc.vertex_input_state.vertex_buffer_descriptions =
       &this->pipelineInitVars.vertex_buffer_desc;
-  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_attributes = 4;
+  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_attributes = 5;
   pipelineInitVars.pipeline_desc.vertex_input_state.vertex_attributes =
       this->pipelineInitVars.vertex_attributes;
 

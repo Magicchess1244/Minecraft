@@ -1,6 +1,7 @@
 #include "../../include/common/Chunck.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <queue>
 
 constexpr float CaveThreshold = -0.18f;
 constexpr int CaveMinY = 5;
@@ -153,6 +154,8 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   // 6. Vegetation (Trees)
   GenerateVegetation(heightCache, modCache, solidCache);
 
+  GenerateLighting();
+  PropagateSunlight();
   // 7. Generate Mesh
   GenerateMesh(manager);
 
@@ -384,7 +387,7 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
 
 void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
   this->allFaces.clear();
-  int estimatedFaces = xSize * zSize * 6; // Adjusted estimation
+  int estimatedFaces = xSize * zSize * 6;
   this->allFaces.reserve(estimatedFaces);
 
   for (int side = 0; side < 6; side++) {
@@ -394,12 +397,13 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
     if (d == 2) {
       u = 0;
       v = 1;
-    } // Z normal: X, Y
+    }
 
     int dims[3] = {xSize, ySize, zSize};
 
     for (int slice = 0; slice < dims[d]; slice++) {
       std::vector<Uint8> mask(dims[u] * dims[v], 0);
+      std::vector<Uint8> lightMask(dims[u] * dims[v], 0);
 
       for (int i = 0; i < dims[u]; i++) {
         for (int j = 0; j < dims[v]; j++) {
@@ -408,26 +412,6 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
           x[u] = i;
           x[v] = j;
 
-          // Remap coordinates back to x, y, z
-          // if d=0 (X): x=slice, y=?, z=? -> depends on u,v mapping logic
-          // The original code had specific mappings, let's replicate or
-          // simplify. Original: d=0 (X): u=2(Z), v=1(Y) -> x[0]=slice, x[2]=i,
-          // x[1]=j. WAIT. Original code: if (d == 0) { u = 2; v = 1; } // X
-          // normal: Width=Z, Height=Y else if (d == 1) { u = 0; v = 2; } // Y
-          // normal: Width=X, Height=Z else { u = 0; v = 1; } // Z normal:
-          // Width=X, Height=Y
-          //
-          // x[d] = slice; x[u] = i; x[v] = j;
-          //
-          // My simplified loop above:
-          // int u = (d == 0) ? 2 : 0;
-          // int v = (d == 1) ? 2 : 1;
-          // if (d == 2) { u=0; v=1; }
-          // This matches original logic:
-          // d=0: u=2, v=1. Correct. (But notice v=1 in my logic? d!=1 so v=1.
-          // Wait. d=0 => v=1. Correct). d=1: u=0. v=2. Correct. d=2: u=0, v=1.
-          // Correct.
-
           int idx = x[0] + x[1] * xSize + x[2] * xSize * ySize;
           Uint8 bid = this->blocks[idx];
 
@@ -435,19 +419,18 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
             bool visible = false;
             int nx[3] = {x[0], x[1], x[2]};
 
-            // Offset neighbor
             if (side == 0)
-              nx[2]++; // Front (+Z)
+              nx[2]++;
             else if (side == 1)
-              nx[2]--; // Back (-Z)
+              nx[2]--;
             else if (side == 2)
-              nx[0]++; // Right (+X)
+              nx[0]++;
             else if (side == 3)
-              nx[0]--; // Left (-X)
+              nx[0]--;
             else if (side == 4)
-              nx[1]++; // Top (+Y)
+              nx[1]++;
             else if (side == 5)
-              nx[1]--; // Bottom (-Y)
+              nx[1]--;
 
             int worldX = nx[0] + xPos;
             int worldY = nx[1];
@@ -455,30 +438,35 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
 
             Uint8 nBid = 0;
 
-            // Check if neighbor is inside valid bounds
             if (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
                 nx[2] >= 0 && nx[2] < zSize) {
               int nIdx = nx[0] + nx[1] * xSize + nx[2] * xSize * ySize;
               nBid = this->blocks[nIdx];
             } else {
-              // Neighbor is in another chunk
               nBid = manager.GetBlockID(
                   {(float)worldX, (float)worldY, (float)worldZ});
             }
 
-            // Determine visibility
             if (bid == 5) {
-              // Water visible if neighbor is air (0)
-              // (Simplification: Water doesn't cull against water)
               visible = (nBid == 0);
             } else {
-              // Solid block visible if neighbor is transparent (Air=0 or
-              // Water=5)
               visible = (nBid == 0 || nBid == 5);
             }
 
             if (visible) {
               mask[i + j * dims[u]] = bid;
+              
+              // FIXED: Get light safely - check bounds first
+              Uint8 light = 15; // Default to full brightness
+              if (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
+                  nx[2] >= 0 && nx[2] < zSize) {
+                // Neighbor is inside chunk - get light directly
+                light = GetCombinedLight(nx[0], nx[1], nx[2], manager);
+              }
+              // If neighbor is outside chunk, use default brightness (15)
+              // Or you could query neighbor chunk if you implement that
+              
+              lightMask[i + j * dims[u]] = light;
             }
           }
         }
@@ -491,12 +479,13 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
           int mIdx = i + j * dims[u];
           if (mask[mIdx] != 0 && !visited[mIdx]) {
             Uint8 bid = mask[mIdx];
+            Uint8 light = lightMask[mIdx];
             int w = 1, h = 1;
 
             // Expand width
             for (int i2 = i + 1; i2 < dims[u]; i2++) {
               int idx2 = i2 + j * dims[u];
-              if (mask[idx2] == bid && !visited[idx2]) {
+              if (mask[idx2] == bid && !visited[idx2] && lightMask[idx2] == light) {
                 w++;
               } else {
                 break;
@@ -508,7 +497,7 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
               bool rowMatch = true;
               for (int i2 = i; i2 < i + w; i2++) {
                 int idx2 = i2 + j2 * dims[u];
-                if (mask[idx2] != bid || visited[idx2]) {
+                if (mask[idx2] != bid || visited[idx2] || lightMask[idx2] != light) {
                   rowMatch = false;
                   break;
                 }
@@ -520,8 +509,6 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
               }
             }
 
-            // Add face
-            // Compute origin of the face
             int xOrigin[3];
             xOrigin[d] = slice;
             xOrigin[u] = i;
@@ -529,17 +516,10 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
 
             Vector3 Pos = Vector3((float)xOrigin[0], (float)xOrigin[1],
                                   (float)xOrigin[2]);
-            // Access BlockDef for transparency info
-            bool isWater =
-                (bid == 5); // Optimization: avoid map lookup if known ID
-            // Or use BlockDef[bid].Water if available. BlockDef is global in
-            // ChunkManager.hpp variables. Let's assume BlockDef is available as
-            // in original code.
 
             this->allFaces.push_back(DrawnFace{Pos, (Uint8)side, bid, (Uint8)w,
-                                               (Uint8)h, BlockDef[bid].Water});
+                                               (Uint8)h, light, BlockDef[bid].Water});
 
-            // Mark visited
             for (int j2 = j; j2 < j + h; j2++) {
               for (int i2 = i; i2 < i + w; i2++) {
                 visited[i2 + j2 * dims[u]] = true;
@@ -547,6 +527,139 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
             }
           }
         }
+      }
+    }
+  }
+}
+Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z, ChunkManager &manager) {
+    // If within bounds, get from this chunk
+    if (x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize) {
+        if (lightData.empty() || lightData.size() != blocks.size()) {
+            return 15; // Default to full brightness if lighting not initialized
+        }
+        
+        int idx = x + y * xSize + z * xSize * ySize;
+        if (idx < 0 || idx >= (int)lightData.size()) {
+            return 15;
+        }
+        
+        return std::max(lightData[idx].sunlight, lightData[idx].blockLight);
+    }
+    
+    // Out of bounds - query neighboring chunk
+    int worldX = x + xPos;
+    int worldY = y;
+    int worldZ = z + zPos;
+    
+    // Calculate which chunk the neighbor is in
+    int neighborChunkX = (worldX / xSize) * xSize;
+    int neighborChunkZ = (worldZ / zSize) * zSize;
+    
+    // Get the neighboring chunk
+    ChunkPrefab* neighborChunk = &manager.get_chunk({(float)neighborChunkX, 0, (float)neighborChunkZ});
+    
+    if (neighborChunk == nullptr) {
+        return 15; // Chunk not loaded, assume full brightness
+    }
+    
+    // Convert world coords to neighbor chunk's local coords
+    int localX = worldX - neighborChunkX;
+    int localZ = worldZ - neighborChunkZ;
+    
+    // Check bounds in neighbor chunk
+    if (localX < 0 || localX >= neighborChunk->xSize || 
+        worldY < 0 || worldY >= neighborChunk->ySize || 
+        localZ < 0 || localZ >= neighborChunk->zSize) {
+        return 15;
+    }
+    
+    // Check if neighbor has lighting data
+    if (neighborChunk->lightData.empty() || 
+        neighborChunk->lightData.size() != neighborChunk->blocks.size()) {
+        return 15;
+    }
+    
+    int idx = localX + worldY * neighborChunk->xSize + localZ * neighborChunk->xSize * neighborChunk->ySize;
+    if (idx < 0 || idx >= (int)neighborChunk->lightData.size()) {
+        return 15;
+    }
+    
+    return std::max(neighborChunk->lightData[idx].sunlight, 
+                    neighborChunk->lightData[idx].blockLight);
+}
+void ChunkPrefab::GenerateLighting() {
+  if (lightData.size() != blocks.size()) {
+      lightData.assign(blocks.size(), {0, 0});
+  }
+  
+  // Phase 1: Sunlight from top
+  for (int x = 0; x < xSize; x++) {
+    for (int z = 0; z < zSize; z++) {
+      Uint8 sunLevel = 15;
+      
+      for (int y = ySize - 1; y >= 0; y--) {
+        int idx = x + y * xSize + z * xSize * ySize;
+        Uint8 blockID = blocks[idx];
+        
+        if (blockID == 0) { // Air
+          lightData[idx].sunlight = sunLevel;
+        } else if (blockID == 5) { // Water (transparent)
+          sunLevel = (sunLevel > 2) ? sunLevel - 2 : 0;
+          lightData[idx].sunlight = sunLevel;
+        } else if ((blockID != 5) || (blockID != 0)){ // Solid block
+          sunLevel = 0;
+          lightData[idx].sunlight = 0;
+        }
+      }
+    }
+  }
+}
+void ChunkPrefab::PropagateSunlight() {
+  std::queue<Vector3> lightQueue;
+  
+  // Add all lit blocks to queue
+  for (int x = 0; x < xSize; x++) {
+    for (int y = 0; y < ySize; y++) {
+      for (int z = 0; z < zSize; z++) {
+        int idx = x + y * xSize + z * xSize * ySize;
+        if (lightData[idx].sunlight > 0) {
+          lightQueue.push({(float)x, (float)y, (float)z});
+        }
+      }
+    }
+  }
+  
+  // BFS propagation
+  while (!lightQueue.empty()) {
+    Vector3 pos = lightQueue.front();
+    lightQueue.pop();
+    
+    int idx = pos.x + pos.y * xSize + pos.z * xSize * ySize;
+    Uint8 currentLight = lightData[idx].sunlight;
+    
+    if (currentLight <= 1) continue;
+    
+    // Check all 6 neighbors
+    for (int i = 0; i < 6; i++) {
+      int nx = pos.x + (int)Direction[i].x;
+      int ny = pos.y + (int)Direction[i].y;
+      int nz = pos.z + (int)Direction[i].z;
+      
+      if (nx < 0 || nx >= xSize || ny < 0 || ny >= ySize || 
+          nz < 0 || nz >= zSize) continue;
+      
+      int nIdx = nx + ny * xSize + nz * xSize * ySize;
+      Uint8 neighborBlock = blocks[nIdx];
+      
+      // Skip solid blocks
+      if (neighborBlock != 0 && neighborBlock != 5) continue;
+      
+      Uint8 newLight = currentLight - 1;
+      if (neighborBlock == 5) newLight = (newLight > 2) ? newLight - 1 : 0;
+      
+      if (newLight > lightData[nIdx].sunlight) {
+        lightData[nIdx].sunlight = newLight;
+        lightQueue.push({(float)nx, (float)ny, (float)nz});
       }
     }
   }
