@@ -12,7 +12,7 @@ constexpr float JumpHeight = 1.5f;
 constexpr float JumpPower = 5.0f;
 float deltaTime = 1.0f;
 float JumpTimer = 0;
-float bodyHeight = 1.8f;
+float bodyHeight = 1.6f;
 Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
 
@@ -207,8 +207,8 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
     if (move_up) {
       PlayerDirection.y = JumpHeight * JumpPower; // Swim up
     } else if (move_down) {
-      PlayerDirection.y -= 2.0f;// Swim down
-      PlayerDirection.y = std::clamp(playerDirection.y, -6.0f , 0.f);
+      PlayerDirection.y -= 2.0f; // Swim down
+      PlayerDirection.y = std::clamp(playerDirection.y, -6.0f, 0.f);
     } else {
       PlayerDirection.y = -2.5f; // Slow sink in water
     }
@@ -413,8 +413,8 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
     player.Inwater = false;
   }
 
-  PlayerInput(playerDirection, OnGround, player.Inwater, inventorySlot, RotationDir,
-              LeftClick, RightClick);
+  PlayerInput(playerDirection, OnGround, player.Inwater, inventorySlot,
+              RotationDir, LeftClick, RightClick);
   PlayerRotation(player, RotationDir);
   PlayerMove(player, playerDirection, manager);
   PlayerBreackPlace(LeftClick, RightClick, manager, player, inventorySlot,

@@ -10,7 +10,7 @@
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 8;
+constexpr int RenderDistance = 12;
 constexpr float PlayerRad = 0.4;
 const Vector3 PlayerModel[6][4] = {
     {                                // Front (+Z)
@@ -356,6 +356,10 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   SpiralIterator spiral(RenderDistance * 2 + 1);
   std::vector<ChunkDistance> sortedChunkList;
 
+  // Pre-reserve to avoid reallocations (estimate ~60% of chunks visible)
+  int maxChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
+  sortedChunkList.reserve(maxChunks * 0.6f);
+
   while (spiral.hasNext()) {
     std::pair<int, int> Pos = spiral.next();
 
@@ -381,7 +385,7 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
     sortedChunkList.push_back({&chunk, d2});
   }
 
-  // 2. Sort chunks BACK TO FRONT (furthest first)
+  // Sort chunks BACK TO FRONT (furthest first) - needed for transparency
   std::sort(sortedChunkList.begin(), sortedChunkList.end(),
             [](const ChunkDistance &a, const ChunkDistance &b) {
               return a.distSq > b.distSq;
@@ -389,15 +393,7 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
 
   return sortedChunkList;
 }
-Vector3 getCoordinates(int pos) {
-  // xSize=16 (2^4), ySize=128 (2^7), zSize=16 (2^4)
-  // Index = x + y * xSize + z * xSize * ySize
-  // Index = x + y * 16 + z * 2048
-  int x = pos & 0xF;
-  int y = (pos >> 4) & 0x7F; // (pos / 16) % 128
-  int z = (pos >> 11);       // pos / 2048
-  return {(float)x, (float)y, (float)z};
-}
+
 void Renderer::DrawTerrain(Player &player) {
   // 1. Collect all chunks and their distances
   std::vector<ChunkDistance> sortedChunkList = SortChunks(player);
@@ -441,25 +437,21 @@ void Renderer::DrawTerrain(Player &player) {
         cache.vertices.clear();
         cache.indices.clear();
 
-        // OPTIMIZATION 2: Count opaque faces first to reserve exact size
-        size_t opaqueCount = 0;
-        for (auto &face : chunk->allFaces) {
-          if (!face.Transparent)
-            opaqueCount++;
-        }
-        cache.vertices.reserve(opaqueCount * 4);
-        cache.indices.reserve(opaqueCount * 6);
+        // OPTIMIZATION: Skip counting - just reserve generous amount and rely
+        // on cache
+        cache.vertices.reserve(chunk->allFaces.size() * 4);
+        cache.indices.reserve(chunk->allFaces.size() * 6);
 
         // OPTIMIZATION 3: Pre-calculate chunk world position once
         Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
 
-        // OPTIMIZATION 4: Process faces in single loop
-        for (auto &face : chunk->allFaces) {
+        // OPTIMIZATION: Process faces in single loop with const reference
+        for (const auto &face : chunk->allFaces) {
           if (face.Transparent)
             continue;
 
           // Pre-calculate block world position
-          Vector3 worldPos = getCoordinates(face.blockPos) + chunkWorldPos;
+          Vector3 worldPos = face.blockPos + chunkWorldPos;
 
           // Pre-calculate color once per face
           Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
@@ -520,9 +512,13 @@ void Renderer::DrawTerrain(Player &player) {
             }
             cache.vertices.push_back({v[j] + worldPos, faceColor, uv, bid});
           }
-          cache.indices.insert(cache.indices.end(),
-                               {baseV + 0, baseV + 2, baseV + 1, baseV + 1,
-                                baseV + 2, baseV + 3});
+          // Use direct push for indices (6 values)
+          cache.indices.push_back(baseV + 0);
+          cache.indices.push_back(baseV + 2);
+          cache.indices.push_back(baseV + 1);
+          cache.indices.push_back(baseV + 1);
+          cache.indices.push_back(baseV + 2);
+          cache.indices.push_back(baseV + 3);
         }
         chunk->needsMeshUpdate = false;
       }
@@ -567,10 +563,17 @@ void Renderer::DrawTerrain(Player &player) {
       memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
              cache.vertices.size() * sizeof(Vertex));
 
-      // OPTIMIZATION 9: Batch index offset calculation
+      // OPTIMIZATION 9: Batch copy indices with offset applied
       Uint32 vertexBase = currentVertexOffset;
-      for (size_t i = 0; i < cache.indices.size(); i++) {
-        Indexdata[currentIndexOffset + i] = cache.indices[i] + vertexBase;
+      if (vertexBase == 0) {
+        // No offset needed, direct memcpy
+        memcpy(&Indexdata[currentIndexOffset], cache.indices.data(),
+               cache.indices.size() * sizeof(Uint32));
+      } else {
+        // Apply offset - unfortunately we need the loop here
+        for (size_t i = 0; i < cache.indices.size(); i++) {
+          Indexdata[currentIndexOffset + i] = cache.indices[i] + vertexBase;
+        }
       }
 
       currentVertexOffset += cache.vertices.size();
@@ -581,28 +584,33 @@ void Renderer::DrawTerrain(Player &player) {
     mesh->BaseIndex = currentIndexOffset;
     mesh->OpaqueIndexCount = mesh->BaseIndex;
 
-    // Second pass: Transparent (unchanged for now)
+    // Second pass: Transparent - collect and sort
     std::vector<TransparentDrawnFace> transparentFaces;
+    transparentFaces.reserve(
+        2500); // Pre-allocate for ultra-high render distance
+
     for (auto *chunk : chunks) {
       for (auto &face : chunk->allFaces) {
         if (face.Transparent) {
-          const TransparentDrawnFace TransparentFace{
-              getCoordinates(face.blockPos) +
+          transparentFaces.push_back(TransparentDrawnFace{
+              face.blockPos +
                   Vector3{(float)chunk->xPos, 0, (float)chunk->zPos},
-              face.side, face.blockID, face.w, face.h};
-          transparentFaces.push_back(TransparentFace);
+              face.side, face.blockID, face.w, face.h});
         }
       }
     }
 
     // Sort transparent faces BACK TO FRONT (furthest first)
-    std::sort(
-        transparentFaces.begin(), transparentFaces.end(),
-        [&](const TransparentDrawnFace &a, const TransparentDrawnFace &b) {
-          float distA = (a.blockPos - player.Position).LengthSquared();
-          float distB = (b.blockPos - player.Position).LengthSquared();
-          return distA > distB;
-        });
+    if (!transparentFaces.empty()) {
+      const Vector3 &playerPos = player.Position;
+      std::sort(transparentFaces.begin(), transparentFaces.end(),
+                [&playerPos](const TransparentDrawnFace &a,
+                             const TransparentDrawnFace &b) {
+                  float distA = (a.blockPos - playerPos).LengthSquared();
+                  float distB = (b.blockPos - playerPos).LengthSquared();
+                  return distA > distB;
+                });
+    }
 
     for (auto &face : transparentFaces) {
       Vector3 WorldVerts[4];
@@ -665,24 +673,35 @@ void Renderer::DrawTerrain(Player &player) {
                                             bid};
       }
 
-      Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
-      Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 2;
-      Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 1;
-      Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
-      Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 2;
-      Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 3;
-      mesh->BaseIndex += 6;
+      Uint32 bv = mesh->BaseVertex;
+      Uint32 bi = mesh->BaseIndex;
 
+      // Write both triangle sets at once for water, or just front for others
       if (face.blockID == 5) {
-        Indexdata[mesh->BaseIndex + 0] = mesh->BaseVertex + 0;
-        Indexdata[mesh->BaseIndex + 1] = mesh->BaseVertex + 1;
-        Indexdata[mesh->BaseIndex + 2] = mesh->BaseVertex + 2;
-        Indexdata[mesh->BaseIndex + 3] = mesh->BaseVertex + 1;
-        Indexdata[mesh->BaseIndex + 4] = mesh->BaseVertex + 3;
-        Indexdata[mesh->BaseIndex + 5] = mesh->BaseVertex + 2;
+        // Water: both front and back faces
+        Indexdata[bi + 0] = bv + 0;
+        Indexdata[bi + 1] = bv + 2;
+        Indexdata[bi + 2] = bv + 1;
+        Indexdata[bi + 3] = bv + 1;
+        Indexdata[bi + 4] = bv + 2;
+        Indexdata[bi + 5] = bv + 3;
+        Indexdata[bi + 6] = bv + 0;
+        Indexdata[bi + 7] = bv + 1;
+        Indexdata[bi + 8] = bv + 2;
+        Indexdata[bi + 9] = bv + 1;
+        Indexdata[bi + 10] = bv + 3;
+        Indexdata[bi + 11] = bv + 2;
+        mesh->BaseIndex += 12;
+      } else {
+        // Other transparent blocks: front face only
+        Indexdata[bi + 0] = bv + 0;
+        Indexdata[bi + 1] = bv + 2;
+        Indexdata[bi + 2] = bv + 1;
+        Indexdata[bi + 3] = bv + 1;
+        Indexdata[bi + 4] = bv + 2;
+        Indexdata[bi + 5] = bv + 3;
         mesh->BaseIndex += 6;
       }
-
       mesh->BaseVertex += 4;
     }
     mesh->TransparentIndexCount = mesh->BaseIndex - mesh->OpaqueIndexCount;

@@ -18,7 +18,7 @@ const Vector3 Direction[6] = {
 constexpr HeightsDif ContinentelnessHeight[7] = {
     {0.7f, 120},  // Extreme Mountains
     {0.4f, 100},  // Huge Mountains
-    {0.15f, 50},   // Hills
+    {0.15f, 50},  // Hills
     {-0.15f, 38}, // Plains (near sea level)
     {-0.25f, 25}, // Shallow Water / Beach
     {-0.35f, 38}, // Plains (near sea level)
@@ -147,14 +147,14 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   std::vector<bool> solidCache(xSize * ySize * zSize, false);
   PopulateBlocks(heightCache, caveDensityCache, modCache, solidCache, manager);
 
-  // 5. Water Spread Logic
-  SimulateWaterSpread(solidCache);
+  // 5. Water Spread Logic - DISABLED: Water is now placed directly in
+  // SimulateWaterSpread(solidCache);
 
   // 6. Vegetation (Trees)
   GenerateVegetation(heightCache, modCache, solidCache);
 
   // 7. Generate Mesh
-  GenerateMesh(solidCache, heightCache, manager);
+  GenerateMesh(manager);
 
   isDirty = false;
   needsMeshUpdate = true;
@@ -261,14 +261,19 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
               }
             }
 
-            if (y > height || isCave) {
-              if (y < seaLevel && cont < -0.1f) {
+            if (y > height) {
+              // Above terrain - fill with water if below sea level
+              if (y < seaLevel) {
                 isSolid = false;
                 blockID = 5; // Water
               } else {
                 isSolid = false;
                 blockID = 0; // Air
               }
+            } else if (isCave) {
+              // Inside a cave - always air, even below sea level
+              isSolid = false;
+              blockID = 0; // Air
             } else {
               isSolid = true;
 
@@ -377,28 +382,19 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
   }
 }
 
-void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
-                               const std::vector<int> &heightCache,
-                               ChunkManager &manager) {
-  int estimatedFaces =
-      xSize * zSize * 8; // Adjust estimation based on new complexity
+void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
+  this->allFaces.clear();
+  int estimatedFaces = xSize * zSize * 6; // Adjusted estimation
   this->allFaces.reserve(estimatedFaces);
 
   for (int side = 0; side < 6; side++) {
     int d = (side < 2) ? 2 : (side < 4 ? 0 : 1); // normal axis
-    int u, v;
-    if (d == 0) {
-      u = 2;
-      v = 1;
-    } // X normal: Width=Z, Height=Y
-    else if (d == 1) {
-      u = 0;
-      v = 2;
-    } // Y normal: Width=X, Height=Z
-    else {
+    int u = (d == 0) ? 2 : 0;                    // u axis
+    int v = (d == 1) ? 2 : 1;                    // v axis
+    if (d == 2) {
       u = 0;
       v = 1;
-    } // Z normal: Width=X, Height=Y
+    } // Z normal: X, Y
 
     int dims[3] = {xSize, ySize, zSize};
 
@@ -411,12 +407,35 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
           x[d] = slice;
           x[u] = i;
           x[v] = j;
+
+          // Remap coordinates back to x, y, z
+          // if d=0 (X): x=slice, y=?, z=? -> depends on u,v mapping logic
+          // The original code had specific mappings, let's replicate or
+          // simplify. Original: d=0 (X): u=2(Z), v=1(Y) -> x[0]=slice, x[2]=i,
+          // x[1]=j. WAIT. Original code: if (d == 0) { u = 2; v = 1; } // X
+          // normal: Width=Z, Height=Y else if (d == 1) { u = 0; v = 2; } // Y
+          // normal: Width=X, Height=Z else { u = 0; v = 1; } // Z normal:
+          // Width=X, Height=Y
+          //
+          // x[d] = slice; x[u] = i; x[v] = j;
+          //
+          // My simplified loop above:
+          // int u = (d == 0) ? 2 : 0;
+          // int v = (d == 1) ? 2 : 1;
+          // if (d == 2) { u=0; v=1; }
+          // This matches original logic:
+          // d=0: u=2, v=1. Correct. (But notice v=1 in my logic? d!=1 so v=1.
+          // Wait. d=0 => v=1. Correct). d=1: u=0. v=2. Correct. d=2: u=0, v=1.
+          // Correct.
+
           int idx = x[0] + x[1] * xSize + x[2] * xSize * ySize;
           Uint8 bid = this->blocks[idx];
 
           if (bid != 0) {
             bool visible = false;
             int nx[3] = {x[0], x[1], x[2]};
+
+            // Offset neighbor
             if (side == 0)
               nx[2]++; // Front (+Z)
             else if (side == 1)
@@ -430,89 +449,31 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
             else if (side == 5)
               nx[1]--; // Bottom (-Y)
 
-            // Convert to world coordinates
             int worldX = nx[0] + xPos;
             int worldY = nx[1];
             int worldZ = nx[2] + zPos;
 
-            bool neighborInBounds =
-                (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
-                 nx[2] >= 0 && nx[2] < zSize);
-
             Uint8 nBid = 0;
 
-            if (neighborInBounds) {
-              // Neighbor is within current chunk - use local cache
+            // Check if neighbor is inside valid bounds
+            if (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
+                nx[2] >= 0 && nx[2] < zSize) {
               int nIdx = nx[0] + nx[1] * xSize + nx[2] * xSize * ySize;
               nBid = this->blocks[nIdx];
-            } else if (worldY >= 0 && worldY < ySize) {
-              // Neighbor is outside chunk - calculate using same logic as
-              // PopulateBlocks
-
-              // Calculate terrain height for neighbor position
-              int height = GetHeight({(float)worldX, (float)worldZ});
-
-              // Check for bedrock
-              if (worldY == 0) {
-                nBid = 4; // Bedrock
-              } else {
-                const int seaLevel = 35;
-                float cont = PerlinNoise2D(
-                    {(float)worldX * 0.005f, (float)worldZ * 0.005f}, 3, 0.5f);
-
-                // Check for caves using same logic
-                bool isCave = false;
-                if (worldY >= CaveMinY && worldY <= CaveMaxY) {
-                  float n1 =
-                      PerlinNoise({(float)worldX * 0.08f, (float)worldY * 0.08f,
-                                   (float)worldZ * 0.08f},
-                                  2, 0.5f);
-                  float n2 =
-                      PerlinNoise({(float)worldX * 0.1f + 100.0f,
-                                   (float)worldY * 0.1f, (float)worldZ * 0.1f},
-                                  2, 0.5f);
-                  float density = (n1 * n1) + (n2 * n2);
-                  if (density < 0.015f) {
-                    isCave = true;
-                  }
-                }
-
-                // Determine block type using same logic as PopulateBlocks
-                if (worldY > height || isCave) {
-                  if (worldY < seaLevel && cont < -0.1f) {
-                    nBid = 5; // Water
-                  } else {
-                    nBid = 0; // Air
-                  }
-                } else {
-                  // Solid terrain
-                  const int beachLevel = 37;
-                  bool isBeach = (height <= beachLevel &&
-                                  height >= beachLevel - 3 && cont < -0.1f);
-                  bool isUnderwaterFloor = (height < seaLevel);
-
-                  if (height - worldY > 3) {
-                    nBid = 3; // Stone
-                  } else if (isBeach || isUnderwaterFloor) {
-                    nBid = 8; // Sand
-                  } else if (height - worldY > 0) {
-                    nBid = 2; // Dirt
-                  } else {
-                    nBid = 1; // Grass
-                  }
-                }
-              }
             } else {
-              // Outside Y bounds
-              nBid = 0; // Air
+              // Neighbor is in another chunk
+              nBid = manager.GetBlockID(
+                  {(float)worldX, (float)worldY, (float)worldZ});
             }
 
-            // Determine visibility based on block types
+            // Determine visibility
             if (bid == 5) {
-              // Water: only show faces against air
+              // Water visible if neighbor is air (0)
+              // (Simplification: Water doesn't cull against water)
               visible = (nBid == 0);
             } else {
-              // Opaque blocks: show against air or water (transparent blocks)
+              // Solid block visible if neighbor is transparent (Air=0 or
+              // Water=5)
               visible = (nBid == 0 || nBid == 5);
             }
 
@@ -523,7 +484,7 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
         }
       }
 
-      // Greedily merge mask
+      // Greedy Meshing
       std::vector<bool> visited(dims[u] * dims[v], false);
       for (int j = 0; j < dims[v]; j++) {
         for (int i = 0; i < dims[u]; i++) {
@@ -533,38 +494,50 @@ void ChunkPrefab::GenerateMesh(const std::vector<bool> &solidCache,
             int w = 1, h = 1;
 
             // Expand width
-            for (int i2 = i + 1;
-                 i2 < dims[u] && mask[i2 + j * dims[u]] == bid &&
-                 !visited[i2 + j * dims[u]];
-                 i2++) {
-              w++;
+            for (int i2 = i + 1; i2 < dims[u]; i2++) {
+              int idx2 = i2 + j * dims[u];
+              if (mask[idx2] == bid && !visited[idx2]) {
+                w++;
+              } else {
+                break;
+              }
             }
 
             // Expand height
             for (int j2 = j + 1; j2 < dims[v]; j2++) {
               bool rowMatch = true;
               for (int i2 = i; i2 < i + w; i2++) {
-                if (mask[i2 + j2 * dims[u]] != bid ||
-                    visited[i2 + j2 * dims[u]]) {
+                int idx2 = i2 + j2 * dims[u];
+                if (mask[idx2] != bid || visited[idx2]) {
                   rowMatch = false;
                   break;
                 }
               }
-              if (rowMatch)
+              if (rowMatch) {
                 h++;
-              else
+              } else {
                 break;
+              }
             }
 
             // Add face
-            int x[3];
-            x[d] = slice;
-            x[u] = i;
-            x[v] = j;
-            Uint16 posIndex = Vector3((float)x[0], (float)x[1], (float)x[2])
-                                  .ToIndex(xSize, ySize);
-            this->allFaces.push_back({posIndex, (Uint8)side, bid, (Uint8)w,
-                                      (Uint8)h, BlockDef[bid].Water});
+            // Compute origin of the face
+            int xOrigin[3];
+            xOrigin[d] = slice;
+            xOrigin[u] = i;
+            xOrigin[v] = j;
+
+            Vector3 Pos = Vector3((float)xOrigin[0], (float)xOrigin[1],
+                                  (float)xOrigin[2]);
+            // Access BlockDef for transparency info
+            bool isWater =
+                (bid == 5); // Optimization: avoid map lookup if known ID
+            // Or use BlockDef[bid].Water if available. BlockDef is global in
+            // ChunkManager.hpp variables. Let's assume BlockDef is available as
+            // in original code.
+
+            this->allFaces.push_back(DrawnFace{Pos, (Uint8)side, bid, (Uint8)w,
+                                               (Uint8)h, BlockDef[bid].Water});
 
             // Mark visited
             for (int j2 = j; j2 < j + h; j2++) {

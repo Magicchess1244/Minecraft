@@ -7,7 +7,7 @@
 #include <sys/types.h>
 
 struct DrawnFace {
-  Uint16 blockPos;
+  Vector3 blockPos;
   Uint8 side;
   Uint8 blockID;
   Uint8 w;
@@ -62,8 +62,7 @@ private:
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Uint8> &modCache,
                           std::vector<bool> &solidCache);
-  void GenerateMesh(const std::vector<bool> &solidCache,
-                    const std::vector<int> &heightCache, ChunkManager &manager);
+  void GenerateMesh(ChunkManager &manager);
 };
 
 #endif
