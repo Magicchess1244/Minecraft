@@ -10,7 +10,7 @@ layout (location = 0) out vec4 v_color;
 layout (location = 1) out vec2 v_uv;
 layout (location = 2) flat out float v_blockID;
 layout (location = 3) out vec3 v_pos;
-layout (location = 4) flat out float v_light;
+layout (location = 4) out float v_light;
 
 layout(set = 1, binding = 0, std140) uniform ProjectionBlock { mat4 projection; } projBlock;
 layout(set = 1, binding = 1, std140) uniform ViewBlock { mat4 view; } viewBlock;

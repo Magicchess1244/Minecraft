@@ -82,6 +82,7 @@ public:
   void Place(Vector3 Pos, int BlockID);
   void SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors = true);
   Uint8 GetBlockID(Vector3 Pos);
+  Uint8 GetLightLevel(Vector3 Pos);
 
 private:
   std::vector<Vector3> activeWater;

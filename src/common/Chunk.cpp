@@ -154,12 +154,12 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   // 6. Vegetation (Trees)
   GenerateVegetation(heightCache, modCache, solidCache);
 
+  isDirty = false;
   GenerateLighting();
   PropagateSunlight();
   // 7. Generate Mesh
   GenerateMesh(manager);
 
-  isDirty = false;
   needsMeshUpdate = true;
   allFaces.shrink_to_fit();
 }
@@ -455,17 +455,11 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
 
             if (visible) {
               mask[i + j * dims[u]] = bid;
-              
-              // FIXED: Get light safely - check bounds first
-              Uint8 light = 15; // Default to full brightness
-              if (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
-                  nx[2] >= 0 && nx[2] < zSize) {
-                // Neighbor is inside chunk - get light directly
-                light = GetCombinedLight(nx[0], nx[1], nx[2], manager);
-              }
-              // If neighbor is outside chunk, use default brightness (15)
-              // Or you could query neighbor chunk if you implement that
-              
+
+              // FIXED: Get light level from neighbor, works for chunk
+              // boundaries now
+              Uint8 light = GetCombinedLight(nx[0], nx[1], nx[2], manager);
+
               lightMask[i + j * dims[u]] = light;
             }
           }
@@ -485,7 +479,8 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
             // Expand width
             for (int i2 = i + 1; i2 < dims[u]; i2++) {
               int idx2 = i2 + j * dims[u];
-              if (mask[idx2] == bid && !visited[idx2] && lightMask[idx2] == light) {
+              if (mask[idx2] == bid && !visited[idx2] &&
+                  lightMask[idx2] == light) {
                 w++;
               } else {
                 break;
@@ -497,7 +492,8 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
               bool rowMatch = true;
               for (int i2 = i; i2 < i + w; i2++) {
                 int idx2 = i2 + j2 * dims[u];
-                if (mask[idx2] != bid || visited[idx2] || lightMask[idx2] != light) {
+                if (mask[idx2] != bid || visited[idx2] ||
+                    lightMask[idx2] != light) {
                   rowMatch = false;
                   break;
                 }
@@ -518,7 +514,8 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
                                   (float)xOrigin[2]);
 
             this->allFaces.push_back(DrawnFace{Pos, (Uint8)side, bid, (Uint8)w,
-                                               (Uint8)h, light, BlockDef[bid].Water});
+                                               (Uint8)h, light,
+                                               BlockDef[bid].Water});
 
             for (int j2 = j; j2 < j + h; j2++) {
               for (int i2 = i; i2 < i + w; i2++) {
@@ -531,82 +528,41 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
     }
   }
 }
-Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z, ChunkManager &manager) {
-    // If within bounds, get from this chunk
-    if (x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize) {
-        if (lightData.empty() || lightData.size() != blocks.size()) {
-            return 15; // Default to full brightness if lighting not initialized
-        }
-        
-        int idx = x + y * xSize + z * xSize * ySize;
-        if (idx < 0 || idx >= (int)lightData.size()) {
-            return 15;
-        }
-        
-        return std::max(lightData[idx].sunlight, lightData[idx].blockLight);
+Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z,
+                                    ChunkManager &manager) {
+  // If within bounds, get from this chunk directly
+  if (x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize) {
+    if (!lightData.empty()) {
+      int idx = x + y * xSize + z * xSize * ySize;
+      return std::max(lightData[idx].sunlight, lightData[idx].blockLight);
     }
-    
-    // Out of bounds - query neighboring chunk
-    int worldX = x + xPos;
-    int worldY = y;
-    int worldZ = z + zPos;
-    
-    // Calculate which chunk the neighbor is in
-    int neighborChunkX = (worldX / xSize) * xSize;
-    int neighborChunkZ = (worldZ / zSize) * zSize;
-    
-    // Get the neighboring chunk
-    ChunkPrefab* neighborChunk = &manager.get_chunk({(float)neighborChunkX, 0, (float)neighborChunkZ});
-    
-    if (neighborChunk == nullptr) {
-        return 15; // Chunk not loaded, assume full brightness
-    }
-    
-    // Convert world coords to neighbor chunk's local coords
-    int localX = worldX - neighborChunkX;
-    int localZ = worldZ - neighborChunkZ;
-    
-    // Check bounds in neighbor chunk
-    if (localX < 0 || localX >= neighborChunk->xSize || 
-        worldY < 0 || worldY >= neighborChunk->ySize || 
-        localZ < 0 || localZ >= neighborChunk->zSize) {
-        return 15;
-    }
-    
-    // Check if neighbor has lighting data
-    if (neighborChunk->lightData.empty() || 
-        neighborChunk->lightData.size() != neighborChunk->blocks.size()) {
-        return 15;
-    }
-    
-    int idx = localX + worldY * neighborChunk->xSize + localZ * neighborChunk->xSize * neighborChunk->ySize;
-    if (idx < 0 || idx >= (int)neighborChunk->lightData.size()) {
-        return 15;
-    }
-    
-    return std::max(neighborChunk->lightData[idx].sunlight, 
-                    neighborChunk->lightData[idx].blockLight);
+    return 15;
+  }
+
+  // Out of bounds - query manager safely (no recursion)
+  return manager.GetLightLevel(
+      {(float)(x + xPos), (float)y, (float)(z + zPos)});
 }
 void ChunkPrefab::GenerateLighting() {
   if (lightData.size() != blocks.size()) {
-      lightData.assign(blocks.size(), {0, 0});
+    lightData.assign(blocks.size(), {0, 0});
   }
-  
+
   // Phase 1: Sunlight from top
   for (int x = 0; x < xSize; x++) {
     for (int z = 0; z < zSize; z++) {
       Uint8 sunLevel = 15;
-      
+
       for (int y = ySize - 1; y >= 0; y--) {
         int idx = x + y * xSize + z * xSize * ySize;
         Uint8 blockID = blocks[idx];
-        
+
         if (blockID == 0) { // Air
           lightData[idx].sunlight = sunLevel;
         } else if (blockID == 5) { // Water (transparent)
           sunLevel = (sunLevel > 2) ? sunLevel - 2 : 0;
           lightData[idx].sunlight = sunLevel;
-        } else if ((blockID != 5) || (blockID != 0)){ // Solid block
+        } else { // Solid block
           sunLevel = 0;
           lightData[idx].sunlight = 0;
         }
@@ -616,7 +572,7 @@ void ChunkPrefab::GenerateLighting() {
 }
 void ChunkPrefab::PropagateSunlight() {
   std::queue<Vector3> lightQueue;
-  
+
   // Add all lit blocks to queue
   for (int x = 0; x < xSize; x++) {
     for (int y = 0; y < ySize; y++) {
@@ -628,35 +584,39 @@ void ChunkPrefab::PropagateSunlight() {
       }
     }
   }
-  
+
   // BFS propagation
   while (!lightQueue.empty()) {
     Vector3 pos = lightQueue.front();
     lightQueue.pop();
-    
+
     int idx = pos.x + pos.y * xSize + pos.z * xSize * ySize;
     Uint8 currentLight = lightData[idx].sunlight;
-    
-    if (currentLight <= 1) continue;
-    
+
+    if (currentLight <= 1)
+      continue;
+
     // Check all 6 neighbors
     for (int i = 0; i < 6; i++) {
       int nx = pos.x + (int)Direction[i].x;
       int ny = pos.y + (int)Direction[i].y;
       int nz = pos.z + (int)Direction[i].z;
-      
-      if (nx < 0 || nx >= xSize || ny < 0 || ny >= ySize || 
-          nz < 0 || nz >= zSize) continue;
-      
+
+      if (nx < 0 || nx >= xSize || ny < 0 || ny >= ySize || nz < 0 ||
+          nz >= zSize)
+        continue;
+
       int nIdx = nx + ny * xSize + nz * xSize * ySize;
       Uint8 neighborBlock = blocks[nIdx];
-      
+
       // Skip solid blocks
-      if (neighborBlock != 0 && neighborBlock != 5) continue;
-      
+      if (neighborBlock != 0 && neighborBlock != 5)
+        continue;
+
       Uint8 newLight = currentLight - 1;
-      if (neighborBlock == 5) newLight = (newLight > 2) ? newLight - 1 : 0;
-      
+      if (neighborBlock == 5)
+        newLight = (newLight > 2) ? newLight - 1 : 0;
+
       if (newLight > lightData[nIdx].sunlight) {
         lightData[nIdx].sunlight = newLight;
         lightQueue.push({(float)nx, (float)ny, (float)nz});

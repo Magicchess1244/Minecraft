@@ -21,10 +21,11 @@ struct TransparentDrawnFace {
   int blockID;
   int w;
   int h;
+  Uint8 light;
 };
 struct LightData {
-    Uint8 sunlight : 4;   // 0-15
-    Uint8 blockLight : 4; // 0-15
+  Uint8 sunlight : 4;   // 0-15
+  Uint8 blockLight : 4; // 0-15
 };
 
 class ChunkPrefab {
@@ -69,9 +70,9 @@ private:
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Uint8> &modCache,
                           std::vector<bool> &solidCache);
-void GenerateLighting();
-Uint8 GetCombinedLight(int x, int y, int z, ChunkManager &manager);
-void PropagateSunlight();
+  void GenerateLighting();
+  Uint8 GetCombinedLight(int x, int y, int z, ChunkManager &manager);
+  void PropagateSunlight();
 };
 
 #endif

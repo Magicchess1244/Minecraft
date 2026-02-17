@@ -327,6 +327,32 @@ Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
 
   return it->second.blocks[idx];
 }
+Uint8 ChunkManager::GetLightLevel(Vector3 Pos) {
+  Vector3 chunkKey = {(float)floor(Pos.x / 16.0f), 0,
+                      (float)floor(Pos.z / 16.0f)};
+  auto it = Chunks.find(chunkKey);
+
+  // Safety check: Chunk must exist and have light data
+  if (it == Chunks.end() || it->second.lightData.empty()) {
+    return 15; // Assume fully lit if chunk is missing
+  }
+
+  int lx = (int)floor(Pos.x) - it->second.xPos;
+  int ly = (int)floor(Pos.y);
+  int lz = (int)floor(Pos.z) - it->second.zPos;
+
+  if (lx < 0 || lx >= 16 || ly < 0 || ly >= 128 || lz < 0 || lz >= 16) {
+    return 15;
+  }
+
+  int idx = lx + ly * 16 + lz * 16 * 128;
+  if (idx < 0 || idx >= (int)it->second.lightData.size()) {
+    return 15;
+  }
+
+  return std::max(it->second.lightData[idx].sunlight,
+                  it->second.lightData[idx].blockLight);
+}
 
 /*
 namespace ChunckManager {

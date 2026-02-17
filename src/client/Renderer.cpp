@@ -10,7 +10,7 @@
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 12;
+constexpr int RenderDistance = 10;
 constexpr float PlayerRad = 0.4;
 const Vector3 PlayerModel[6][4] = {
     {                                // Front (+Z)
@@ -97,10 +97,13 @@ const Vector3 Direction[6] = {
     {0, 1, 0},  // Top
     {0, -1, 0}  // Bottom
 };
-const Color Colors[3] = {
-    {0, 0, 0},    // Front / Back
-    {25, 25, 25}, // Right / Left
-    {50, 50, 50}, // Top / Bottom
+const Color Colors[6] = {
+    {20, 20, 20}, // Front (+Z)
+    {20, 20, 20}, // Back (-Z)
+    {40, 40, 40}, // Right (+X)
+    {40, 40, 40}, // Left (-X)
+    {0, 0, 0},    // Top (+Y)
+    {70, 70, 70}, // Bottom (-Y)
 };
 
 Matrix Perspective(float Fov, float Aspect, float Near, float Far) {
@@ -455,7 +458,7 @@ void Renderer::DrawTerrain(Player &player) {
 
           // Pre-calculate color once per face
           Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
-                              Colors[(int)(face.side / 2)].ToFloat();
+                              Colors[(int)(face.side)].ToFloat();
 
           Uint32 baseV = cache.vertices.size();
 
@@ -510,7 +513,8 @@ void Renderer::DrawTerrain(Player &player) {
             } else { // Top/Bottom: X, Z
               uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
             }
-            cache.vertices.push_back({v[j] + worldPos, faceColor, uv, bid, (float)face.LightLevel});
+            cache.vertices.push_back(
+                {v[j] + worldPos, faceColor, uv, bid, (float)face.LightLevel});
           }
           // Use direct push for indices (6 values)
           cache.indices.push_back(baseV + 0);
@@ -592,7 +596,7 @@ void Renderer::DrawTerrain(Player &player) {
           transparentFaces.push_back(TransparentDrawnFace{
               face.blockPos +
                   Vector3{(float)chunk->xPos, 0, (float)chunk->zPos},
-              face.side, face.blockID, face.w, face.h});
+              face.side, face.blockID, face.w, face.h, face.LightLevel});
         }
       }
     }
@@ -653,7 +657,7 @@ void Renderer::DrawTerrain(Player &player) {
       WorldVerts[3] = v3 + face.blockPos;
 
       Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
-                          Colors[(int)(face.side / 2)].ToFloat();
+                          Colors[(int)(face.side)].ToFloat();
       float bid = (float)face.blockID;
 
       Vector3 v[4] = {v0, v1, v2, v3};
@@ -667,7 +671,7 @@ void Renderer::DrawTerrain(Player &player) {
           uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
         }
         Vertexdata[mesh->BaseVertex + j] = {v[j] + face.blockPos, faceColor, uv,
-                                            bid, 15.0f};
+                                            bid, (float)face.light};
       }
 
       Uint32 bv = mesh->BaseVertex;
@@ -1190,31 +1194,31 @@ void Renderer::VertexGPUInit() {
       SDL_GPU_VERTEXINPUTRATE_VERTEX;
   this->pipelineInitVars.vertex_buffer_desc.instance_step_rate = 0;
   this->pipelineInitVars.vertex_buffer_desc.pitch = sizeof(Vertex);
-  
+
   this->pipelineInitVars.vertex_attributes[0].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[0].location = 0;
   this->pipelineInitVars.vertex_attributes[0].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
   this->pipelineInitVars.vertex_attributes[0].offset = 0;
-  
+
   this->pipelineInitVars.vertex_attributes[1].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[1].location = 1;
   this->pipelineInitVars.vertex_attributes[1].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
   this->pipelineInitVars.vertex_attributes[1].offset = sizeof(float) * 3;
-  
+
   this->pipelineInitVars.vertex_attributes[2].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[2].location = 2;
   this->pipelineInitVars.vertex_attributes[2].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
   this->pipelineInitVars.vertex_attributes[2].offset = sizeof(float) * 6;
-  
+
   this->pipelineInitVars.vertex_attributes[3].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[3].location = 3;
   this->pipelineInitVars.vertex_attributes[3].format =
       SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
   this->pipelineInitVars.vertex_attributes[3].offset = sizeof(float) * 8;
-  
+
   // ADD THIS - Attribute 4 for light
   this->pipelineInitVars.vertex_attributes[4].buffer_slot = 0;
   this->pipelineInitVars.vertex_attributes[4].location = 4;
