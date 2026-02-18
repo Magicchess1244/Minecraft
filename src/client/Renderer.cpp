@@ -10,7 +10,7 @@
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 10;
+constexpr int RenderDistance = 6;
 constexpr float PlayerRad = 0.4;
 const Vector3 PlayerModel[6][4] = {
     {                                // Front (+Z)

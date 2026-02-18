@@ -65,6 +65,19 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
 
   if (it->second.isDirty) {
     it->second.GenerateChunk(*this);
+
+    // Notify neighbors to update their mesh/lighting culling
+    Vector3 neighbors[4] = {{key.x + 1, 0, key.z},
+                            {key.x - 1, 0, key.z},
+                            {key.x, 0, key.z + 1},
+                            {key.x, 0, key.z - 1}};
+    for (auto &nKey : neighbors) {
+      auto nit = Chunks.find(nKey);
+      if (nit != Chunks.end() && !nit->second.isDirty) {
+        nit->second.GenerateMesh(*this);
+        nit->second.needsMeshUpdate = true;
+      }
+    }
   }
 
   return it->second;
@@ -328,30 +341,32 @@ Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
   return it->second.blocks[idx];
 }
 Uint8 ChunkManager::GetLightLevel(Vector3 Pos) {
-  Vector3 chunkKey = {(float)floor(Pos.x / 16.0f), 0,
-                      (float)floor(Pos.z / 16.0f)};
+  Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
+                      (float)floor(Pos.z / ChunkPrefab::zSize)};
+
   auto it = Chunks.find(chunkKey);
+  if (it == Chunks.end() || it->second.lightData.empty())
+    return 0; // Return 0 instead of 15 to prevent light leaking into caves from
+              // unloaded chunks
 
-  // Safety check: Chunk must exist and have light data
-  if (it == Chunks.end() || it->second.lightData.empty()) {
-    return 15; // Assume fully lit if chunk is missing
-  }
+  const ChunkPrefab &chunk = it->second;
 
-  int lx = (int)floor(Pos.x) - it->second.xPos;
+  int lx = (int)floor(Pos.x) - chunk.xPos;
   int ly = (int)floor(Pos.y);
-  int lz = (int)floor(Pos.z) - it->second.zPos;
+  int lz = (int)floor(Pos.z) - chunk.zPos;
 
-  if (lx < 0 || lx >= 16 || ly < 0 || ly >= 128 || lz < 0 || lz >= 16) {
+  if (lx < 0 || lx >= chunk.xSize || ly < 0 || ly >= chunk.ySize || lz < 0 ||
+      lz >= chunk.zSize)
     return 15;
-  }
 
-  int idx = lx + ly * 16 + lz * 16 * 128;
-  if (idx < 0 || idx >= (int)it->second.lightData.size()) {
-    return 15;
-  }
+  int idx = lx + ly * chunk.xSize + lz * chunk.xSize * chunk.ySize;
 
-  return std::max(it->second.lightData[idx].sunlight,
-                  it->second.lightData[idx].blockLight);
+  // idx bounds check is now redundant given the above, but kept for safety
+  if (idx >= (int)chunk.lightData.size())
+    return 0;
+
+  return std::max(chunk.lightData[idx].sunlight,
+                  chunk.lightData[idx].blockLight);
 }
 
 /*

@@ -156,7 +156,7 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
 
   isDirty = false;
   GenerateLighting();
-  PropagateSunlight();
+  PropagateSunlight(manager);
   // 7. Generate Mesh
   GenerateMesh(manager);
 
@@ -536,7 +536,7 @@ Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z,
       int idx = x + y * xSize + z * xSize * ySize;
       return std::max(lightData[idx].sunlight, lightData[idx].blockLight);
     }
-    return 15;
+    return 0;
   }
 
   // Out of bounds - query manager safely (no recursion)
@@ -544,36 +544,33 @@ Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z,
       {(float)(x + xPos), (float)y, (float)(z + zPos)});
 }
 void ChunkPrefab::GenerateLighting() {
-  if (lightData.size() != blocks.size()) {
-    lightData.assign(blocks.size(), {0, 0});
-  }
+  lightData.assign(blocks.size(), {0, 0});
 
-  // Phase 1: Sunlight from top
   for (int x = 0; x < xSize; x++) {
     for (int z = 0; z < zSize; z++) {
-      Uint8 sunLevel = 15;
-
+      Uint8 sun = 15;
       for (int y = ySize - 1; y >= 0; y--) {
         int idx = x + y * xSize + z * xSize * ySize;
-        Uint8 blockID = blocks[idx];
+        Uint8 bid = blocks[idx];
 
-        if (blockID == 0) { // Air
-          lightData[idx].sunlight = sunLevel;
-        } else if (blockID == 5) { // Water (transparent)
-          sunLevel = (sunLevel > 2) ? sunLevel - 2 : 0;
-          lightData[idx].sunlight = sunLevel;
-        } else { // Solid block
-          sunLevel = 0;
+        if (bid == 0)
+          lightData[idx].sunlight = sun;
+        else if (bid == 5) {
+          sun = sun > 1 ? sun - 1 : 0;
+          lightData[idx].sunlight = sun;
+        } else {
+          sun = 0;
           lightData[idx].sunlight = 0;
         }
       }
     }
   }
 }
-void ChunkPrefab::PropagateSunlight() {
+
+void ChunkPrefab::PropagateSunlight(ChunkManager &manager) {
   std::queue<Vector3> lightQueue;
 
-  // Add all lit blocks to queue
+  // 1. Seed with existing light (from GenerateLighting or previous state)
   for (int x = 0; x < xSize; x++) {
     for (int y = 0; y < ySize; y++) {
       for (int z = 0; z < zSize; z++) {
@@ -585,12 +582,47 @@ void ChunkPrefab::PropagateSunlight() {
     }
   }
 
-  // BFS propagation
+  // 2. Pull light from neighbors to allow light to flow INTO this chunk
+  for (int x = 0; x < xSize; x++) {
+    for (int y = 0; y < ySize; y++) {
+      for (int z = 0; z < zSize; z++) {
+        // Only check boundaries
+        if (x > 0 && x < xSize - 1 && z > 0 && z < zSize - 1)
+          continue;
+
+        for (int i = 0; i < 4; i++) { // Horizontal neighbors only
+          int nx = x + (int)Direction[i].x;
+          int nz = z + (int)Direction[i].z;
+
+          if (nx < 0 || nx >= xSize || nz < 0 || nz >= zSize) {
+            Uint8 nLight = manager.GetLightLevel(
+                {(float)(nx + xPos), (float)y, (float)(nz + zPos)});
+            if (nLight > 1) {
+              int idx = x + y * xSize + z * xSize * ySize;
+              // Skip if current block is solid but allow water/air
+              if (blocks[idx] == 0 || blocks[idx] == 5) {
+                Uint8 newLight = nLight - 1;
+                if (blocks[idx] == 5)
+                  newLight = (newLight > 2) ? newLight - 1 : 0;
+
+                if (newLight > lightData[idx].sunlight) {
+                  lightData[idx].sunlight = newLight;
+                  lightQueue.push({(float)x, (float)y, (float)z});
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. BFS propagation
   while (!lightQueue.empty()) {
     Vector3 pos = lightQueue.front();
     lightQueue.pop();
 
-    int idx = pos.x + pos.y * xSize + pos.z * xSize * ySize;
+    int idx = (int)pos.x + (int)pos.y * xSize + (int)pos.z * xSize * ySize;
     Uint8 currentLight = lightData[idx].sunlight;
 
     if (currentLight <= 1)
@@ -598,29 +630,32 @@ void ChunkPrefab::PropagateSunlight() {
 
     // Check all 6 neighbors
     for (int i = 0; i < 6; i++) {
-      int nx = pos.x + (int)Direction[i].x;
-      int ny = pos.y + (int)Direction[i].y;
-      int nz = pos.z + (int)Direction[i].z;
+      int nx = (int)pos.x + (int)Direction[i].x;
+      int ny = (int)pos.y + (int)Direction[i].y;
+      int nz = (int)pos.z + (int)Direction[i].z;
 
-      if (nx < 0 || nx >= xSize || ny < 0 || ny >= ySize || nz < 0 ||
-          nz >= zSize)
-        continue;
+      // Handle internal propagation
+      if (nx >= 0 && nx < xSize && ny >= 0 && ny < ySize && nz >= 0 &&
+          nz < zSize) {
+        int nIdx = nx + ny * xSize + nz * xSize * ySize;
+        Uint8 neighborBlock = blocks[nIdx];
 
-      int nIdx = nx + ny * xSize + nz * xSize * ySize;
-      Uint8 neighborBlock = blocks[nIdx];
+        // Skip solid blocks
+        if (neighborBlock != 0 && neighborBlock != 5)
+          continue;
 
-      // Skip solid blocks
-      if (neighborBlock != 0 && neighborBlock != 5)
-        continue;
+        Uint8 newLight = currentLight - 1;
+        if (neighborBlock == 5)
+          newLight = (newLight > 2) ? newLight - 1 : 0;
 
-      Uint8 newLight = currentLight - 1;
-      if (neighborBlock == 5)
-        newLight = (newLight > 2) ? newLight - 1 : 0;
-
-      if (newLight > lightData[nIdx].sunlight) {
-        lightData[nIdx].sunlight = newLight;
-        lightQueue.push({(float)nx, (float)ny, (float)nz});
+        if (newLight > lightData[nIdx].sunlight) {
+          lightData[nIdx].sunlight = newLight;
+          lightQueue.push({(float)nx, (float)ny, (float)nz});
+        }
       }
+      // Note: We don't "push" to neighbors here to avoid infinite recursion
+      // between chunks. Instead, we rely on neighbor chunk's "pull" during
+      // their mesh update.
     }
   }
 }

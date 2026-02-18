@@ -72,7 +72,7 @@ private:
                           std::vector<bool> &solidCache);
   void GenerateLighting();
   Uint8 GetCombinedLight(int x, int y, int z, ChunkManager &manager);
-  void PropagateSunlight();
+  void PropagateSunlight(ChunkManager &manager);
 };
 
 #endif
