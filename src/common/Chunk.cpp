@@ -156,7 +156,7 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
 
   isDirty = false;
   GenerateLighting();
-  PropagateSunlight(manager);
+  PropagateLighting(manager);
   // 7. Generate Mesh
   GenerateMesh(manager);
 
@@ -553,6 +553,7 @@ void ChunkPrefab::GenerateLighting() {
         int idx = x + y * xSize + z * xSize * ySize;
         Uint8 bid = blocks[idx];
 
+        // Seed Sunlight
         if (bid == 0)
           lightData[idx].sunlight = sun;
         else if (bid == 5) {
@@ -562,53 +563,75 @@ void ChunkPrefab::GenerateLighting() {
           sun = 0;
           lightData[idx].sunlight = 0;
         }
+
+        // Seed Block Light (Luminescence)
+        if (bid < BlockNum) {
+          lightData[idx].blockLight = BlockDef[bid].Luminance;
+        }
       }
     }
   }
 }
 
-void ChunkPrefab::PropagateSunlight(ChunkManager &manager) {
-  std::queue<Vector3> lightQueue;
+void ChunkPrefab::PropagateLighting(ChunkManager &manager) {
+  std::queue<Vector3> sunQueue;
+  std::queue<Vector3> blockQueue;
 
-  // 1. Seed with existing light (from GenerateLighting or previous state)
+  // 1. Seed with existing light
   for (int x = 0; x < xSize; x++) {
     for (int y = 0; y < ySize; y++) {
       for (int z = 0; z < zSize; z++) {
         int idx = x + y * xSize + z * xSize * ySize;
-        if (lightData[idx].sunlight > 0) {
-          lightQueue.push({(float)x, (float)y, (float)z});
-        }
+        if (lightData[idx].sunlight > 0)
+          sunQueue.push({(float)x, (float)y, (float)z});
+        if (lightData[idx].blockLight > 0)
+          blockQueue.push({(float)x, (float)y, (float)z});
       }
     }
   }
 
-  // 2. Pull light from neighbors to allow light to flow INTO this chunk
+  // 2. Pull light from neighbors
   for (int x = 0; x < xSize; x++) {
     for (int y = 0; y < ySize; y++) {
       for (int z = 0; z < zSize; z++) {
-        // Only check boundaries
         if (x > 0 && x < xSize - 1 && z > 0 && z < zSize - 1)
           continue;
 
-        for (int i = 0; i < 4; i++) { // Horizontal neighbors only
-          int nx = x + (int)Direction[i].x;
-          int nz = z + (int)Direction[i].z;
+        for (int i = 0; i < 4; i++) {
+          int nx = (int)x + (int)Direction[i].x;
+          int nz = (int)z + (int)Direction[i].z;
 
           if (nx < 0 || nx >= xSize || nz < 0 || nz >= zSize) {
-            Uint8 nLight = manager.GetLightLevel(
-                {(float)(nx + xPos), (float)y, (float)(nz + zPos)});
-            if (nLight > 1) {
-              int idx = x + y * xSize + z * xSize * ySize;
-              // Skip if current block is solid but allow water/air
-              if (blocks[idx] == 0 || blocks[idx] == 5) {
-                Uint8 newLight = nLight - 1;
-                if (blocks[idx] == 5)
-                  newLight = (newLight > 2) ? newLight - 1 : 0;
+            Vector3 worldPos = {(float)(nx + xPos), (float)y,
+                                (float)(nz + zPos)};
 
-                if (newLight > lightData[idx].sunlight) {
-                  lightData[idx].sunlight = newLight;
-                  lightQueue.push({(float)x, (float)y, (float)z});
-                }
+            int idx = x + y * xSize + z * xSize * ySize;
+            if (blocks[idx] != 0 && blocks[idx] != 5 && blocks[idx] != 9)
+              continue;
+
+            // Pull Sunlight
+            Uint8 nSun = manager.GetSunlightLevel(worldPos);
+            if (nSun > 1) {
+              Uint8 newSun = nSun - 1;
+              if (blocks[idx] == 5)
+                newSun = (newSun > 2) ? newSun - 1 : 0;
+
+              if (newSun > lightData[idx].sunlight) {
+                lightData[idx].sunlight = newSun;
+                sunQueue.push({(float)x, (float)y, (float)z});
+              }
+            }
+
+            // Pull Block Light
+            Uint8 nBlock = manager.GetBlockLightLevel(worldPos);
+            if (nBlock > 1) {
+              Uint8 newBlock = nBlock - 1;
+              if (blocks[idx] == 5)
+                newBlock = (newBlock > 2) ? newBlock - 1 : 0;
+
+              if (newBlock > lightData[idx].blockLight) {
+                lightData[idx].blockLight = newBlock;
+                blockQueue.push({(float)x, (float)y, (float)z});
               }
             }
           }
@@ -617,45 +640,57 @@ void ChunkPrefab::PropagateSunlight(ChunkManager &manager) {
     }
   }
 
-  // 3. BFS propagation
-  while (!lightQueue.empty()) {
-    Vector3 pos = lightQueue.front();
-    lightQueue.pop();
+  // Generalized BFS propagation function
+  auto propagate = [&](std::queue<Vector3> &q, bool isSunlight) {
+    while (!q.empty()) {
+      Vector3 pos = q.front();
+      q.pop();
 
-    int idx = (int)pos.x + (int)pos.y * xSize + (int)pos.z * xSize * ySize;
-    Uint8 currentLight = lightData[idx].sunlight;
+      int idx = (int)pos.x + (int)pos.y * xSize + (int)pos.z * xSize * ySize;
+      Uint8 currentLight =
+          isSunlight ? lightData[idx].sunlight : lightData[idx].blockLight;
 
-    if (currentLight <= 1)
-      continue;
+      if (currentLight <= 1)
+        continue;
 
-    // Check all 6 neighbors
-    for (int i = 0; i < 6; i++) {
-      int nx = (int)pos.x + (int)Direction[i].x;
-      int ny = (int)pos.y + (int)Direction[i].y;
-      int nz = (int)pos.z + (int)Direction[i].z;
+      for (int i = 0; i < 6; i++) {
+        int nx = (int)pos.x + (int)Direction[i].x;
+        int ny = (int)pos.y + (int)Direction[i].y;
+        int nz = (int)pos.z + (int)Direction[i].z;
 
-      // Handle internal propagation
-      if (nx >= 0 && nx < xSize && ny >= 0 && ny < ySize && nz >= 0 &&
-          nz < zSize) {
-        int nIdx = nx + ny * xSize + nz * xSize * ySize;
-        Uint8 neighborBlock = blocks[nIdx];
+        if (nx >= 0 && nx < xSize && ny >= 0 && ny < ySize && nz >= 0 &&
+            nz < zSize) {
+          int nIdx = nx + ny * xSize + nz * xSize * ySize;
+          Uint8 neighborBlock = blocks[nIdx];
 
-        // Skip solid blocks
-        if (neighborBlock != 0 && neighborBlock != 5)
-          continue;
+          // Small adjustment: skip solid blocks but allow ones with luminance
+          // (like Glowstone itself can be lit by neighbors?) Usually emitters
+          // are solid but can pass light? No, glowstone is solid. In Minecraft,
+          // light only passes through non-solid blocks
+          // (alpha-tested/transparent).
+          if (neighborBlock != 0 && neighborBlock != 5 && neighborBlock != 9)
+            continue;
 
-        Uint8 newLight = currentLight - 1;
-        if (neighborBlock == 5)
-          newLight = (newLight > 2) ? newLight - 1 : 0;
+          Uint8 newLight = currentLight - 1;
+          if (neighborBlock == 5)
+            newLight = (newLight > 2) ? newLight - 1 : 0;
 
-        if (newLight > lightData[nIdx].sunlight) {
-          lightData[nIdx].sunlight = newLight;
-          lightQueue.push({(float)nx, (float)ny, (float)nz});
+          if (isSunlight) {
+            if (newLight > lightData[nIdx].sunlight) {
+              lightData[nIdx].sunlight = newLight;
+              q.push({(float)nx, (float)ny, (float)nz});
+            }
+          } else {
+            if (newLight > lightData[nIdx].blockLight) {
+              lightData[nIdx].blockLight = newLight;
+              q.push({(float)nx, (float)ny, (float)nz});
+            }
+          }
         }
       }
-      // Note: We don't "push" to neighbors here to avoid infinite recursion
-      // between chunks. Instead, we rely on neighbor chunk's "pull" during
-      // their mesh update.
     }
-  }
+  };
+
+  propagate(sunQueue, true);
+  propagate(blockQueue, false);
 }

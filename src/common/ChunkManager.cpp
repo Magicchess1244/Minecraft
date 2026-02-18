@@ -74,6 +74,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
     for (auto &nKey : neighbors) {
       auto nit = Chunks.find(nKey);
       if (nit != Chunks.end() && !nit->second.isDirty) {
+        nit->second.PropagateLighting(*this);
         nit->second.GenerateMesh(*this);
         nit->second.needsMeshUpdate = true;
       }
@@ -346,8 +347,7 @@ Uint8 ChunkManager::GetLightLevel(Vector3 Pos) {
 
   auto it = Chunks.find(chunkKey);
   if (it == Chunks.end() || it->second.lightData.empty())
-    return 0; // Return 0 instead of 15 to prevent light leaking into caves from
-              // unloaded chunks
+    return 0; // Prevent light leaking from unloaded chunks
 
   const ChunkPrefab &chunk = it->second;
 
@@ -357,16 +357,60 @@ Uint8 ChunkManager::GetLightLevel(Vector3 Pos) {
 
   if (lx < 0 || lx >= chunk.xSize || ly < 0 || ly >= chunk.ySize || lz < 0 ||
       lz >= chunk.zSize)
-    return 15;
+    return 0;
 
   int idx = lx + ly * chunk.xSize + lz * chunk.xSize * chunk.ySize;
-
-  // idx bounds check is now redundant given the above, but kept for safety
   if (idx >= (int)chunk.lightData.size())
     return 0;
 
   return std::max(chunk.lightData[idx].sunlight,
                   chunk.lightData[idx].blockLight);
+}
+Uint8 ChunkManager::GetSunlightLevel(Vector3 Pos) {
+  Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
+                      (float)floor(Pos.z / ChunkPrefab::zSize)};
+
+  auto it = Chunks.find(chunkKey);
+  if (it == Chunks.end() || it->second.lightData.empty())
+    return 0;
+
+  const ChunkPrefab &chunk = it->second;
+  int lx = (int)floor(Pos.x) - chunk.xPos;
+  int ly = (int)floor(Pos.y);
+  int lz = (int)floor(Pos.z) - chunk.zPos;
+
+  if (lx < 0 || lx >= chunk.xSize || ly < 0 || ly >= chunk.ySize || lz < 0 ||
+      lz >= chunk.zSize)
+    return 0;
+
+  int idx = lx + ly * chunk.xSize + lz * chunk.xSize * chunk.ySize;
+  if (idx >= (int)chunk.lightData.size())
+    return 0;
+
+  return chunk.lightData[idx].sunlight;
+}
+Uint8 ChunkManager::GetBlockLightLevel(Vector3 Pos) {
+  Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
+                      (float)floor(Pos.z / ChunkPrefab::zSize)};
+
+  auto it = Chunks.find(chunkKey);
+  if (it == Chunks.end() || it->second.lightData.empty())
+    return 0;
+
+  const ChunkPrefab &chunk = it->second;
+  int lx = (int)floor(Pos.x) - chunk.xPos;
+  int ly = (int)floor(Pos.y);
+  int lz = (int)floor(Pos.z) - chunk.zPos;
+
+  if (lx < 0 || lx >= chunk.xSize || ly < 0 || ly >= chunk.ySize || lz < 0 ||
+      lz >= chunk.zSize)
+    return 0;
+
+  int idx = lx + ly * chunk.xSize + lz * chunk.xSize * chunk.ySize;
+  if (idx >= (int)chunk.lightData.size())
+    return 0;
+
+  return chunk.lightData[idx].blockLight;
 }
 
 /*

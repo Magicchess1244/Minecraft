@@ -14,6 +14,7 @@ typedef struct {
   short SpawningLayer[2];
   bool Top;
   bool Water;
+  Uint8 Luminance;
 } Block;
 typedef struct {
   int MaxHumidity;
@@ -28,17 +29,18 @@ typedef struct {
   float y;
 } HeightsDif;
 
-constexpr int BlockNum = 9;
+constexpr int BlockNum = 10;
 const Block BlockDef[BlockNum] = {
-    {"Air", 0, {255, 178, 255}, {0, 0}, false, false},
-    {"Grass", 1, {255, 255, 255}, {0, 0}, true, false},
-    {"Dirt", 2, {255, 255, 255}, {1, 3}, true, false},
-    {"Stone", 3, {255, 255, 255}, {4, 64}, false, false},
-    {"Bedrock", 4, {255, 255, 255}, {0, 3}, false, false},
-    {"Water", 5, {0, 102, 204}, {0, 0}, false, true},
-    {"Wood", 6, {255, 255, 255}, {0, 0}, false, false},
-    {"Leaves", 7, {255, 255, 255}, {0, 0}, false, false},
-    {"Sand", 8, {255, 255, 255}, {0, 0}, true, false}};
+    {"Air", 0, {255, 178, 255}, {0, 0}, false, false, 0},
+    {"Grass", 1, {255, 255, 255}, {0, 0}, true, false, 0},
+    {"Dirt", 2, {255, 255, 255}, {1, 3}, true, false, 0},
+    {"Stone", 3, {255, 255, 255}, {4, 64}, false, false, 0},
+    {"Bedrock", 4, {255, 255, 255}, {0, 3}, false, false, 0},
+    {"Water", 5, {0, 102, 204}, {0, 0}, false, true, 0},
+    {"Wood", 6, {255, 255, 255}, {0, 0}, false, false, 0},
+    {"Leaves", 7, {255, 255, 255}, {0, 0}, false, false, 0},
+    {"Sand", 8, {255, 255, 255}, {0, 0}, true, false, 0},
+    {"Glowstone", 9, {255, 255, 255}, {0, 0}, false, false, 15}};
 
 struct RaycastResult {
   bool hit;
@@ -83,6 +85,8 @@ public:
   void SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors = true);
   Uint8 GetBlockID(Vector3 Pos);
   Uint8 GetLightLevel(Vector3 Pos);
+  Uint8 GetSunlightLevel(Vector3 Pos);
+  Uint8 GetBlockLightLevel(Vector3 Pos);
 
 private:
   std::vector<Vector3> activeWater;

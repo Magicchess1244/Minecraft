@@ -445,6 +445,7 @@ void GameLoop(GameClient &game) {
 
   inventory[0] = {60, 2};
   inventory[1] = {5, 5};
+  inventory[2] = {64, 9};
 
   int inventorySlot = 0;
 

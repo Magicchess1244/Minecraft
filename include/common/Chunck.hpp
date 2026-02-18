@@ -57,6 +57,8 @@ public:
                    ChunkManager &manager);
   int GetHeight(Vector2 Pos);
   void GenerateMesh(ChunkManager &manager);
+  void GenerateLighting();
+  void PropagateLighting(ChunkManager &manager);
 
 private:
   void GenerateHeightMap(std::vector<int> &heightCache);
@@ -70,9 +72,7 @@ private:
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Uint8> &modCache,
                           std::vector<bool> &solidCache);
-  void GenerateLighting();
   Uint8 GetCombinedLight(int x, int y, int z, ChunkManager &manager);
-  void PropagateSunlight(ChunkManager &manager);
 };
 
 #endif
