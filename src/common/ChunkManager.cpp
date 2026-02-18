@@ -152,42 +152,10 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
 }
 
 void ChunkManager::Place(Vector3 Pos, int BlockID) {
-  Vector3 chunkKey = (Pos / 16).Truncate();
-  chunkKey.y = 0;
+  if (Pos.y == 0)
+    return; // Protect bedrock
 
-  ChunkPrefab &CurrentChunk = get_chunk(chunkKey);
-
-  int localX = (int)floorf(Pos.x) - CurrentChunk.xPos;
-  int localY = (int)floorf(Pos.y);
-  int localZ = (int)floorf(Pos.z) - CurrentChunk.zPos;
-
-  if (localX < 0 || localX >= ChunkPrefab::xSize || localY < 0 ||
-      localY >= ChunkPrefab::ySize || localZ < 0 ||
-      localZ >= ChunkPrefab::zSize) {
-    return;
-  }
-
-  if (Pos.y != 0)
-    Modifications[Pos] = BlockID;
-
-  CurrentChunk.GenerateChunk(*this);
-
-  // Update neighbors
-  if (localX == 0) {
-    Vector3 key = {chunkKey.x - 1, 0, chunkKey.z};
-    get_chunk(key).GenerateChunk(*this);
-  } else if (localX == ChunkPrefab::xSize - 1) {
-    Vector3 key = {chunkKey.x + 1, 0, chunkKey.z};
-    get_chunk(key).GenerateChunk(*this);
-  }
-
-  if (localZ == 0) {
-    Vector3 key = {chunkKey.x, 0, chunkKey.z - 1};
-    get_chunk(key).GenerateChunk(*this);
-  } else if (localZ == ChunkPrefab::zSize - 1) {
-    Vector3 key = {chunkKey.x, 0, chunkKey.z + 1};
-    get_chunk(key).GenerateChunk(*this);
-  }
+  SetBlock(Pos, BlockID, true);
 
   // Water Simulation: If we place water, start simulation.
   // If we place air, check neighbors for water that might flow in.
@@ -303,13 +271,29 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
     int lz = (int)floor(Pos.z) - it->second.zPos;
     if (lx >= 0 && lx < 16 && ly >= 0 && ly < 128 && lz >= 0 && lz < 16) {
       it->second.blocks[lx + ly * 16 + lz * 16 * 128] = BlockID;
+
+      // Re-calculate everything for current chunk
+      it->second.GenerateLighting();
+      it->second.PropagateLighting(*this);
+      it->second.GenerateMesh(*this);
       it->second.needsMeshUpdate = true;
     }
   }
 
   if (updateNeighbors) {
-    // Basic neighbor handling if needed
-    // ...
+    Vector3 neighbors[4] = {{chunkKey.x + 1, 0, chunkKey.z},
+                            {chunkKey.x - 1, 0, chunkKey.z},
+                            {chunkKey.x, 0, chunkKey.z + 1},
+                            {chunkKey.x, 0, chunkKey.z - 1}};
+    for (auto &nKey : neighbors) {
+      auto nit = Chunks.find(nKey);
+      if (nit != Chunks.end() && !nit->second.blocks.empty()) {
+        nit->second.GenerateLighting();
+        nit->second.PropagateLighting(*this);
+        nit->second.GenerateMesh(*this);
+        nit->second.needsMeshUpdate = true;
+      }
+    }
   }
 }
 
