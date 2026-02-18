@@ -1,11 +1,12 @@
 # Compiler and flags
 CXX := g++
 CXXFLAGS := -std=c++17 -O3 -pthread
-LDFLAGS := -lSDL3 -lSDL3_ttf -lSDL3_image -pthread
+SDLIMAGE_STATIC := ~/SDL_image/build/libSDL3_image_static.a
+LDFLAGS := $(SDLIMAGE_STATIC) ~/SDL/build/libSDL3.a -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -ldl
 
 # Debug flags for memory leak detection
 CXXFLAGS_DEBUG := -std=c++17 -g -O0 -pthread -fsanitize=address
-LDFLAGS_DEBUG := -lSDL3 -lSDL3_ttf -lSDL3_image -pthread -fsanitize=address
+LDFLAGS_DEBUG := $(SDLIMAGE_STATIC) -lSDL3 -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -ldl -fsanitize=address
 
 # Include directories
 INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server -I/usr/include/SDL3 -I/usr/local/include/SDL3

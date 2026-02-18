@@ -141,45 +141,30 @@ struct Frustum {
 
   // Check if an axis-aligned bounding box (AABB) is inside or intersecting the
   // frustum Uses the "p-vertex/n-vertex" test for each plane
-bool isChunkInFrustum(const Vector3 &minPoint,
-                      const Vector3 &maxPoint, 
-                      float tolerance = 5.0f) const {
-    
-    // Get all 8 corners of the AABB
-    const Vector3 corners[8] = {
-        {minPoint.x, minPoint.y, minPoint.z},
-        {maxPoint.x, minPoint.y, minPoint.z},
-        {minPoint.x, maxPoint.y, minPoint.z},
-        {maxPoint.x, maxPoint.y, minPoint.z},
-        {minPoint.x, minPoint.y, maxPoint.z},
-        {maxPoint.x, minPoint.y, maxPoint.z},
-        {minPoint.x, maxPoint.y, maxPoint.z},
-        {maxPoint.x, maxPoint.y, maxPoint.z}
-    };
-    
-    // Check all 6 frustum planes
-    const Plane* const planes[6] = {
-        &nearFace, &farFace, &leftFace,
-        &rightFace, &topFace, &bottomFace
-    };
-    
-    // For each plane, check if ALL corners are outside
+  // Check if an axis-aligned bounding box (AABB) is inside or intersecting the
+  // frustum Uses the "p-vertex/n-vertex" test for each plane
+  bool isChunkInFrustum(const Vector3 &minPoint, const Vector3 &maxPoint,
+                        float tolerance = 5.0f) const {
+    const Plane *const planes[6] = {&nearFace,  &farFace, &leftFace,
+                                    &rightFace, &topFace, &bottomFace};
+
     for (int p = 0; p < 6; ++p) {
-        bool allOutside = true;
-        for (int i = 0; i < 8; ++i) {
-            // If ANY corner is inside (or within tolerance), chunk might be visible
-            if (planes[p]->getSignedDistanceToPlane(corners[i]) >= -tolerance) {
-                allOutside = false;
-                break; // Early exit - found a corner inside this plane
-            }
-        }
-        // If all corners are outside ANY single plane, the chunk is completely outside
-        if (allOutside) {
-            return false;
-        }
+      // P-vertex is the corner of the AABB most in the direction of the plane
+      // normal
+      Vector3 p_vertex = minPoint;
+      if (planes[p]->normal.x >= 0)
+        p_vertex.x = maxPoint.x;
+      if (planes[p]->normal.y >= 0)
+        p_vertex.y = maxPoint.y;
+      if (planes[p]->normal.z >= 0)
+        p_vertex.z = maxPoint.z;
+
+      if (planes[p]->getSignedDistanceToPlane(p_vertex) < -tolerance) {
+        return false;
+      }
     }
-    return true; // Chunk intersects or is inside the frustum
-}
+    return true;
+  }
 
   // Transform frustum from camera space to world space
   // This rotates and translates the frustum to match the camera's position and
@@ -233,6 +218,7 @@ struct Vertex {
   Vector3 Color;
   SDL_FPoint UV;
   float BlockID;
+  float TileID;
   float LightLevel = 15;
 };
 struct Mesh {
@@ -242,6 +228,10 @@ struct Mesh {
   SDL_GPUBufferBinding IndexBuffer;
   std::vector<DrawnFace> Faces;
   int BaseVertex = 0, BaseIndex = 0;
+
+  // Stability tracking
+  std::vector<ChunkPrefab *> currentChunks;
+  bool needsUpdate = true;
 
   // Temporary pointers for mapped buffers during DrawTerrain
   Vertex *mappedVertexData = nullptr;
@@ -285,7 +275,7 @@ struct CachedChunkMesh {
   std::vector<Vertex> vertices;
   std::vector<Uint32> indices;
 };
-struct UIVars{
+struct UIVars {
   std::vector<Vertex> uiVertices;
   SDL_GPUBuffer *UIVertexBuffer = nullptr;
   SDL_GPUBuffer *UIIndexBuffer = nullptr;
@@ -313,7 +303,8 @@ private:
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
 
-  auto AddRect(float x, float y, float w, float h, Vector3 color, float blockID = 0);
+  auto AddRect(float x, float y, float w, float h, Vector3 color,
+               float blockID = 0);
   void UICrossHair();
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
   std::vector<ChunkDistance> SortChunks(Player &player);
@@ -362,11 +353,13 @@ public:
       Sampler = nullptr;
     }
     if (this->uiVars.UIVertexBuffer) {
-      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexBuffer);
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU,
+                           this->uiVars.UIVertexBuffer);
       this->uiVars.UIVertexBuffer = nullptr;
     }
     if (this->uiVars.UIVertexTransferBuffer) {
-      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   this->uiVars.UIVertexTransferBuffer);
       this->uiVars.UIVertexTransferBuffer = nullptr;
     }
     if (EntityBuffer) {
@@ -413,9 +406,9 @@ public:
   void Stats(Player &player);
   void DrawBg(std::vector<Player> &players);
   void DrawPlayers(std::vector<Player> &players);
-  void DrawUI(SDL_GPUCommandBuffer *cmd,
-              const std::vector<Slot> &inventory, int inventorySlot);
-      
+  void DrawUI(SDL_GPUCommandBuffer *cmd, const std::vector<Slot> &inventory,
+              int inventorySlot);
+
   void MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
                       std::vector<Player> &players);
 };

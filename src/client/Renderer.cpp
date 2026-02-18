@@ -340,9 +340,11 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
   SDL_BindGPUGraphicsPipeline(uiPass, this->pipelineInitVars.uiPipeline);
 
   // Bind Texture Atlas and Sampler for UI
-  SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                 this->Sampler};
-  SDL_BindGPUFragmentSamplers(uiPass, 0, &samplerBinding, 1);
+  if (this->TextureAtlas && this->Sampler) {
+    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
+                                                   this->Sampler};
+    SDL_BindGPUFragmentSamplers(uiPass, 0, &samplerBinding, 1);
+  }
 
   SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
   SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
@@ -357,20 +359,17 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   PlayerChunk.y = 0;
 
   SpiralIterator spiral(RenderDistance * 2 + 1);
-  std::vector<ChunkDistance> sortedChunkList;
+  std::vector<ChunkDistance> visibleChunkList;
 
-  // Pre-reserve to avoid reallocations (estimate ~60% of chunks visible)
   int maxChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
-  sortedChunkList.reserve(maxChunks * 0.6f);
+  visibleChunkList.reserve(maxChunks);
 
   while (spiral.hasNext()) {
     std::pair<int, int> Pos = spiral.next();
 
-    // Calculate chunk position in world space FIRST
     Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
     ChunkPos += PlayerChunk;
 
-    // Now calculate world-space bounding box for this chunk
     Vector3 Min = {ChunkPos.x * ChunkPrefab::xSize, 0,
                    ChunkPos.z * ChunkPrefab::zSize};
     Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
@@ -381,56 +380,85 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
 
     ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
 
-    // Use center of chunk for distance
     Vector3 chunkCenter = ChunkPos * 16.0f + Vector3(8, 0, 8);
     float d2 = (chunkCenter - player.Position).LengthSquared();
 
-    sortedChunkList.push_back({&chunk, d2});
+    visibleChunkList.push_back({&chunk, d2});
   }
 
-  // Sort chunks BACK TO FRONT (furthest first) - needed for transparency
-  std::sort(sortedChunkList.begin(), sortedChunkList.end(),
-            [](const ChunkDistance &a, const ChunkDistance &b) {
-              return a.distSq > b.distSq;
-            });
-
-  return sortedChunkList;
+  return visibleChunkList;
 }
 
 void Renderer::DrawTerrain(Player &player) {
-  // 1. Collect all chunks and their distances
-  std::vector<ChunkDistance> sortedChunkList = SortChunks(player);
+  // 1. Collect visible chunks
+  std::vector<ChunkDistance> visibleChunks = SortChunks(player);
 
-  // 2. Fill buffers using sorted chunks
-  int currentSortedIdx = 0;
-  for (int bufferIdx = 0; bufferIdx < this->totalBuffers; bufferIdx++) {
+  // 2. Prepare Opaque list (stable sort for buffer consistency)
+  std::vector<ChunkPrefab *> opaqueChunks;
+  opaqueChunks.reserve(visibleChunks.size());
+  for (auto &cd : visibleChunks) {
+    opaqueChunks.push_back(cd.chunk);
+  }
+
+  // Stable sort by coordinates to keep chunks in the same buffers
+  std::sort(opaqueChunks.begin(), opaqueChunks.end(),
+            [](ChunkPrefab *a, ChunkPrefab *b) {
+              if (a->xPos != b->xPos)
+                return a->xPos < b->xPos;
+              return a->zPos < b->zPos;
+            });
+
+  // 3. Opaque Pass - Fill buffers 0 to totalBuffers-2 using stable chunks
+  int currentOpaqueIdx = 0;
+  for (int bufferIdx = 0; bufferIdx < this->totalBuffers - 1; bufferIdx++) {
     auto *mesh = &this->Terrain[bufferIdx];
+
+    std::vector<ChunkPrefab *> newChunks;
+    bool anyChunkDirty = false;
+
+    for (int i = 0;
+         i < chunksPerBuffer && currentOpaqueIdx < (int)opaqueChunks.size();
+         i++) {
+      ChunkPrefab *c = opaqueChunks[currentOpaqueIdx++];
+      newChunks.push_back(c);
+      if (c->needsMeshUpdate)
+        anyChunkDirty = true;
+    }
+
+    // Check if buffer needs re-upload
+    bool setChanged = (newChunks != mesh->currentChunks);
+    if (!setChanged && !anyChunkDirty && !mesh->needsUpdate) {
+      // Buffer is up to date, but we still need to clear transparency from it
+      // if it had any from previous versions of the code
+      mesh->TransparentIndexCount = 0;
+      continue;
+    }
+
+    mesh->currentChunks = newChunks;
+    mesh->needsUpdate = false;
     mesh->BaseVertex = 0;
     mesh->BaseIndex = 0;
-    mesh->OpaqueIndexCount = 0;
     mesh->TransparentIndexCount = 0;
+
+    if (newChunks.empty()) {
+      mesh->OpaqueIndexCount = 0;
+      continue;
+    }
 
     Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
         this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
     Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
         this->basicInitVars.GPU, mesh->IndextransferBuffer, true);
 
-    mesh->mappedVertexData = Vertexdata;
-    mesh->mappedIndexData = Indexdata;
+    if (!Vertexdata || !Indexdata)
+      continue;
 
-    std::vector<ChunkPrefab *> chunks;
-    for (int i = 0;
-         i < chunksPerBuffer && currentSortedIdx < sortedChunkList.size();
-         i++) {
-      chunks.push_back(sortedChunkList[currentSortedIdx++].chunk);
-    }
+    size_t currentVertexOffset = 0;
+    size_t currentIndexOffset = 0;
+    const size_t maxVertices = chunksPerBuffer * 4 * 2100;
+    const size_t maxIndices = chunksPerBuffer * 6 * 2100;
 
-    // OPTIMIZATION 1: Pre-calculate total size needed
-    size_t totalOpaqueVertices = 0;
-    size_t totalOpaqueIndices = 0;
-
-    // First pass: Opaque - OPTIMIZED VERSION
-    for (auto *chunk : chunks) {
+    for (auto *chunk : newChunks) {
       Vector3 chunkPosKey = {(float)chunk->xPos / 16, 0,
                              (float)chunk->zPos / 16};
 
@@ -439,84 +467,44 @@ void Renderer::DrawTerrain(Player &player) {
         auto &cache = opaqueMeshCache[chunkPosKey];
         cache.vertices.clear();
         cache.indices.clear();
-
-        // OPTIMIZATION: Skip counting - just reserve generous amount and rely
-        // on cache
         cache.vertices.reserve(chunk->allFaces.size() * 4);
         cache.indices.reserve(chunk->allFaces.size() * 6);
 
-        // OPTIMIZATION 3: Pre-calculate chunk world position once
         Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
 
-        // OPTIMIZATION: Process faces in single loop with const reference
         for (const auto &face : chunk->allFaces) {
           if (face.Transparent)
             continue;
 
-          // Pre-calculate block world position
           Vector3 worldPos = face.blockPos + chunkWorldPos;
-
-          // Pre-calculate color once per face
           Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
                               Colors[(int)(face.side)].ToFloat();
 
-          Uint32 baseV = cache.vertices.size();
-
-          // Scaled vertices based on greedy mesh width/height
-          Vector3 v0 = Verts[face.side][0];
-          Vector3 v1 = Verts[face.side][1];
-          Vector3 v2 = Verts[face.side][2];
-          Vector3 v3 = Verts[face.side][3];
-
+          Uint32 baseV = (Uint32)cache.vertices.size();
           float fw = (float)face.w;
           float fh = (float)face.h;
 
-          // Scale based on side orientation
-          if (face.side < 2) { // Front/Back (+-Z): Width=X, Height=Y
-            v0.x *= fw;
-            v0.y *= fh;
-            v1.x *= fw;
-            v1.y *= fh;
-            v2.x *= fw;
-            v2.y *= fh;
-            v3.x *= fw;
-            v3.y *= fh;
-          } else if (face.side < 4) { // Right/Left (+-X): Width=Z, Height=Y
-            v0.z *= fw;
-            v0.y *= fh;
-            v1.z *= fw;
-            v1.y *= fh;
-            v2.z *= fw;
-            v2.y *= fh;
-            v3.z *= fw;
-            v3.y *= fh;
-          } else { // Top/Bottom (+-Y): Width=X, Height=Z
-            v0.x *= fw;
-            v0.z *= fh;
-            v1.x *= fw;
-            v1.z *= fh;
-            v2.x *= fw;
-            v2.z *= fh;
-            v3.x *= fw;
-            v3.z *= fh;
-          }
-
-          float bid = (float)face.blockID;
-
-          Vector3 v[4] = {v0, v1, v2, v3};
           for (int j = 0; j < 4; j++) {
+            Vector3 v = Verts[face.side][j];
             SDL_FPoint uv;
-            if (face.side < 2) { // Front/Back: X, Y
+            if (face.side < 2) {
+              v.x *= fw;
+              v.y *= fh;
               uv = {Verts[face.side][j].x * fw, Verts[face.side][j].y * fh};
-            } else if (face.side < 4) { // Right/Left: Z, Y
+            } else if (face.side < 4) {
+              v.z *= fw;
+              v.y *= fh;
               uv = {Verts[face.side][j].z * fw, Verts[face.side][j].y * fh};
-            } else { // Top/Bottom: X, Z
+            } else {
+              v.x *= fw;
+              v.z *= fh;
               uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
             }
             cache.vertices.push_back(
-                {v[j] + worldPos, faceColor, uv, bid, (float)face.LightLevel});
+                {v + worldPos, faceColor, uv,
+                 (float)BlockDef[face.blockID].Textures[face.side],
+                 (float)face.LightLevel});
           }
-          // Use direct push for indices (6 values)
           cache.indices.push_back(baseV + 0);
           cache.indices.push_back(baseV + 2);
           cache.indices.push_back(baseV + 1);
@@ -528,184 +516,28 @@ void Renderer::DrawTerrain(Player &player) {
       }
 
       auto &cache = opaqueMeshCache[chunkPosKey];
-      if (!cache.vertices.empty()) {
-        totalOpaqueVertices += cache.vertices.size();
-        totalOpaqueIndices += cache.indices.size();
-      }
-    }
-
-    // OPTIMIZATION 7: Batch copy all opaque geometry at once
-    size_t currentVertexOffset = 0;
-    size_t currentIndexOffset = 0;
-
-    // Calculate max size based on initialization logic
-    const size_t maxVertices = 4 * 2100 * chunksPerBuffer;
-    const size_t maxIndices = 6 * 2100 * chunksPerBuffer;
-
-    if (!Vertexdata || !Indexdata) {
-      // Mapping failed, skip this buffer
-      continue;
-    }
-
-    for (auto *chunk : chunks) {
-      Vector3 chunkPosKey = {(float)chunk->xPos / 16, 0,
-                             (float)chunk->zPos / 16};
-      auto &cache = opaqueMeshCache[chunkPosKey];
-
       if (cache.vertices.empty())
         continue;
 
       if (currentVertexOffset + cache.vertices.size() > maxVertices ||
-          currentIndexOffset + cache.indices.size() > maxIndices) {
+          currentIndexOffset + cache.indices.size() > maxIndices)
         break;
-      }
 
-      // OPTIMIZATION 8: Use memcpy for bulk vertex data
       memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
              cache.vertices.size() * sizeof(Vertex));
 
-      // OPTIMIZATION 9: Batch copy indices with offset applied
-      Uint32 vertexBase = currentVertexOffset;
-      if (vertexBase == 0) {
-        // No offset needed, direct memcpy
-        memcpy(&Indexdata[currentIndexOffset], cache.indices.data(),
-               cache.indices.size() * sizeof(Uint32));
-      } else {
-        // Apply offset - unfortunately we need the loop here
-        for (size_t i = 0; i < cache.indices.size(); i++) {
-          Indexdata[currentIndexOffset + i] = cache.indices[i] + vertexBase;
-        }
+      Uint32 vertexBase = (Uint32)currentVertexOffset;
+      for (size_t i = 0; i < cache.indices.size(); i++) {
+        Indexdata[currentIndexOffset + i] = cache.indices[i] + vertexBase;
       }
 
       currentVertexOffset += cache.vertices.size();
       currentIndexOffset += cache.indices.size();
     }
 
-    mesh->BaseVertex = currentVertexOffset;
-    mesh->BaseIndex = currentIndexOffset;
-    mesh->OpaqueIndexCount = mesh->BaseIndex;
-
-    // Second pass: Transparent - collect and sort
-    std::vector<TransparentDrawnFace> transparentFaces;
-    transparentFaces.reserve(
-        500); // Pre-allocate for ultra-high render distance
-
-    for (auto *chunk : chunks) {
-      for (auto &face : chunk->allFaces) {
-        if (face.Transparent) {
-          transparentFaces.push_back(TransparentDrawnFace{
-              face.blockPos +
-                  Vector3{(float)chunk->xPos, 0, (float)chunk->zPos},
-              face.side, face.blockID, face.w, face.h, face.LightLevel});
-        }
-      }
-    }
-
-    // Sort transparent faces BACK TO FRONT (furthest first)
-    if (!transparentFaces.empty()) {
-      const Vector3 &playerPos = player.Position;
-      std::sort(transparentFaces.begin(), transparentFaces.end(),
-                [&playerPos](const TransparentDrawnFace &a,
-                             const TransparentDrawnFace &b) {
-                  float distA = (a.blockPos - playerPos).LengthSquared();
-                  float distB = (b.blockPos - playerPos).LengthSquared();
-                  return distA > distB;
-                });
-    }
-
-    for (auto &face : transparentFaces) {
-      Vector3 WorldVerts[4];
-      Vector3 v0 = Verts[face.side][0];
-      Vector3 v1 = Verts[face.side][1];
-      Vector3 v2 = Verts[face.side][2];
-      Vector3 v3 = Verts[face.side][3];
-      float fw = (float)face.w;
-      float fh = (float)face.h;
-
-      if (face.side < 2) { // Front/Back (+-Z): X, Y
-        v0.x *= fw;
-        v0.y *= fh;
-        v1.x *= fw;
-        v1.y *= fh;
-        v2.x *= fw;
-        v2.y *= fh;
-        v3.x *= fw;
-        v3.y *= fh;
-      } else if (face.side < 4) { // Right/Left (+-X): Z, Y
-        v0.z *= fw;
-        v0.y *= fh;
-        v1.z *= fw;
-        v1.y *= fh;
-        v2.z *= fw;
-        v2.y *= fh;
-        v3.z *= fw;
-        v3.y *= fh;
-      } else { // Top/Bottom (+-Y): X, Z
-        v0.x *= fw;
-        v0.z *= fh;
-        v1.x *= fw;
-        v1.z *= fh;
-        v2.x *= fw;
-        v2.z *= fh;
-        v3.x *= fw;
-        v3.z *= fh;
-      }
-
-      WorldVerts[0] = v0 + face.blockPos;
-      WorldVerts[1] = v1 + face.blockPos;
-      WorldVerts[2] = v2 + face.blockPos;
-      WorldVerts[3] = v3 + face.blockPos;
-
-      Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
-                          Colors[(int)(face.side)].ToFloat();
-      float bid = (float)face.blockID;
-
-      Vector3 v[4] = {v0, v1, v2, v3};
-      for (int j = 0; j < 4; j++) {
-        SDL_FPoint uv;
-        if (face.side < 2) { // Front/Back: X, Y
-          uv = {Verts[face.side][j].x * fw, Verts[face.side][j].y * fh};
-        } else if (face.side < 4) { // Right/Left: Z, Y
-          uv = {Verts[face.side][j].z * fw, Verts[face.side][j].y * fh};
-        } else { // Top/Bottom: X, Z
-          uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
-        }
-        Vertexdata[mesh->BaseVertex + j] = {v[j] + face.blockPos, faceColor, uv,
-                                            bid, (float)face.light};
-      }
-
-      Uint32 bv = mesh->BaseVertex;
-      Uint32 bi = mesh->BaseIndex;
-
-      // Write both triangle sets at once for water, or just front for others
-      if (face.blockID == 5) {
-        // Water: both front and back faces
-        Indexdata[bi + 0] = bv + 0;
-        Indexdata[bi + 1] = bv + 2;
-        Indexdata[bi + 2] = bv + 1;
-        Indexdata[bi + 3] = bv + 1;
-        Indexdata[bi + 4] = bv + 2;
-        Indexdata[bi + 5] = bv + 3;
-        Indexdata[bi + 6] = bv + 0;
-        Indexdata[bi + 7] = bv + 1;
-        Indexdata[bi + 8] = bv + 2;
-        Indexdata[bi + 9] = bv + 1;
-        Indexdata[bi + 10] = bv + 3;
-        Indexdata[bi + 11] = bv + 2;
-        mesh->BaseIndex += 12;
-      } else {
-        // Other transparent blocks: front face only
-        Indexdata[bi + 0] = bv + 0;
-        Indexdata[bi + 1] = bv + 2;
-        Indexdata[bi + 2] = bv + 1;
-        Indexdata[bi + 3] = bv + 1;
-        Indexdata[bi + 4] = bv + 2;
-        Indexdata[bi + 5] = bv + 3;
-        mesh->BaseIndex += 6;
-      }
-      mesh->BaseVertex += 4;
-    }
-    mesh->TransparentIndexCount = mesh->BaseIndex - mesh->OpaqueIndexCount;
+    mesh->OpaqueIndexCount = (int)currentIndexOffset;
+    mesh->BaseVertex = (int)currentVertexOffset;
+    mesh->BaseIndex = (int)currentIndexOffset;
 
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
                                mesh->VertextransferBuffer);
@@ -714,12 +546,129 @@ void Renderer::DrawTerrain(Player &player) {
 
     SDL_GPUTransferBufferLocation vLoc{mesh->VertextransferBuffer, 0};
     SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
-                             (Uint32)(mesh->BaseVertex * sizeof(Vertex))};
+                             (Uint32)(currentVertexOffset * sizeof(Vertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
 
     SDL_GPUTransferBufferLocation iLoc{mesh->IndextransferBuffer, 0};
     SDL_GPUBufferRegion iReg{mesh->IndexBuffer.buffer, 0,
-                             (Uint32)(mesh->BaseIndex * sizeof(Uint32))};
+                             (Uint32)(currentIndexOffset * sizeof(Uint32))};
+    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
+  }
+
+  // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
+  std::vector<TransparentDrawnFace> transparentFaces;
+  transparentFaces.reserve(500);
+
+  for (auto &cd : visibleChunks) {
+    ChunkPrefab *chunk = cd.chunk;
+    Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
+    for (auto &face : chunk->allFaces) {
+      if (face.Transparent) {
+        transparentFaces.push_back({face.blockPos + chunkWorldPos,
+                                    (int)face.side, (int)face.blockID,
+                                    (int)face.w, (int)face.h, face.LightLevel});
+      }
+    }
+  }
+
+  Mesh *tMesh = &this->Terrain[this->totalBuffers - 1];
+  tMesh->OpaqueIndexCount = 0;
+
+  if (transparentFaces.empty()) {
+    tMesh->TransparentIndexCount = 0;
+    return;
+  }
+
+  std::sort(
+      transparentFaces.begin(), transparentFaces.end(),
+      [&player](const TransparentDrawnFace &a, const TransparentDrawnFace &b) {
+        return (a.blockPos - player.Position).LengthSquared() >
+               (b.blockPos - player.Position).LengthSquared();
+      });
+
+  Vertex *vData = (Vertex *)SDL_MapGPUTransferBuffer(
+      this->basicInitVars.GPU, tMesh->VertextransferBuffer, true);
+  Uint32 *iData = (Uint32 *)SDL_MapGPUTransferBuffer(
+      this->basicInitVars.GPU, tMesh->IndextransferBuffer, true);
+
+  if (vData && iData) {
+    size_t vOffset = 0;
+    size_t iOffset = 0;
+    const size_t maxV = chunksPerBuffer * 4 * 2100;
+    const size_t maxI = chunksPerBuffer * 6 * 2100;
+
+    for (auto &face : transparentFaces) {
+      if (vOffset + 4 > maxV || iOffset + 12 > maxI)
+        break;
+
+      Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
+                          Colors[(int)(face.side)].ToFloat();
+
+      for (int j = 0; j < 4; j++) {
+        Vector3 v = Verts[face.side][j];
+        SDL_FPoint uv;
+        float fw = (float)face.w;
+        float fh = (float)face.h;
+        if (face.side < 2) {
+          v.x *= fw;
+          v.y *= fh;
+          uv = {Verts[face.side][j].x * fw, Verts[face.side][j].y * fh};
+        } else if (face.side < 4) {
+          v.z *= fw;
+          v.y *= fh;
+          uv = {Verts[face.side][j].z * fw, Verts[face.side][j].y * fh};
+        } else {
+          v.x *= fw;
+          v.z *= fh;
+          uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
+        }
+        vData[vOffset + j] = {v + face.blockPos, faceColor, uv,
+                              (float)BlockDef[face.blockID].Textures[face.side],
+                              (float)face.light};
+      }
+
+      if (face.blockID == 5) { // Water (double sided)
+        iData[iOffset + 0] = (Uint32)vOffset + 0;
+        iData[iOffset + 1] = (Uint32)vOffset + 2;
+        iData[iOffset + 2] = (Uint32)vOffset + 1;
+        iData[iOffset + 3] = (Uint32)vOffset + 1;
+        iData[iOffset + 4] = (Uint32)vOffset + 2;
+        iData[iOffset + 5] = (Uint32)vOffset + 3;
+        iData[iOffset + 6] = (Uint32)vOffset + 0;
+        iData[iOffset + 7] = (Uint32)vOffset + 1;
+        iData[iOffset + 8] = (Uint32)vOffset + 2;
+        iData[iOffset + 9] = (Uint32)vOffset + 1;
+        iData[iOffset + 10] = (Uint32)vOffset + 3;
+        iData[iOffset + 11] = (Uint32)vOffset + 2;
+        iOffset += 12;
+      } else {
+        iData[iOffset + 0] = (Uint32)vOffset + 0;
+        iData[iOffset + 1] = (Uint32)vOffset + 2;
+        iData[iOffset + 2] = (Uint32)vOffset + 1;
+        iData[iOffset + 3] = (Uint32)vOffset + 1;
+        iData[iOffset + 4] = (Uint32)vOffset + 2;
+        iData[iOffset + 5] = (Uint32)vOffset + 3;
+        iOffset += 6;
+      }
+      vOffset += 4;
+    }
+
+    tMesh->TransparentIndexCount = (int)iOffset;
+    tMesh->BaseVertex = (int)vOffset;
+
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               tMesh->VertextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               tMesh->IndextransferBuffer);
+
+    SDL_GPUTransferBufferLocation vLoc{tMesh->VertextransferBuffer, 0};
+    SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
+                             (Uint32)(vOffset * sizeof(Vertex))};
+    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
+
+    SDL_GPUTransferBufferLocation iLoc{tMesh->IndextransferBuffer, 0};
+    SDL_GPUBufferRegion iReg{tMesh->IndexBuffer.buffer, 0,
+                             (Uint32)(iOffset * sizeof(Uint32))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
   }
 }
@@ -795,10 +744,12 @@ void Renderer::DrawBg(std::vector<Player> &players) {
                              &color_target_info, 1, &depth_target_info);
 
   // Bind Texture Atlas and Sampler
-  SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                 this->Sampler};
-  SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding,
-                              1);
+  if (this->TextureAtlas && this->Sampler) {
+    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
+                                                   this->Sampler};
+    SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
+                                &samplerBinding, 1);
+  }
 
   // Pass 1: Draw Opaque everything
   SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
@@ -1110,6 +1061,15 @@ void Renderer::Init() {
   this->basicInitVars.Width = 600;
   this->basicInitVars.Height = 400;
 
+  this->basicInitVars.GPU =
+      SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
+  if (this->basicInitVars.GPU) {
+    SDL_Log("GPU Driver: %s", SDL_GetGPUDeviceDriver(this->basicInitVars.GPU));
+  } else {
+    SDL_Log("Failed to create GPU device: %s", SDL_GetError());
+    return;
+  }
+
   this->basicInitVars.window =
       SDL_CreateWindow("Bit Miner", this->basicInitVars.Width,
                        this->basicInitVars.Height, SDL_WINDOW_RESIZABLE);
@@ -1119,17 +1079,9 @@ void Renderer::Init() {
     assert(false);
   }
 
-  this->basicInitVars.GPU =
-      SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, NULL);
-  if (this->basicInitVars.GPU == nullptr) {
-    SDL_Log("SDL basicInitVars.GPU creation failed: %s", SDL_GetError());
-    return;
-  }
   if (!SDL_ClaimWindowForGPUDevice(this->basicInitVars.GPU,
                                    this->basicInitVars.window)) {
-    std::cout
-        << "Error claiming basicInitVars.window for basicInitVars.GPU device: "
-        << SDL_GetError() << std::endl;
+    SDL_Log("Error claiming window for GPU device: %s", SDL_GetError());
   }
   this->basicInitVars.event = {};
   SDL_SetWindowRelativeMouseMode(basicInitVars.window, true);
@@ -1143,8 +1095,8 @@ void Renderer::GenerateBuffer() {
       break;
     }
   }
-  this->totalBuffers =
-      (totalChunks + chunksPerBuffer) / chunksPerBuffer; // Ceiling division
+  this->totalBuffers = (totalChunks + chunksPerBuffer) / chunksPerBuffer +
+                       1; // +1 for dedicated transparency
 
   // Each buffer now holds multiple chunks
   constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 2100;
@@ -1235,19 +1187,21 @@ void Renderer::LoadTexture() {
   const char *basePath = SDL_GetBasePath();
   char fullPath[512];
   if (basePath) {
-    SDL_snprintf(fullPath, sizeof(fullPath), "%sassets/Textures/Dirt.png",
-                 basePath);
+    SDL_snprintf(fullPath, sizeof(fullPath),
+                 "%sassets/Textures/TextureAtlas.png", basePath);
   } else {
-    SDL_strlcpy(fullPath, "assets/Textures/Dirt.png", sizeof(fullPath));
+    SDL_strlcpy(fullPath, "assets/Textures/TextureAtlas.png", sizeof(fullPath));
   }
 
-  SDL_Surface *surface = IMG_Load(fullPath);
+  SDL_Surface *surface = SDL_LoadPNG(fullPath);
   if (!surface) {
     SDL_Log("Failed to load texture at %s: %s", fullPath, SDL_GetError());
     return;
   }
 
-  // Convert to RGBA32 (R, G, B, A in byte order)
+  SDL_Log("Loaded texture: %s (%dx%d)", fullPath, surface->w, surface->h);
+
+  // Convert to a guaranteed RGBA8 per-pixel format
   SDL_Surface *rgbaSurface =
       SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
   SDL_DestroySurface(surface);
@@ -1275,8 +1229,9 @@ void Renderer::LoadTexture() {
   }
 
   // Upload data
+  Uint32 textureSize = (Uint32)(surface->w * surface->h * 4);
   SDL_GPUTransferBufferCreateInfo transferInfo = {};
-  transferInfo.size = (Uint32)(surface->w * surface->h * 4);
+  transferInfo.size = textureSize;
   transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
   SDL_GPUTransferBuffer *transferBuffer =
       SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
@@ -1290,7 +1245,12 @@ void Renderer::LoadTexture() {
   void *data =
       SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer, false);
   if (data) {
-    SDL_memcpy(data, surface->pixels, (size_t)transferInfo.size);
+    // Copy row by row to handle potential pitch differences
+    for (int y = 0; y < surface->h; y++) {
+      SDL_memcpy((Uint8 *)data + (y * surface->w * 4),
+                 (Uint8 *)surface->pixels + (y * surface->pitch),
+                 surface->w * 4);
+    }
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer);
   }
 
@@ -1330,6 +1290,11 @@ void Renderer::LoadTexture() {
   samplerInfo.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
 
   this->Sampler = SDL_CreateGPUSampler(this->basicInitVars.GPU, &samplerInfo);
+  if (this->Sampler) {
+    SDL_Log("Sampler created successfully");
+  } else {
+    SDL_Log("Failed to create sampler: %s", SDL_GetError());
+  }
   if (!this->Sampler) {
     SDL_Log("Failed to create sampler: %s", SDL_GetError());
   }
