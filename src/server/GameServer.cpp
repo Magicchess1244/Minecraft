@@ -58,10 +58,11 @@ void GameServer::AcceptClients() {
         client_sockets[id] = socket_ptr;
       }
 
-      // Send ID to client
-      std::string id_msg = "id:" + std::to_string(id) + "\n";
+      // Send ID and Seed to client
+      std::string msg = "id:" + std::to_string(id) + "\n";
+      msg += "s:" + std::to_string(seed) + "\n";
       asio::error_code error;
-      asio::write(*socket_ptr, asio::buffer(id_msg), error);
+      asio::write(*socket_ptr, asio::buffer(msg), error);
 
       client_threads.emplace_back(&GameServer::handlePlayers, this, socket_ptr,
                                   id);

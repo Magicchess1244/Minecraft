@@ -7,14 +7,14 @@ ifeq ($(PLATFORM), windows)
     EXTENSION := .exe
     # For Windows, we assume libraries are available via mingw or in the project
     # You might need to adjust these paths if you have them in specific folders
-    LDFLAGS := -lSDL3_image -lSDL3 -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -lws2_32 -liphlpapi
+    LDFLAGS := -lSDL3_ttf -lSDL3_image -lSDL3 -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -lws2_32 -liphlpapi
     INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server
 else
     CXX := g++
     EXTENSION :=
     SDLIMAGE_STATIC := ~/SDL_image/build/libSDL3_image_static.a
     SDL_LIB := ~/SDL/build/libSDL3.a
-    LDFLAGS := $(SDLIMAGE_STATIC) $(SDL_LIB) -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -ldl
+    LDFLAGS := -lSDL3_ttf $(SDLIMAGE_STATIC) $(SDL_LIB) -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -ldl
     INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server -I/usr/include/SDL3 -I/usr/local/include/SDL3
 endif
 
@@ -62,7 +62,8 @@ ALL_OBJS_DEBUG := $(COMMON_OBJS_DEBUG) $(CLIENT_OBJS_DEBUG) $(SERVER_OBJS_DEBUG)
 
 # Shader files
 SHADER_SPV := assets/shaders/Shader.vert.spv assets/shaders/Shader.frag.spv \
-              assets/shaders/UI.vert.spv assets/shaders/UI.frag.spv
+              assets/shaders/UI.vert.spv assets/shaders/UI.frag.spv \
+              assets/shaders/Text.vert.spv assets/shaders/Text.frag.spv
 
 .PHONY: all shaders client server client-debug server-debug clean
 

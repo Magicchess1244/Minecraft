@@ -9,6 +9,15 @@ class ChunkPrefab;
 class ChunkCache;
 
 typedef struct {
+  float x;
+  float y;
+} HeightsDif;
+
+float SampleSpline(float value, const HeightsDif *spline, int length);
+int GetBaseHeight(float Continentalness, float Erosion, float Peaks);
+
+typedef struct {
+  const char *Name;
   int MaxHumidity;
   int MaxTemperature;
   int MinHumidity;
@@ -16,10 +25,6 @@ typedef struct {
   int BaseHeight;
   int ChangeAmount;
 } Biome;
-typedef struct {
-  float x;
-  float y;
-} HeightsDif;
 
 struct RaycastResult {
   bool hit;

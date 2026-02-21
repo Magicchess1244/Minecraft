@@ -1,6 +1,7 @@
 #include "../../include/common/Chunck.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <cstring>
 #include <queue>
 
 constexpr float CaveThreshold = -0.18f;
@@ -16,37 +17,7 @@ const Vector3 Direction[6] = {
     {0, -1, 0}  // Bottom
 };
 
-constexpr HeightsDif ContinentelnessHeight[7] = {
-    {0.7f, 120},  // Extreme Mountains
-    {0.4f, 100},  // Huge Mountains
-    {0.15f, 50},  // Hills
-    {-0.15f, 38}, // Plains (near sea level)
-    {-0.25f, 25}, // Shallow Water / Beach
-    {-0.35f, 38}, // Plains (near sea level)
-    {-1.0f, 15}}; // Deep Ocean
-
-float SampleSpline(float value, const HeightsDif *spline, int length) {
-  if (value >= spline[0].x)
-    return spline[0].y;
-  for (int i = 0; i < length - 1; i++) {
-    if (value >= spline[i + 1].x) {
-      float t = (value - spline[i + 1].x) / (spline[i].x - spline[i + 1].x);
-      return Lerp(spline[i + 1].y, spline[i].y, t);
-    }
-  }
-  return spline[length - 1].y;
-}
-
-int GetBaseHeight(float Continentalness, float Erosion, float Peaks) {
-  // Continentalness defines the basic land/ocean height
-  float base = SampleSpline(Continentalness, ContinentelnessHeight, 5);
-
-  // Higher multipliers for mountains and valleys
-  float erosionFactor = (1.0f - Erosion) * 15.0f;
-  float peakFactor = Peaks * 12.0f;
-
-  return (int)(base + (erosionFactor * Peaks) + peakFactor);
-}
+// Local spline constants removed as they are now in ChunkManager.cpp
 
 int ChunkPrefab::GetHeight(Vector2 Pos) {
   float cont = PerlinNoise2D(Pos, 3, 0.005f); // Low frequency
@@ -153,7 +124,7 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   // SimulateWaterSpread(solidCache);
 
   // 6. Vegetation (Trees)
-  GenerateVegetation(heightCache, modCache, solidCache);
+  GenerateVegetation(heightCache, modCache, solidCache, manager);
 
   isDirty = false;
   GenerateLighting();
@@ -255,6 +226,16 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
             const int seaLevel = 35;
             float cont = PerlinNoise2D(
                 {(float)worldX * 0.005f, (float)worldZ * 0.005f}, 3, 0.5f);
+            float hum = PerlinNoise2D(
+                {(float)worldX * 0.008f, (float)worldZ * 0.008f}, 2, 0.5f);
+            float temp = PerlinNoise2D({(float)worldX * 0.008f + 500.0f,
+                                        (float)worldZ * 0.008f + 500.0f},
+                                       2, 0.5f);
+
+            // Scale noise to 0-100 for biome lookup
+            float humScale = (hum + 1.0f) * 50.0f;
+            float tempScale = (temp + 1.0f) * 50.0f;
+            Biome biome = manager.GetBiome(humScale, tempScale);
 
             bool isCave = false;
             if (y >= CaveMinY && y <= CaveMaxY) {
@@ -288,12 +269,22 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
 
               if (height - y > 3) {
                 blockID = 3; // Stone
-              } else if (isBeach || isUnderwaterFloor) {
+              } else if (isUnderwaterFloor || isBeach) {
                 blockID = 8; // Sand
               } else if (height - y > 0) {
                 blockID = 2; // Dirt
               } else {
-                blockID = 1; // Grass
+                // Surface block based on biome
+                if (strcmp(biome.Name, "Desert") == 0) {
+                  blockID = 8; // Sand
+                } else if (strcmp(biome.Name, "Savanna") == 0) {
+                  blockID = 2; // Dirt (dryer look)
+                } else if (strcmp(biome.Name, "Ice") == 0 ||
+                           strcmp(biome.Name, "Tundra") == 0) {
+                  blockID = 1; // Grass (Snow would be better)
+                } else {
+                  blockID = 1; // Grass
+                }
               }
 
               // Final check: filter by spawn height if necessary
@@ -346,7 +337,8 @@ void ChunkPrefab::SimulateWaterSpread(std::vector<bool> &solidCache) {
 
 void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
                                      const std::vector<Uint8> &modCache,
-                                     std::vector<bool> &solidCache) {
+                                     std::vector<bool> &solidCache,
+                                     ChunkManager &manager) {
   const int heightCacheWidth = xSize + 2;
   for (int x = 2; x < xSize - 2; x++) {
     for (int z = 2; z < zSize - 2; z++) {
@@ -356,12 +348,89 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
       if (height < CaveMinY || height > ySize - 10)
         continue;
 
-      float treeNoise = PerlinNoise2D(
-          {(float)(xPos + x) * 0.5f, (float)(zPos + z) * 0.5f}, 1, 0.5f);
-      if (treeNoise > 0.65f && treeNoise < 0.7f || treeNoise > 0.9f) {
+      int worldX = xPos + x;
+      int worldZ = zPos + z;
+
+      float hum = PerlinNoise2D(
+          {(float)worldX * 0.008f, (float)worldZ * 0.008f}, 2, 0.5f);
+      float temp = PerlinNoise2D(
+          {(float)worldX * 0.008f + 500.0f, (float)worldZ * 0.008f + 500.0f}, 2,
+          0.5f);
+      float humScale = (hum + 1.0f) * 50.0f;
+      float tempScale = (temp + 1.0f) * 50.0f;
+      Biome biome = manager.GetBiome(humScale, tempScale);
+
+      float cont = PerlinNoise2D({(float)worldX, (float)worldZ}, 3, 0.005f);
+      float eros = PerlinNoise2D({(float)worldX, (float)worldZ}, 3, 0.01f);
+
+      float treeChanceThreshold = 1.0f; // Default (Plains/Sparse)
+
+      if (strcmp(biome.Name, "Forest") == 0 ||
+          strcmp(biome.Name, "Dark Forest") == 0 ||
+          strcmp(biome.Name, "Birch") == 0) {
+        treeChanceThreshold = 0.4f; // High density Forests
+      } else if (strcmp(biome.Name, "Jungle") == 0 ||
+                 strcmp(biome.Name, "Taiga") == 0 ||
+                 strcmp(biome.Name, "Big Taiga") == 0) {
+        treeChanceThreshold = 0.6f; // Mid density
+      } else if (strcmp(biome.Name, "Desert") == 0 ||
+                 strcmp(biome.Name, "Ice") == 0) {
+        treeChanceThreshold = 2.0f; // No trees
+      } else if (strcmp(biome.Name, "Savanna") == 0) {
+        treeChanceThreshold = 0.7f; // Savannah density
+      }
+
+      // If it's relatively flat (high erosion), increase tree frequency
+      if (eros > 0.0f && treeChanceThreshold < 1.0f) {
+        treeChanceThreshold -= 0.2f; // More trees in flat areas
+      }
+      // If it's deep land (plains-like continentalness), further increase
+      // chance
+      if (cont < 0.0f && cont > -0.5f && treeChanceThreshold < 1.0f) {
+        treeChanceThreshold -= 0.1f;
+      }
+
+      float treeNoise = PerlinNoise2D({(float)worldX, (float)worldZ}, 1, 0.4f);
+
+      if (treeNoise > treeChanceThreshold) {
         int idx = x + height * xSize + z * xSize * ySize;
-        if (this->blocks[idx] == 1) { // On Grass
-          int trunkHeight = 4 + (int)(treeNoise * 4.0f);
+        if (this->blocks[idx] == 1 ||
+            this->blocks[idx] == 2) { // On Grass or Dirt
+          // Proximity check: don't place if there's wood nearby
+          bool tooClose = false;
+          for (int dx = -3; dx <= 3; dx++) {
+            for (int dz = -3; dz <= 3; dz++) {
+              if (dx == 0 && dz == 0)
+                continue;
+              int nx = x + dx;
+              int nz = z + dz;
+              if (nx >= 0 && nx < xSize && nz >= 0 && nz < zSize) {
+                // Check a small vertical range for wood (BlockID 6)
+                for (int dy = -1; dy <= 5; dy++) {
+                  int checkY = height + dy;
+                  if (checkY >= 0 && checkY < ySize) {
+                    if (this->blocks[nx + checkY * xSize +
+                                     nz * xSize * ySize] == 6) {
+                      tooClose = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              if (tooClose)
+                break;
+            }
+            if (tooClose)
+              break;
+          }
+
+          if (tooClose)
+            continue;
+
+          // Height varied by noise surplus
+          int trunkHeight = 4 + (int)((treeNoise - treeChanceThreshold) * 6.0f);
+          if (trunkHeight > 10)
+            trunkHeight = 10;
           for (int ty = 1; ty <= trunkHeight; ty++) {
             if (height + ty < ySize) {
               int tidx = x + (height + ty) * xSize + z * xSize * ySize;

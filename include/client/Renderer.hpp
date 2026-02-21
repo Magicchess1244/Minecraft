@@ -254,6 +254,7 @@ struct PipileInitVars {
   SDL_GPUGraphicsPipeline *graphicsPipeline = nullptr;
   SDL_GPUGraphicsPipeline *transparentPipeline = nullptr;
   SDL_GPUGraphicsPipeline *uiPipeline = nullptr;
+  SDL_GPUGraphicsPipeline *textPipeline = nullptr;
   SDL_GPUVertexBufferDescription vertex_buffer_desc;
   SDL_GPUVertexAttribute vertex_attributes[5];
   SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
@@ -281,6 +282,13 @@ struct UIVars {
   SDL_GPUBuffer *UIIndexBuffer = nullptr;
   SDL_GPUTransferBuffer *UIVertexTransferBuffer = nullptr;
   SDL_GPUTransferBuffer *UIIndexTransferBuffer = nullptr;
+
+  TTF_Font *font = nullptr;
+  SDL_GPUTexture *fontTexture = nullptr;
+  SDL_GPUSampler *fontSampler = nullptr;
+  std::vector<Vertex> textVertices;
+  SDL_GPUBuffer *textVertexBuffer = nullptr;
+  SDL_GPUTransferBuffer *textVertexTransferBuffer = nullptr;
 };
 class Renderer {
 private:
@@ -305,6 +313,10 @@ private:
 
   auto AddRect(float x, float y, float w, float h, Vector3 color,
                float blockID = 0);
+  void AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
+                   SDL_FPoint uvMax, Vector3 color);
+  void DrawText(const std::string &text, float x, float y, float scale,
+                Vector3 color);
   void UICrossHair();
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
   std::vector<ChunkDistance> SortChunks(Player &player);
@@ -343,6 +355,10 @@ public:
       SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
                                      pipelineInitVars.uiPipeline);
     }
+    if (pipelineInitVars.textPipeline) {
+      SDL_ReleaseGPUGraphicsPipeline(this->basicInitVars.GPU,
+                                     pipelineInitVars.textPipeline);
+    }
 
     if (TextureAtlas) {
       SDL_ReleaseGPUTexture(this->basicInitVars.GPU, TextureAtlas);
@@ -351,6 +367,15 @@ public:
     if (Sampler) {
       SDL_ReleaseGPUSampler(this->basicInitVars.GPU, Sampler);
       Sampler = nullptr;
+    }
+    if (uiVars.fontTexture) {
+      SDL_ReleaseGPUTexture(this->basicInitVars.GPU, uiVars.fontTexture);
+    }
+    if (uiVars.fontSampler) {
+      SDL_ReleaseGPUSampler(this->basicInitVars.GPU, uiVars.fontSampler);
+    }
+    if (uiVars.font) {
+      TTF_CloseFont(uiVars.font);
     }
     if (this->uiVars.UIVertexBuffer) {
       SDL_ReleaseGPUBuffer(this->basicInitVars.GPU,
@@ -361,6 +386,14 @@ public:
       SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
                                    this->uiVars.UIVertexTransferBuffer);
       this->uiVars.UIVertexTransferBuffer = nullptr;
+    }
+    if (this->uiVars.textVertexBuffer) {
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU,
+                           this->uiVars.textVertexBuffer);
+    }
+    if (this->uiVars.textVertexTransferBuffer) {
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   this->uiVars.textVertexTransferBuffer);
     }
     if (EntityBuffer) {
       SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, EntityBuffer);
@@ -388,8 +421,12 @@ public:
     }
 
     if (basicInitVars.GPU) {
+      SDL_WaitForGPUIdle(basicInitVars.GPU);
       SDL_DestroyGPUDevice(basicInitVars.GPU);
       basicInitVars.GPU = nullptr;
+    }
+    if (TTF_WasInit()) {
+      TTF_Quit();
     }
     if (runTimeRenderVars.pass) {
       runTimeRenderVars.pass = nullptr;

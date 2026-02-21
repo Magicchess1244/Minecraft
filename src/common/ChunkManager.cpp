@@ -5,35 +5,67 @@
 
 constexpr float ySize = 128.0f;
 
+constexpr HeightsDif ContinentelnessHeight[7] = {
+    {0.7f, 120},  // Extreme Mountains
+    {0.4f, 100},  // Huge Mountains
+    {0.15f, 50},  // Hills
+    {-0.15f, 38}, // Plains (near sea level)
+    {-0.25f, 25}, // Shallow Water / Beach
+    {-0.35f, 38}, // Plains (near sea level)
+    {-1.0f, 15}}; // Deep Ocean
+
 constexpr Biome Biomes[11] = {
-    {20, 20, 0, 0, 20, 6},     // Ice
-    {40, 20, 20, 0, 20, 6},    // Tundra
-    {100, 20, 40, 0, 20, 7},   // Taiga
-    {100, 40, 60, 20, 20, 4},  // Big Taiga
-    {60, 60, 20, 20, 20, 3},   // Plains
-    {80, 60, 20, 40, 20, 6},   // Forest
-    {80, 60, 20, 60, 20, 5},   // Birch
-    {100, 60, 20, 80, 20, 5},  // Dark Forest
-    {100, 100, 60, 60, 20, 7}, // Jungle
-    {60, 100, 0, 80, 20, 4},   // Desert
-    {40, 80, 20, 0, 20, 5},    // Savanna
+    {"Ice", 20, 20, 0, 0, 20, 6},
+    {"Tundra", 40, 20, 20, 0, 20, 6},
+    {"Taiga", 100, 20, 40, 0, 20, 7},
+    {"Big Taiga", 100, 40, 60, 20, 20, 4},
+    {"Plains", 60, 60, 20, 20, 20, 3},
+    {"Forest", 80, 60, 20, 40, 20, 6},
+    {"Birch", 80, 60, 20, 60, 20, 5},
+    {"Dark Forest", 100, 60, 20, 80, 20, 5},
+    {"Jungle", 100, 100, 60, 60, 20, 7},
+    {"Desert", 60, 100, 0, 80, 20, 4},
+    {"Savanna", 40, 80, 20, 0, 20, 5},
 };
 
 constexpr HeightsDif ErrotionHeight[10] = {
-    {1, ySize * 0.05f},    {0.8f, ySize * 0.1f},
-    {0.7f, ySize * 0.35f}, {0.4f, ySize * 0.35f},
-    {0.3f, ySize * 0.11f}, {-0.2f, ySize * 0.2f},
-    {-0.4f, ySize * 0.6f}, {-0.5f, ySize * 0.5f},
-    {0.8f, ySize * 0.9f},  {0, ySize},
+    {1.0f, ySize * 0.05f}, {0.8f, ySize * 0.1f},  {0.7f, ySize * 0.35f},
+    {0.4f, ySize * 0.35f}, {0.3f, ySize * 0.11f}, {-0.2f, ySize * 0.2f},
+    {-0.4f, ySize * 0.6f}, {-0.5f, ySize * 0.5f}, {-0.8f, ySize * 0.9f},
+    {-1.0f, ySize},
 };
 constexpr HeightsDif PeaksAndValiesHeight[6] = {
-    {1, ySize},
-    {0.8f, ySize * 0.9f},
-    {0.5f, ySize * 0.95f},
-    {0.05f, ySize * 0.35f},
-    {-0.4f, ySize * 0.3f},
-    {-0.9f, ySize * 0.1f},
+    {1.0f, ySize},          {0.8f, ySize * 0.9f},  {0.5f, ySize * 0.95f},
+    {0.05f, ySize * 0.35f}, {-0.4f, ySize * 0.3f}, {-0.9f, ySize * 0.1f},
 };
+
+float SampleSpline(float value, const HeightsDif *spline, int length) {
+  if (value >= spline[0].x)
+    return spline[0].y;
+  for (int i = 0; i < length - 1; i++) {
+    if (value >= spline[i + 1].x) {
+      float t = (value - spline[i + 1].x) / (spline[i].x - spline[i + 1].x);
+      return Lerp(spline[i + 1].y, spline[i].y, t);
+    }
+  }
+  return spline[length - 1].y;
+}
+
+int GetBaseHeight(float Continentalness, float Erosion, float Peaks) {
+  float base = SampleSpline(Continentalness, ContinentelnessHeight, 7);
+  float erosionFactor = SampleSpline(Erosion, ErrotionHeight, 10);
+  float peakFactor = SampleSpline(Peaks, PeaksAndValiesHeight, 6);
+
+  // Combine them.
+  // We can use the user's previous logic but enhanced.
+  // For now, let's keep it simple: Continentalness is the base,
+  // Erosion and Peaks modify it.
+
+  float erosionMultiplier = (erosionFactor / ySize);
+  float peakMultiplier = (peakFactor / ySize);
+
+  return (int)(base + (erosionMultiplier * peakMultiplier * 20.0f));
+}
 
 ChunkManager::ChunkManager() {
   // cache = new ChunkCache(); // Initialize cache system
@@ -85,20 +117,22 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
 }
 
 Biome ChunkManager::GetBiome(float Humudity, float Temperature) {
-  Biome TheBiome;
-
   for (int i = 0; i < 11; i++) {
-    bool allowed_humidity =
-        (Humudity < Biomes[i].MaxHumidity && Humudity > Biomes[i].MinHumidity);
-    bool allowed_temperature = (Temperature < Biomes[i].MaxTemperature &&
-                                Temperature > Biomes[i].MinTemperature);
+    bool allowed_humidity = (Humudity <= Biomes[i].MaxHumidity &&
+                             Humudity >= Biomes[i].MinHumidity);
+    bool allowed_temperature = (Temperature <= Biomes[i].MaxTemperature &&
+                                Temperature >= Biomes[i].MinTemperature);
 
     if (allowed_humidity && allowed_temperature) {
-      TheBiome = Biomes[i];
+      return Biomes[i];
     }
   }
 
-  return TheBiome;
+  return Biomes[4]; // Default to Plains
+}
+
+int ChunkManager::GetHeight(float Continentalness, float Erosion, float Peaks) {
+  return GetBaseHeight(Continentalness, Erosion, Peaks);
 }
 
 RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,

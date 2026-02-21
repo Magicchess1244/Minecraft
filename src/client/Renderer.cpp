@@ -1,5 +1,6 @@
 #include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameClient.hpp"
+#include "../../include/common/EntityDef.hpp"
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_stdinc.h>
 #include <cmath>
@@ -11,44 +12,6 @@ const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
 constexpr int RenderDistance = 10;
-constexpr float PlayerRad = 0.4;
-const Vector3 PlayerModel[6][4] = {
-    {                                // Front (+Z)
-     {PlayerRad, -1.62, PlayerRad},  // bottom-right (feet level)
-     {-PlayerRad, -1.62, PlayerRad}, // bottom-left
-     {PlayerRad, 0.18, PlayerRad},   // top-right (head level)
-     {-PlayerRad, 0.18, PlayerRad}}, // top-left
-
-    {                                 // Back (-Z)
-     {-PlayerRad, -1.62, -PlayerRad}, // bottom-left
-     {PlayerRad, -1.62, -PlayerRad},  // bottom-right
-     {-PlayerRad, 0.18, -PlayerRad},  // top-left
-     {PlayerRad, 0.18, -PlayerRad}},  // top-right
-
-    {                                 // Right (+X)
-     {PlayerRad, 0.18, PlayerRad},    // front-top
-     {PlayerRad, 0.18, -PlayerRad},   // back-top
-     {PlayerRad, -1.62, PlayerRad},   // front-bottom
-     {PlayerRad, -1.62, -PlayerRad}}, // back-bottom
-
-    {                                 // Left (-X)
-     {-PlayerRad, 0.18, -PlayerRad},  // back-top
-     {-PlayerRad, 0.18, PlayerRad},   // front-top
-     {-PlayerRad, -1.62, -PlayerRad}, // back-bottom
-     {-PlayerRad, -1.62, PlayerRad}}, // front-bottom
-
-    {                                // Top (+Y)
-     {-PlayerRad, 0.18, -PlayerRad}, // back-left
-     {PlayerRad, 0.18, -PlayerRad},  // back-right
-     {-PlayerRad, 0.18, PlayerRad},  // front-left
-     {PlayerRad, 0.18, PlayerRad}},  // front-right
-
-    {                                 // Bottom (-Y)
-     {PlayerRad, -1.62, PlayerRad},   // front-right
-     {PlayerRad, -1.62, -PlayerRad},  // back-right
-     {-PlayerRad, -1.62, PlayerRad},  // front-left
-     {-PlayerRad, -1.62, -PlayerRad}} // back-left
-};
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
@@ -231,6 +194,47 @@ auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
   this->uiVars.uiVertices.push_back(
       {{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
 }
+void Renderer::AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
+                           SDL_FPoint uvMax, Vector3 color) {
+  Vertex v1 = {{x, y, 0.0f}, color, {uvMin.x, uvMax.y}, 0.0f};
+  Vertex v2 = {{x + w, y, 0.0f}, color, {uvMax.x, uvMax.y}, 0.0f};
+  Vertex v3 = {{x, y + h, 0.0f}, color, {uvMin.x, uvMin.y}, 0.0f};
+  Vertex v4 = {{x + w, y + h, 0.0f}, color, {uvMax.x, uvMin.y}, 0.0f};
+
+  uiVars.textVertices.push_back(v1);
+  uiVars.textVertices.push_back(v3);
+  uiVars.textVertices.push_back(v2);
+  uiVars.textVertices.push_back(v2);
+  uiVars.textVertices.push_back(v3);
+  uiVars.textVertices.push_back(v4);
+}
+void Renderer::DrawText(const std::string &text, float x, float y, float scale,
+                        Vector3 color) {
+  if (text.empty())
+    return;
+
+  float currentX = x;
+  // Font atlas (0-9) is 170x30, so each digit is ~17x30 pixels.
+  // Native ratio = 17 / 30 = 0.566
+  float fontAspectRatio = 0.566f;
+  float baseCharSize = 0.08f * scale;
+  float charW =
+      (baseCharSize * fontAspectRatio) / this->runTimeRenderVars.aspect;
+  float charH = baseCharSize;
+
+  for (char c : text) {
+    if (c >= '0' && c <= '9') {
+      int idx = c - '0';
+      float uvX1 = (float)idx / 10.0f;
+      float uvX2 = (float)(idx + 1) / 10.0f;
+
+      float padding = 0.001f;
+      AddTextRect(currentX, y, charW, charH, {uvX1 + padding, 0.0f},
+                  {uvX2 - padding, 1.0f}, color);
+      currentX += charW * 0.9f; // Kerning (90% width)
+    }
+  }
+}
 void Renderer::UICrossHair() {
   // Crosshair size
   float crossSize = 0.02f;
@@ -298,61 +302,108 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
       AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
               (float)inventory[i].Type);
     }
+
+    // Block count
+    if (i < inventory.size() && inventory[i].Type != 0 &&
+        inventory[i].Amount > 1) {
+      std::string amountStr = std::to_string(inventory[i].Amount);
+      float textScale = 0.55f;
+      // Position more towards the bottom right of the slot
+      float textX = xNDC + wNDC * 0.62f;
+      float textY = yNDC + 0.008f;
+      DrawText(amountStr, textX, textY, textScale, {1.0f, 1.0f, 1.0f});
+    }
   }
 }
 void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
                       const std::vector<Slot> &inventory, int inventorySlot) {
+  this->uiVars.uiVertices.clear();
+  this->uiVars.textVertices.clear();
 
   UICrossHair();
   UIInventory(inventory, inventorySlot);
 
-  size_t Length = uiVars.uiVertices.size();
+  // 1. Upload UI (Rects/Atlas)
+  if (!uiVars.uiVertices.empty()) {
+    void *mapData = SDL_MapGPUTransferBuffer(
+        this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
+    if (mapData) {
+      SDL_memcpy(mapData, uiVars.uiVertices.data(),
+                 uiVars.uiVertices.size() * sizeof(Vertex));
+      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                                 this->uiVars.UIVertexTransferBuffer);
 
-  // Upload vertex data to GPU
-  void *mapData = SDL_MapGPUTransferBuffer(
-      this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
-  SDL_memcpy(mapData, uiVars.uiVertices.data(),
-             uiVars.uiVertices.size() * sizeof(Vertex));
-  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                             this->uiVars.UIVertexTransferBuffer);
+      SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
+      SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer,
+                                           0};
+      SDL_GPUBufferRegion dst = {
+          this->uiVars.UIVertexBuffer, 0,
+          (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
+      SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
+      SDL_EndGPUCopyPass(copyPass);
+    }
+  }
 
-  // Copy data to GPU buffer
-  SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
-  SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer, 0};
-  SDL_GPUBufferRegion dst = {
-      this->uiVars.UIVertexBuffer, 0,
-      (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
-  SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
-  SDL_EndGPUCopyPass(copyPass);
+  // 2. Upload Text
+  if (!uiVars.textVertices.empty()) {
+    void *mapData = SDL_MapGPUTransferBuffer(
+        this->basicInitVars.GPU, this->uiVars.textVertexTransferBuffer, true);
+    if (mapData) {
+      SDL_memcpy(mapData, uiVars.textVertices.data(),
+                 uiVars.textVertices.size() * sizeof(Vertex));
+      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                                 this->uiVars.textVertexTransferBuffer);
 
-  // Setup color target to load existing content
+      SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
+      SDL_GPUTransferBufferLocation src = {
+          this->uiVars.textVertexTransferBuffer, 0};
+      SDL_GPUBufferRegion dst = {
+          this->uiVars.textVertexBuffer, 0,
+          (Uint32)(this->uiVars.textVertices.size() * sizeof(Vertex))};
+      SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
+      SDL_EndGPUCopyPass(copyPass);
+    }
+  }
+
+  // Draw passes
   SDL_GPUColorTargetInfo color_target_info;
   SDL_zero(color_target_info);
   color_target_info.texture = this->runTimeRenderVars.swap_texture;
   color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
   color_target_info.store_op = SDL_GPU_STOREOP_STORE;
 
-  // Begin UI render pass
-  SDL_GPURenderPass *uiPass =
+  SDL_GPURenderPass *pass =
       SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
 
-  // Bind UI pipeline and textures
-  SDL_BindGPUGraphicsPipeline(uiPass, this->pipelineInitVars.uiPipeline);
-
-  // Bind Texture Atlas and Sampler for UI
-  if (this->TextureAtlas && this->Sampler) {
-    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                   this->Sampler};
-    SDL_BindGPUFragmentSamplers(uiPass, 0, &samplerBinding, 1);
+  // UI Pass
+  if (!uiVars.uiVertices.empty()) {
+    SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.uiPipeline);
+    if (this->TextureAtlas && this->Sampler) {
+      SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
+                                                     this->Sampler};
+      SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
+    }
+    SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
+    SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
+    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.uiVertices.size(), 1, 0,
+                          0);
   }
 
-  SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
-  SDL_BindGPUVertexBuffers(uiPass, 0, &vBinding, 1);
-  SDL_DrawGPUPrimitives(uiPass, (Uint32)this->uiVars.uiVertices.size(), 1, 0,
-                        0);
-  SDL_EndGPURenderPass(uiPass);
+  // Text Pass
+  if (!uiVars.textVertices.empty() && this->pipelineInitVars.textPipeline) {
+    SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.textPipeline);
+    if (this->uiVars.fontTexture && this->uiVars.fontSampler) {
+      SDL_GPUTextureSamplerBinding samplerBinding = {this->uiVars.fontTexture,
+                                                     this->uiVars.fontSampler};
+      SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
+    }
+    SDL_GPUBufferBinding vBinding = {this->uiVars.textVertexBuffer, 0};
+    SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
+    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.textVertices.size(), 1, 0,
+                          0);
+  }
 
-  this->uiVars.uiVertices.clear();
+  SDL_EndGPURenderPass(pass);
 }
 std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   Vector3 PlayerChunk = (player.Position / 16).Truncate();
@@ -807,7 +858,11 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
       for (int side = 0; side < 6; side++) {
         Uint32 base = verts.size();
         for (int i = 0; i < 4; i++) {
-          verts.push_back({PlayerModel[side][i] + pos, color, {0, 0}, 1.0f});
+          verts.push_back(
+              {EntityDef[(int)EntityType::PLAYER].Model[side][i] + pos,
+               color,
+               {0, 0},
+               1.0f});
         }
         indices.push_back(base + 0);
         indices.push_back(base + 2);
@@ -1085,6 +1140,10 @@ void Renderer::Init() {
   }
   this->basicInitVars.event = {};
   SDL_SetWindowRelativeMouseMode(basicInitVars.window, true);
+
+  if (!TTF_WasInit() && !TTF_Init()) {
+    SDL_Log("Failed to initialize SDL_ttf: %s", SDL_GetError());
+  }
 }
 void Renderer::GenerateBuffer() {
   // Calculate buffer packing
@@ -1298,6 +1357,106 @@ void Renderer::LoadTexture() {
   if (!this->Sampler) {
     SDL_Log("Failed to create sampler: %s", SDL_GetError());
   }
+
+  // Load Font
+  const char *fontPathRelative = "assets/square_pixel-7.ttf";
+  char fullFontPath[512];
+  if (basePath) {
+    SDL_snprintf(fullFontPath, sizeof(fullFontPath), "%s%s", basePath,
+                 fontPathRelative);
+  } else {
+    SDL_strlcpy(fullFontPath, fontPathRelative, sizeof(fullFontPath));
+  }
+
+  uiVars.font =
+      TTF_OpenFont(fullFontPath, 48); // Sharper text at higher resolution
+  if (!uiVars.font) {
+    SDL_Log("Failed to load font at %s: %s", fullFontPath, SDL_GetError());
+    return;
+  }
+  SDL_Log("Loaded font: %s", fullFontPath);
+
+  // Create digit atlas (0-9)
+  SDL_Surface *digitSurface = TTF_RenderText_Blended(uiVars.font, "0123456789",
+                                                     10, {255, 255, 255, 255});
+  if (digitSurface) {
+    SDL_Log("Digit surface created: %dx%d, format: %s", digitSurface->w,
+            digitSurface->h, SDL_GetPixelFormatName(digitSurface->format));
+    SDL_Surface *rgbaDigitSurface =
+        SDL_ConvertSurface(digitSurface, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(digitSurface);
+    digitSurface = rgbaDigitSurface;
+
+    SDL_GPUTextureCreateInfo fontTexInfo = {};
+    fontTexInfo.type = SDL_GPU_TEXTURETYPE_2D;
+    fontTexInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    fontTexInfo.width = (Uint32)digitSurface->w;
+    fontTexInfo.height = (Uint32)digitSurface->h;
+    fontTexInfo.layer_count_or_depth = 1;
+    fontTexInfo.num_levels = 1;
+    fontTexInfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+
+    uiVars.fontTexture =
+        SDL_CreateGPUTexture(this->basicInitVars.GPU, &fontTexInfo);
+    if (uiVars.fontTexture) {
+      Uint32 fontTexSize = (Uint32)(digitSurface->w * digitSurface->h * 4);
+      SDL_GPUTransferBufferCreateInfo fontTransferInfo = {};
+      fontTransferInfo.size = fontTexSize;
+      fontTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+      SDL_GPUTransferBuffer *fontTransferBuffer = SDL_CreateGPUTransferBuffer(
+          this->basicInitVars.GPU, &fontTransferInfo);
+
+      if (fontTransferBuffer) {
+        void *fontData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
+                                                  fontTransferBuffer, false);
+        if (fontData) {
+          // Copy row by row to handle pitch
+          for (int y = 0; y < digitSurface->h; y++) {
+            SDL_memcpy((Uint8 *)fontData + (y * digitSurface->w * 4),
+                       (Uint8 *)digitSurface->pixels +
+                           (y * digitSurface->pitch),
+                       digitSurface->w * 4);
+          }
+          SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                                     fontTransferBuffer);
+        }
+
+        SDL_GPUCommandBuffer *fontCmd =
+            SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+        if (fontCmd) {
+          SDL_GPUCopyPass *fontCopyPass = SDL_BeginGPUCopyPass(fontCmd);
+          SDL_GPUTextureTransferInfo fontTexTransfer = {};
+          fontTexTransfer.transfer_buffer = fontTransferBuffer;
+          fontTexTransfer.pixels_per_row = (Uint32)digitSurface->w;
+          fontTexTransfer.rows_per_layer = (Uint32)digitSurface->h;
+
+          SDL_GPUTextureRegion fontTexRegion = {};
+          fontTexRegion.texture = uiVars.fontTexture;
+          fontTexRegion.w = (Uint32)digitSurface->w;
+          fontTexRegion.h = (Uint32)digitSurface->h;
+          fontTexRegion.d = 1;
+
+          SDL_UploadToGPUTexture(fontCopyPass, &fontTexTransfer, &fontTexRegion,
+                                 false);
+          SDL_EndGPUCopyPass(fontCopyPass);
+          SDL_SubmitGPUCommandBuffer(fontCmd);
+          SDL_WaitForGPUIdle(this->basicInitVars.GPU);
+        }
+        SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                     fontTransferBuffer);
+      }
+      SDL_Log("Font texture uploaded successfully");
+    }
+    SDL_DestroySurface(digitSurface);
+  }
+
+  SDL_GPUSamplerCreateInfo fontSamplerInfo = {};
+  fontSamplerInfo.min_filter = SDL_GPU_FILTER_LINEAR;
+  fontSamplerInfo.mag_filter = SDL_GPU_FILTER_LINEAR;
+  fontSamplerInfo.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  fontSamplerInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  uiVars.fontSampler =
+      SDL_CreateGPUSampler(this->basicInitVars.GPU, &fontSamplerInfo);
 }
 void Renderer::ColorTargetDes() {
   this->pipelineInitVars.colorTargetDescriptions[0] = {};
@@ -1448,6 +1607,46 @@ void Renderer::PipelineInit() {
   this->uiVars.UIVertexTransferBuffer =
       SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &uiTransferInfo);
 
+  // Text Pipeline
+  SDL_GPUShader *text_vert =
+      LoadShader(this->basicInitVars.GPU, "Text.vert", 0, 0, 0, 0);
+  SDL_GPUShader *text_frag =
+      LoadShader(this->basicInitVars.GPU, "Text.frag", 1, 0, 0, 0);
+
+  if (text_vert && text_frag) {
+    SDL_GPUGraphicsPipelineCreateInfo text_desc = ui_desc;
+    text_desc.vertex_shader = text_vert;
+    text_desc.fragment_shader = text_frag;
+
+    this->pipelineInitVars.textPipeline =
+        SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &text_desc);
+    if (this->pipelineInitVars.textPipeline) {
+      SDL_Log("Text pipeline created successfully");
+    } else {
+      SDL_Log("Failed to create text pipeline: %s", SDL_GetError());
+    }
+
+    SDL_ReleaseGPUShader(this->basicInitVars.GPU, text_vert);
+    SDL_ReleaseGPUShader(this->basicInitVars.GPU, text_frag);
+  } else {
+    SDL_Log("Failed to load text shaders!");
+  }
+
+  // Create Text Buffer
+
+  // Create Text Buffer
+  SDL_GPUBufferCreateInfo textBufferInfo = {};
+  textBufferInfo.size = sizeof(Vertex) * 4096;
+  textBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+  this->uiVars.textVertexBuffer =
+      SDL_CreateGPUBuffer(this->basicInitVars.GPU, &textBufferInfo);
+
+  SDL_GPUTransferBufferCreateInfo textTransferInfo = {};
+  textTransferInfo.size = sizeof(Vertex) * 4096;
+  textTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  this->uiVars.textVertexTransferBuffer =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &textTransferInfo);
+
   // Create Entity Buffer
   SDL_GPUBufferCreateInfo entityBufferInfo = {};
   entityBufferInfo.size =
@@ -1480,6 +1679,7 @@ Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
     : gameClient(gameClient), chunkManager(manager) {
   TextureAtlas = nullptr;
   Sampler = nullptr;
+  SDL_zero(uiVars);
 
   Init();
   GenerateBuffer();

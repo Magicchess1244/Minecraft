@@ -2,6 +2,7 @@
 #define __GAME_CLIENT_H
 
 #include "../common/Common.hpp"
+#include "../common/PerlinNoise.hpp"
 #include "Renderer.hpp"
 #include <asio.hpp>
 #include <asio/ip/address_v4.hpp>
@@ -36,11 +37,17 @@ public:
       this->socket.connect(endpoint);
       std::cout << "Connected to server at " << ip << ":" << PORT << std::endl;
 
-      // Receive ID
+      // Receive ID and Seed
       std::string id_str = receiveMessage();
       if (id_str.find("id:") == 0) {
         my_id = std::stoi(id_str.substr(3));
         std::cout << "Assigned ID: " << my_id << std::endl;
+      }
+      std::string seed_str = receiveMessage();
+      if (seed_str.find("s:") == 0) {
+        unsigned int s =
+            static_cast<unsigned int>(std::stoul(seed_str.substr(2)));
+        SetSeed(s);
       }
     } catch (std::exception &e) {
       std::cerr << "Failed to connect to server: " << e.what() << std::endl;

@@ -17,10 +17,7 @@ Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
 
 void GameClient::set_seed() {
-  this->sendCommand("seed");
-  // The seed is received by the main thread before the listener starts,
-  // or by the listener after it starts.
-  // For simplicity, let's keep it sync for now but it's risky.
+  // Seed is now received in the constructor.
 }
 void GameClient::set_color() { this->sendCommand("getColor"); }
 

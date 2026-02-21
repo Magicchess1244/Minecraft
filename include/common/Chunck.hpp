@@ -71,7 +71,7 @@ private:
   void SimulateWaterSpread(std::vector<bool> &solidCache);
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Uint8> &modCache,
-                          std::vector<bool> &solidCache);
+                          std::vector<bool> &solidCache, ChunkManager &manager);
   Uint8 GetCombinedLight(int x, int y, int z, ChunkManager &manager);
 };
 
