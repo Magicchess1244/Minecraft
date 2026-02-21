@@ -64,12 +64,13 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
 
   if (isValidPos(localX, localY, localZ) && !blocks.empty()) {
     Uint8 blockID = blocks[localX + localY * xSize + localZ * xSize * ySize];
-    return blockID != 0 && blockID != 5;
+    return blockID != 0 && BlockDef[blockID].isSolid;
   }
 
   Uint8 blockID = GetBlockID(worldX, worldY, worldZ, terrainHeight, manager);
   return blockID != 0 &&
-         blockID != 5; // Air and Water are not solid (for collision)
+         BlockDef[blockID]
+             .isSolid; // Air and non-solid blocks (e.g. water) return false
 }
 
 Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
@@ -294,10 +295,20 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
               } else {
                 blockID = 1; // Grass
               }
+
+              // Final check: filter by spawn height if necessary
+              if (y < BlockDef[blockID].spawn.minHeight ||
+                  (BlockDef[blockID].spawn.maxHeight > 0 &&
+                   y > BlockDef[blockID].spawn.maxHeight)) {
+                // If the selected block shouldn't spawn here, fallback to Stone
+                // or Air
+                if (y < height)
+                  blockID = 3;
+              }
             }
           }
         }
-        solidCache[idx] = isSolid;
+        solidCache[idx] = BlockDef[blockID].isSolid;
         this->blocks[idx] = blockID;
       }
     }
@@ -447,10 +458,12 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
                   {(float)worldX, (float)worldY, (float)worldZ});
             }
 
-            if (bid == 5) {
+            if (BlockDef[bid].isTransparent) {
+              // Transparent blocks like water only show faces against air
               visible = (nBid == 0);
             } else {
-              visible = (nBid == 0 || nBid == 5);
+              // Opaque blocks show faces against air or transparent blocks
+              visible = (nBid == 0 || BlockDef[nBid].isTransparent);
             }
 
             if (visible) {
@@ -515,7 +528,7 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
 
             this->allFaces.push_back(DrawnFace{Pos, (Uint8)side, bid, (Uint8)w,
                                                (Uint8)h, light,
-                                               BlockDef[bid].Water});
+                                               BlockDef[bid].isWater});
 
             for (int j2 = j; j2 < j + h; j2++) {
               for (int i2 = i; i2 < i + w; i2++) {
@@ -613,7 +626,7 @@ void ChunkPrefab::PropagateLighting(ChunkManager &manager) {
             Uint8 nSun = manager.GetSunlightLevel(worldPos);
             if (nSun > 1) {
               Uint8 newSun = nSun - 1;
-              if (blocks[idx] == 5)
+              if (BlockDef[blocks[idx]].isWater)
                 newSun = (newSun > 2) ? newSun - 1 : 0;
 
               if (newSun > lightData[idx].sunlight) {
@@ -626,7 +639,7 @@ void ChunkPrefab::PropagateLighting(ChunkManager &manager) {
             Uint8 nBlock = manager.GetBlockLightLevel(worldPos);
             if (nBlock > 1) {
               Uint8 newBlock = nBlock - 1;
-              if (blocks[idx] == 5)
+              if (BlockDef[blocks[idx]].isWater)
                 newBlock = (newBlock > 2) ? newBlock - 1 : 0;
 
               if (newBlock > lightData[idx].blockLight) {
@@ -663,16 +676,13 @@ void ChunkPrefab::PropagateLighting(ChunkManager &manager) {
           int nIdx = nx + ny * xSize + nz * xSize * ySize;
           Uint8 neighborBlock = blocks[nIdx];
 
-          // Small adjustment: skip solid blocks but allow ones with luminance
-          // (like Glowstone itself can be lit by neighbors?) Usually emitters
-          // are solid but can pass light? No, glowstone is solid. In Minecraft,
-          // light only passes through non-solid blocks
-          // (alpha-tested/transparent).
-          if (neighborBlock != 0 && neighborBlock != 5 && neighborBlock != 9)
+          // Light only passes through non-solid/transparent blocks or emitters
+          if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent &&
+              BlockDef[neighborBlock].Luminance == 0)
             continue;
 
           Uint8 newLight = currentLight - 1;
-          if (neighborBlock == 5)
+          if (BlockDef[neighborBlock].isWater)
             newLight = (newLight > 2) ? newLight - 1 : 0;
 
           if (isSunlight) {

@@ -1,22 +1,13 @@
 #ifndef __CHUNKMANAGER_HPP__
 #define __CHUNKMANAGER_HPP__
 
+#include "BlockDef.hpp"
 #include "Common.hpp"
 #include <SDL3/SDL_stdinc.h>
 
 class ChunkPrefab;
 class ChunkCache;
 
-typedef struct {
-  char Name[20];
-  short BlockId;
-  Color color;
-  short SpawningLayer[2];
-  bool Top;
-  bool Water;
-  Uint8 Luminance;
-  short Textures[6]; // Front, Back, Right, Left, Top, Bottom
-} Block;
 typedef struct {
   int MaxHumidity;
   int MaxTemperature;
@@ -29,33 +20,6 @@ typedef struct {
   float x;
   float y;
 } HeightsDif;
-
-constexpr int BlockNum = 10;
-const Block BlockDef[BlockNum] = {
-    {"Air", 0, {255, 178, 255}, {0, 0}, false, false, 0, {0, 0, 0, 0, 0, 0}},
-    {"Grass", 1, {255, 255, 255}, {0, 0}, true, false, 0, {1, 1, 1, 1, 0, 2}},
-    {"Dirt", 2, {255, 255, 255}, {1, 3}, true, false, 0, {2, 2, 2, 2, 2, 2}},
-    {"Stone", 3, {255, 255, 255}, {4, 64}, false, false, 0, {3, 3, 3, 3, 3, 3}},
-    {"Bedrock",
-     4,
-     {255, 255, 255},
-     {0, 3},
-     false,
-     false,
-     0,
-     {4, 4, 4, 4, 4, 4}},
-    {"Water", 5, {0, 102, 204}, {0, 0}, false, true, 0, {5, 5, 5, 5, 5, 5}},
-    {"Wood", 6, {255, 255, 255}, {0, 0}, false, false, 0, {6, 6, 6, 6, 10, 10}},
-    {"Leaves", 7, {255, 255, 255}, {0, 0}, false, false, 0, {7, 7, 7, 7, 7, 7}},
-    {"Sand", 8, {255, 255, 255}, {0, 0}, true, false, 0, {8, 8, 8, 8, 8, 8}},
-    {"Glowstone",
-     9,
-     {255, 255, 255},
-     {0, 0},
-     false,
-     false,
-     15,
-     {9, 9, 9, 9, 9, 9}}};
 
 struct RaycastResult {
   bool hit;
@@ -82,11 +46,11 @@ public:
   Biome GetBiome(float Humudity, float Temperature);
   int GetHeight(float Continentalness, float Errotion, float PeakAndVallies);
   Block GetBlock(int BlockId) {
-    if (BlockId < 0 || BlockId >= BlockNum) {
+    if (BlockId < 0 || BlockId >= (int)BlockDefinitionsAmount) {
       std::cerr << "Invalid Block ID: " << BlockId << std::endl;
-      return BlockDef[0];
+      return BlockDefinitions[0];
     }
-    return BlockDef[BlockId];
+    return BlockDefinitions[BlockId];
   }
   Uint8 GetMod(Vector3 Pos) {
     if (Modifications.find(Pos) != Modifications.end())

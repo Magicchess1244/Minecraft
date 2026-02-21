@@ -477,8 +477,8 @@ void Renderer::DrawTerrain(Player &player) {
             continue;
 
           Vector3 worldPos = face.blockPos + chunkWorldPos;
-          Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
-                              Colors[(int)(face.side)].ToFloat();
+          Vector3 faceColor =
+              Vector3(1.0f, 1.0f, 1.0f) - Colors[(int)(face.side)].ToFloat();
 
           Uint32 baseV = (Uint32)cache.vertices.size();
           float fw = (float)face.w;
@@ -601,8 +601,8 @@ void Renderer::DrawTerrain(Player &player) {
       if (vOffset + 4 > maxV || iOffset + 12 > maxI)
         break;
 
-      Vector3 faceColor = BlockDef[face.blockID].color.ToFloat() -
-                          Colors[(int)(face.side)].ToFloat();
+      Vector3 faceColor =
+          Vector3(1.0f, 1.0f, 1.0f) - Colors[(int)(face.side)].ToFloat();
 
       for (int j = 0; j < 4; j++) {
         Vector3 v = Verts[face.side][j];

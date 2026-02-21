@@ -139,16 +139,34 @@ RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
 }
 
 bool ChunkManager::IsSolid(Vector3 worldPos) {
-  Vector3 RelChunkPos = {(float)floor(worldPos.x / 16.0f), 0,
-                         (float)floor(worldPos.z / 16.0f)};
-  ChunkPrefab &chunk = get_chunk(RelChunkPos);
-
-  // Use floor to get integer block coordinates for height calculation, matching
-  // GenerateChunk grid
   Vector3 floorPos = worldPos.Truncate();
-  int height = chunk.GetHeight({(float)floorPos.x, (float)floorPos.z});
-  return chunk.isSolidBlock((int)floorPos.x, (int)floorPos.y, (int)floorPos.z,
-                            height, *this);
+  Uint8 blockID = GetBlockID(floorPos);
+
+  if (blockID == 0 || blockID == 255)
+    return false;
+
+  const Block &def = BlockDef[blockID];
+  if (!def.isSolid)
+    return false;
+
+  if (def.collisionBoxes == nullptr) {
+    // If collisionBoxes is nullptr, check as a full block
+    return true;
+  } else {
+    // Check if the point is within any of the collision boxes (relative to
+    // block)
+    Vector3 relPos = worldPos - floorPos;
+    // Assuming a max of 2 boxes for now as defined in the header previously
+    for (int i = 0; i < 2; i++) {
+      const BoundingBox &box = def.collisionBoxes[i];
+      if (relPos.x >= box.min.x && relPos.x <= box.max.x &&
+          relPos.y >= box.min.y && relPos.y <= box.max.y &&
+          relPos.z >= box.min.z && relPos.z <= box.max.z) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
 void ChunkManager::Place(Vector3 Pos, int BlockID) {

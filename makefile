@@ -1,19 +1,38 @@
+# Platform detection (default to linux)
+PLATFORM ?= linux
+
 # Compiler and flags
-CXX := g++
+ifeq ($(PLATFORM), windows)
+    CXX := x86_64-w64-mingw32-g++
+    EXTENSION := .exe
+    # For Windows, we assume libraries are available via mingw or in the project
+    # You might need to adjust these paths if you have them in specific folders
+    LDFLAGS := -lSDL3_image -lSDL3 -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -lws2_32 -liphlpapi
+    INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server
+else
+    CXX := g++
+    EXTENSION :=
+    SDLIMAGE_STATIC := ~/SDL_image/build/libSDL3_image_static.a
+    SDL_LIB := ~/SDL/build/libSDL3.a
+    LDFLAGS := $(SDLIMAGE_STATIC) $(SDL_LIB) -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -ldl
+    INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server -I/usr/include/SDL3 -I/usr/local/include/SDL3
+endif
+
 CXXFLAGS := -std=c++17 -O3 -pthread
-SDLIMAGE_STATIC := ~/SDL_image/build/libSDL3_image_static.a
-LDFLAGS := $(SDLIMAGE_STATIC) ~/SDL/build/libSDL3.a -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -ldl
 
 # Debug flags for memory leak detection
 CXXFLAGS_DEBUG := -std=c++17 -g -O0 -pthread -fsanitize=address
-LDFLAGS_DEBUG := $(SDLIMAGE_STATIC) -lSDL3 -lpng -lz -ljpeg -lwebp -ltiff -pthread -lm -ldl -fsanitize=address
+LDFLAGS_DEBUG := $(LDFLAGS) -fsanitize=address
 
-# Include directories
-INCLUDES := -Iinclude/common -Iinclude/client -Iinclude/server -I/usr/include/SDL3 -I/usr/local/include/SDL3
+# Targets Base Names
+CLIENT_BASE := minecraft3d-client
+SERVER_BASE := minecraft3d-server
 
-# Targets
-CLIENT_TARGET := minecraft3d-client
-SERVER_TARGET := minecraft3d-server
+# Final Target Names
+CLIENT_TARGET := $(CLIENT_BASE)$(EXTENSION)
+SERVER_TARGET := $(SERVER_BASE)$(EXTENSION)
+CLIENT_DEBUG_TARGET := $(CLIENT_BASE)-debug$(EXTENSION)
+SERVER_DEBUG_TARGET := $(SERVER_BASE)-debug$(EXTENSION)
 
 # Source directories
 SRC_COMMON := src/common
@@ -65,14 +84,14 @@ $(SERVER_TARGET): $(SERVER_OBJS) $(COMMON_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Debug builds (AddressSanitizer)
-client-debug: $(CLIENT_TARGET)-debug
+client-debug: $(CLIENT_DEBUG_TARGET)
 
-server-debug: $(SERVER_TARGET)-debug
+server-debug: $(SERVER_DEBUG_TARGET)
 
-$(CLIENT_TARGET)-debug: $(CLIENT_OBJS_DEBUG) $(COMMON_OBJS_DEBUG)
+$(CLIENT_DEBUG_TARGET): $(CLIENT_OBJS_DEBUG) $(COMMON_OBJS_DEBUG)
 	$(CXX) $(CXXFLAGS_DEBUG) -o $@ $^ $(LDFLAGS_DEBUG)
 
-$(SERVER_TARGET)-debug: $(SERVER_OBJS_DEBUG) $(COMMON_OBJS_DEBUG)
+$(SERVER_DEBUG_TARGET): $(SERVER_OBJS_DEBUG) $(COMMON_OBJS_DEBUG)
 	$(CXX) $(CXXFLAGS_DEBUG) -o $@ $^ $(LDFLAGS_DEBUG)
 
 # Compile source files (release)
@@ -95,5 +114,5 @@ assets/shaders/%.frag.spv: assets/shaders/%.frag.glsl
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS_DEBUG)
 	rm -f $(CLIENT_TARGET) $(SERVER_TARGET)
-	rm -f $(CLIENT_TARGET)-debug $(SERVER_TARGET)-debug
+	rm -f $(CLIENT_DEBUG_TARGET) $(SERVER_DEBUG_TARGET)
 	rm -f $(SHADER_SPV)
