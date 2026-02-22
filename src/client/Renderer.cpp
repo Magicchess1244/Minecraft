@@ -409,6 +409,15 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   Vector3 PlayerChunk = (player.Position / 16).Truncate();
   PlayerChunk.y = 0;
 
+  float rotDiff = (player.Rotation - lastRot).LengthSquared();
+
+  if (PlayerChunk == lastPlayerChunk && rotDiff < 0.01f) {
+    return cachedVisibleChunks;
+  }
+
+  lastPlayerChunk = PlayerChunk;
+  lastRot = player.Rotation;
+
   SpiralIterator spiral(RenderDistance * 2 + 1);
   std::vector<ChunkDistance> visibleChunkList;
 
@@ -437,6 +446,7 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
     visibleChunkList.push_back({&chunk, d2});
   }
 
+  this->cachedVisibleChunks = visibleChunkList;
   return visibleChunkList;
 }
 
@@ -445,19 +455,37 @@ void Renderer::DrawTerrain(Player &player) {
   std::vector<ChunkDistance> visibleChunks = SortChunks(player);
 
   // 2. Prepare Opaque list (stable sort for buffer consistency)
-  std::vector<ChunkPrefab *> opaqueChunks;
-  opaqueChunks.reserve(visibleChunks.size());
-  for (auto &cd : visibleChunks) {
-    opaqueChunks.push_back(cd.chunk);
+  // Only re-prepare if the set of visible chunks changed
+  bool setChanged = false;
+  if (visibleChunks.size() != this->lastVisibleChunks.size()) {
+    setChanged = true;
+  } else {
+    for (size_t i = 0; i < visibleChunks.size(); i++) {
+      if (visibleChunks[i].chunk != lastVisibleChunks[i]) {
+        setChanged = true;
+        break;
+      }
+    }
   }
 
-  // Stable sort by coordinates to keep chunks in the same buffers
-  std::sort(opaqueChunks.begin(), opaqueChunks.end(),
-            [](ChunkPrefab *a, ChunkPrefab *b) {
-              if (a->xPos != b->xPos)
-                return a->xPos < b->xPos;
-              return a->zPos < b->zPos;
-            });
+  if (setChanged) {
+    opaqueChunks.clear();
+    lastVisibleChunks.clear();
+    opaqueChunks.reserve(visibleChunks.size());
+    lastVisibleChunks.reserve(visibleChunks.size());
+    for (auto &cd : visibleChunks) {
+      opaqueChunks.push_back(cd.chunk);
+      lastVisibleChunks.push_back(cd.chunk);
+    }
+
+    // Stable sort by coordinates to keep chunks in the same buffers
+    std::sort(opaqueChunks.begin(), opaqueChunks.end(),
+              [](ChunkPrefab *a, ChunkPrefab *b) {
+                if (a->xPos != b->xPos)
+                  return a->xPos < b->xPos;
+                return a->zPos < b->zPos;
+              });
+  }
 
   // 3. Opaque Pass - Fill buffers 0 to totalBuffers-2 using stable chunks
   int currentOpaqueIdx = 0;

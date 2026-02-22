@@ -15,17 +15,17 @@ constexpr HeightsDif ContinentelnessHeight[7] = {
     {-1.0f, 15}}; // Deep Ocean
 
 constexpr Biome Biomes[11] = {
-    {"Ice", 20, 20, 0, 0, 20, 6},
-    {"Tundra", 40, 20, 20, 0, 20, 6},
-    {"Taiga", 100, 20, 40, 0, 20, 7},
-    {"Big Taiga", 100, 40, 60, 20, 20, 4},
-    {"Plains", 60, 60, 20, 20, 20, 3},
-    {"Forest", 80, 60, 20, 40, 20, 6},
-    {"Birch", 80, 60, 20, 60, 20, 5},
-    {"Dark Forest", 100, 60, 20, 80, 20, 5},
-    {"Jungle", 100, 100, 60, 60, 20, 7},
-    {"Desert", 60, 100, 0, 80, 20, 4},
-    {"Savanna", 40, 80, 20, 0, 20, 5},
+    {"Ice", BiomeType::Ice, 20, 20, 0, 0, 20, 6},
+    {"Tundra", BiomeType::Tundra, 40, 20, 20, 0, 20, 6},
+    {"Taiga", BiomeType::Taiga, 100, 20, 40, 0, 20, 7},
+    {"Big Taiga", BiomeType::BigTaiga, 100, 40, 60, 20, 20, 4},
+    {"Plains", BiomeType::Plains, 60, 60, 20, 20, 20, 3},
+    {"Forest", BiomeType::Forest, 80, 60, 20, 40, 20, 6},
+    {"Birch", BiomeType::Birch, 80, 60, 20, 60, 20, 5},
+    {"Dark Forest", BiomeType::DarkForest, 100, 60, 20, 80, 20, 5},
+    {"Jungle", BiomeType::Jungle, 100, 100, 60, 60, 20, 7},
+    {"Desert", BiomeType::Desert, 60, 100, 0, 80, 20, 4},
+    {"Savanna", BiomeType::Savanna, 40, 80, 20, 0, 20, 5},
 };
 
 constexpr HeightsDif ErrotionHeight[10] = {

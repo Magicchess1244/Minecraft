@@ -310,6 +310,11 @@ private:
   Frustum frustum;
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
+  Vector3 lastPlayerChunk{-999, -999, -999};
+  Vector3 lastRot{-999, -999, -999};
+  std::vector<ChunkDistance> cachedVisibleChunks;
+  std::vector<ChunkPrefab *> opaqueChunks;
+  std::vector<ChunkPrefab *> lastVisibleChunks;
 
   auto AddRect(float x, float y, float w, float h, Vector3 color,
                float blockID = 0);

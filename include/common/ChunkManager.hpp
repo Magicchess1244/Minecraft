@@ -16,8 +16,23 @@ typedef struct {
 float SampleSpline(float value, const HeightsDif *spline, int length);
 int GetBaseHeight(float Continentalness, float Erosion, float Peaks);
 
+enum class BiomeType {
+  Ice,
+  Tundra,
+  Taiga,
+  BigTaiga,
+  Plains,
+  Forest,
+  Birch,
+  DarkForest,
+  Jungle,
+  Desert,
+  Savanna
+};
+
 typedef struct {
   const char *Name;
+  BiomeType Type;
   int MaxHumidity;
   int MaxTemperature;
   int MinHumidity;

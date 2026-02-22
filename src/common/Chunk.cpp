@@ -201,6 +201,28 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
 
   for (int x = 0; x < xSize; x++) {
     for (int z = 0; z < zSize; z++) {
+      int worldX = xPos + x;
+      int worldZ = zPos + z;
+
+      float cont = PerlinNoise2D(
+          {(float)worldX * 0.005f, (float)worldZ * 0.005f}, 3, 0.5f);
+      float hum = PerlinNoise2D(
+          {(float)worldX * 0.008f, (float)worldZ * 0.008f}, 2, 0.5f);
+      float temp = PerlinNoise2D(
+          {(float)worldX * 0.008f + 500.0f, (float)worldZ * 0.008f + 500.0f}, 2,
+          0.5f);
+
+      float humScale = (hum + 1.0f) * 50.0f;
+      float tempScale = (temp + 1.0f) * 50.0f;
+      Biome biome = manager.GetBiome(humScale, tempScale);
+
+      Uint8 surfaceBlockID = 1; // Grass default
+      if (biome.Type == BiomeType::Desert) {
+        surfaceBlockID = 8; // Sand
+      } else if (biome.Type == BiomeType::Savanna) {
+        surfaceBlockID = 2; // Dirt
+      }
+
       int heightIdx = (x + 1) + (z + 1) * heightCacheWidth;
       int height = heightCache[heightIdx];
 
@@ -224,18 +246,6 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
             isSolid = false;
           } else {
             const int seaLevel = 35;
-            float cont = PerlinNoise2D(
-                {(float)worldX * 0.005f, (float)worldZ * 0.005f}, 3, 0.5f);
-            float hum = PerlinNoise2D(
-                {(float)worldX * 0.008f, (float)worldZ * 0.008f}, 2, 0.5f);
-            float temp = PerlinNoise2D({(float)worldX * 0.008f + 500.0f,
-                                        (float)worldZ * 0.008f + 500.0f},
-                                       2, 0.5f);
-
-            // Scale noise to 0-100 for biome lookup
-            float humScale = (hum + 1.0f) * 50.0f;
-            float tempScale = (temp + 1.0f) * 50.0f;
-            Biome biome = manager.GetBiome(humScale, tempScale);
 
             bool isCave = false;
             if (y >= CaveMinY && y <= CaveMaxY) {
@@ -274,17 +284,7 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
               } else if (height - y > 0) {
                 blockID = 2; // Dirt
               } else {
-                // Surface block based on biome
-                if (strcmp(biome.Name, "Desert") == 0) {
-                  blockID = 8; // Sand
-                } else if (strcmp(biome.Name, "Savanna") == 0) {
-                  blockID = 2; // Dirt (dryer look)
-                } else if (strcmp(biome.Name, "Ice") == 0 ||
-                           strcmp(biome.Name, "Tundra") == 0) {
-                  blockID = 1; // Grass (Snow would be better)
-                } else {
-                  blockID = 1; // Grass
-                }
+                blockID = surfaceBlockID;
               }
 
               // Final check: filter by spawn height if necessary
@@ -363,20 +363,20 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
       float cont = PerlinNoise2D({(float)worldX, (float)worldZ}, 3, 0.005f);
       float eros = PerlinNoise2D({(float)worldX, (float)worldZ}, 3, 0.01f);
 
-      float treeChanceThreshold = 1.0f; // Default (Plains/Sparse)
+      float treeChanceThreshold = 0.9f; // Default (Plains/Sparse)
 
-      if (strcmp(biome.Name, "Forest") == 0 ||
-          strcmp(biome.Name, "Dark Forest") == 0 ||
-          strcmp(biome.Name, "Birch") == 0) {
+      if (biome.Type == BiomeType::Forest ||
+          biome.Type == BiomeType::DarkForest ||
+          biome.Type == BiomeType::Birch) {
         treeChanceThreshold = 0.4f; // High density Forests
-      } else if (strcmp(biome.Name, "Jungle") == 0 ||
-                 strcmp(biome.Name, "Taiga") == 0 ||
-                 strcmp(biome.Name, "Big Taiga") == 0) {
+      } else if (biome.Type == BiomeType::Jungle ||
+                 biome.Type == BiomeType::Taiga ||
+                 biome.Type == BiomeType::BigTaiga) {
         treeChanceThreshold = 0.6f; // Mid density
-      } else if (strcmp(biome.Name, "Desert") == 0 ||
-                 strcmp(biome.Name, "Ice") == 0) {
+      } else if (biome.Type == BiomeType::Desert ||
+                 biome.Type == BiomeType::Ice) {
         treeChanceThreshold = 2.0f; // No trees
-      } else if (strcmp(biome.Name, "Savanna") == 0) {
+      } else if (biome.Type == BiomeType::Savanna) {
         treeChanceThreshold = 0.7f; // Savannah density
       }
 
@@ -470,6 +470,10 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
   int estimatedFaces = xSize * zSize * 6;
   this->allFaces.reserve(estimatedFaces);
 
+  std::vector<Uint8> mask(xSize * ySize, 0); // Max possible size
+  std::vector<Uint8> lightMask(xSize * ySize, 0);
+  std::vector<bool> visited(xSize * ySize, false);
+
   for (int side = 0; side < 6; side++) {
     int d = (side < 2) ? 2 : (side < 4 ? 0 : 1); // normal axis
     int u = (d == 0) ? 2 : 0;                    // u axis
@@ -482,8 +486,8 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
     int dims[3] = {xSize, ySize, zSize};
 
     for (int slice = 0; slice < dims[d]; slice++) {
-      std::vector<Uint8> mask(dims[u] * dims[v], 0);
-      std::vector<Uint8> lightMask(dims[u] * dims[v], 0);
+      std::fill(mask.begin(), mask.begin() + (dims[u] * dims[v]), 0);
+      std::fill(lightMask.begin(), lightMask.begin() + (dims[u] * dims[v]), 0);
 
       for (int i = 0; i < dims[u]; i++) {
         for (int j = 0; j < dims[v]; j++) {
@@ -549,7 +553,7 @@ void ChunkPrefab::GenerateMesh(ChunkManager &manager) {
       }
 
       // Greedy Meshing
-      std::vector<bool> visited(dims[u] * dims[v], false);
+      std::fill(visited.begin(), visited.begin() + (dims[u] * dims[v]), false);
       for (int j = 0; j < dims[v]; j++) {
         for (int i = 0; i < dims[u]; i++) {
           int mIdx = i + j * dims[u];
