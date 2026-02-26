@@ -319,16 +319,24 @@ struct BlockMod {
   Uint8 type;
 };
 
+struct Slot {
+  short Amount;
+  short Type;
+};
+
 struct Player {
   int id;
+  std::string name;
   Vector3 Position;
   Vector3 Rotation;
   Color color;
   bool Inwater = false;
-};
-struct Slot {
-  short Amount;
-  short Type;
+  std::vector<Slot> inventory;
+
+  Player()
+      : id(-1), Position(0, 0, 0), Rotation(0, 0, 0), color{255, 255, 255} {
+    inventory.assign(8, {0, 0});
+  }
 };
 
 namespace std {

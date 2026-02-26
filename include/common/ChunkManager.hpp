@@ -54,13 +54,17 @@ private:
   std::unordered_map<Vector3, ChunkPrefab> Chunks;
   ChunkCache *cache; // Chunk caching system
   std::unordered_map<Vector3, Uint8> Modifications;
+  std::vector<std::pair<Vector3, int>> activeWater;
+  float waterTickTimer = 0.0f;
 
 public:
   ChunkManager();
   ~ChunkManager();
+  int DayLightLevel = 15;
 
   void TickWater();
   void AddActiveWater(Vector3 pos);
+  void AddActiveWater(Vector3 pos, int level);
 
   ChunkPrefab &get_chunk(Vector3 key);
   Biome GetBiome(float Humudity, float Temperature);
@@ -86,10 +90,6 @@ public:
   Uint8 GetLightLevel(Vector3 Pos);
   Uint8 GetSunlightLevel(Vector3 Pos);
   Uint8 GetBlockLightLevel(Vector3 Pos);
-
-private:
-  std::vector<Vector3> activeWater;
-  float waterTickTimer = 0.0f;
 };
 /*
 namespace ChunckManager {

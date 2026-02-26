@@ -51,28 +51,20 @@ public:
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
   void GenerateChunk(ChunkManager &manager);
-  bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight,
-                    ChunkManager &manager);
-  Uint8 GetBlockID(int worldX, int worldY, int worldZ, int terrainHeight,
-                   ChunkManager &manager);
+  bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight);
+  Uint8 GetBlockID(int worldX, int worldY, int worldZ, int terrainHeight);
   int GetHeight(Vector2 Pos);
-  void GenerateMesh(ChunkManager &manager);
+  void GenerateMesh();
   void GenerateLighting();
-  void PropagateLighting(ChunkManager &manager);
+  void PropagateLighting();
+
+  ChunkManager *manager = nullptr;
 
 private:
-  void GenerateHeightMap(std::vector<int> &heightCache);
-  void GenerateCaveMap(std::vector<float> &caveDensityCache);
-  void GenerateModMap(std::vector<Uint8> &modCache, ChunkManager &manager);
-  void PopulateBlocks(const std::vector<int> &heightCache,
-                      const std::vector<float> &caveDensityCache,
-                      const std::vector<Uint8> &modCache,
-                      std::vector<bool> &solidCache, ChunkManager &manager);
-  void SimulateWaterSpread(std::vector<bool> &solidCache);
   void GenerateVegetation(const std::vector<int> &heightCache,
-                          const std::vector<Uint8> &modCache,
-                          std::vector<bool> &solidCache, ChunkManager &manager);
-  Uint8 GetCombinedLight(int x, int y, int z, ChunkManager &manager);
+                          const std::vector<Biome> &biomeMap,
+                          std::vector<bool> &solidCache);
+  Uint8 GetCombinedLight(int x, int y, int z);
 };
 
 #endif

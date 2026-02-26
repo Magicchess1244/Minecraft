@@ -136,6 +136,51 @@ void GameClient::listen() {
         } catch (...) {
         }
       }
+    } else if (msg.find("pData:") == 0) {
+      // Format: pData:x/y/z|rx/ry/rz|type,amount|type,amount|...
+      std::string data = msg.substr(6);
+      size_t first_pipe = data.find('|');
+      size_t second_pipe = data.find('|', first_pipe + 1);
+
+      if (first_pipe != std::string::npos && second_pipe != std::string::npos) {
+        std::string pos_str = data.substr(0, first_pipe);
+        std::string rot_str =
+            data.substr(first_pipe + 1, second_pipe - first_pipe - 1);
+        std::string inv_str = data.substr(second_pipe + 1);
+
+        std::lock_guard<std::mutex> lock(players_mutex);
+        if (!players.empty()) {
+          // Update local player (my_id)
+          size_t f = pos_str.find('/'), l = pos_str.find_last_of('/');
+          players[0].Position = {std::stof(pos_str.substr(0, f)),
+                                 std::stof(pos_str.substr(f + 1, l - f - 1)),
+                                 std::stof(pos_str.substr(l + 1))};
+
+          f = rot_str.find('/');
+          l = rot_str.find_last_of('/');
+          players[0].Rotation = {std::stof(rot_str.substr(0, f)),
+                                 std::stof(rot_str.substr(f + 1, l - f - 1)),
+                                 std::stof(rot_str.substr(l + 1))};
+
+          // Parse inventory
+          size_t start = 0;
+          size_t end = inv_str.find('|');
+          int slotIdx = 0;
+          while (end != std::string::npos && slotIdx < 8) {
+            std::string slot_info = inv_str.substr(start, end - start);
+            size_t comma = slot_info.find(',');
+            if (comma != std::string::npos) {
+              players[0].inventory[slotIdx].Type =
+                  static_cast<short>(std::stoi(slot_info.substr(0, comma)));
+              players[0].inventory[slotIdx].Amount =
+                  static_cast<short>(std::stoi(slot_info.substr(comma + 1)));
+            }
+            start = end + 1;
+            end = inv_str.find('|', start);
+            slotIdx++;
+          }
+        }
+      }
     }
   }
 }
@@ -144,14 +189,27 @@ void GameClient::update_pos() {
   std::string Pos = "up:" + std::to_string(my_id) + ":" +
                     std::to_string(Player.Position.x) + "/" +
                     std::to_string(Player.Position.y) + "/" +
-                    std::to_string(Player.Position.z);
+                    std::to_string(Player.Position.z) + "|" +
+                    std::to_string(Player.Rotation.x) + "/" +
+                    std::to_string(Player.Rotation.y) + "/" +
+                    std::to_string(Player.Rotation.z);
   this->sendCommand(Pos);
+}
+
+void GameClient::sync_inventory() {
+  auto &p = get_players()[0];
+  std::string msg = "inv:";
+  for (const auto &slot : p.inventory) {
+    msg += std::to_string(slot.Type) + "," + std::to_string(slot.Amount) + "|";
+  }
+  this->sendCommand(msg);
 }
 
 // UI function
 namespace BitMiner {
 int FindSlot(std::vector<Slot> &Inventory, short Type) {
   int index = 0;
+  if(Type == 0) return -1;
   for (Slot slot : Inventory) {
     if ((slot.Type == Type || slot.Type == 0) && slot.Amount < 64) {
       // std::cout << "Found slot" << index << std::endl;
@@ -323,7 +381,7 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
 
   if (justLeft || justRight) {
     RaycastResult Ray =
-        manager.RayCast(player.Position, player.Rotation.Forward(), 10);
+        manager.RayCast(player.Position, player.Rotation.Forward(), 7);
     if (Ray.hit) {
       if (justLeft) {
         if (Ray.BlockID == 4)
@@ -334,14 +392,15 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
                           std::to_string(Ray.pos.y) + "/" +
                           std::to_string(Ray.pos.z) + ":0";
 
-        int slotIdx = FindSlot(inventory, Ray.BlockID);
+        int slotIdx = FindSlot(inventory, BlockDef[Ray.BlockID].Drop);
         if (slotIdx != -1) {
           if (inventory[slotIdx].Amount == 0) {
-            inventory[slotIdx].Type = Ray.BlockID;
+            inventory[slotIdx].Type = BlockDef[Ray.BlockID].Drop;
           }
           inventory[slotIdx].Amount++;
         }
         game.sendCommand(mod);
+        game.sync_inventory();
       } else {
         // Prevent placing block inside player's body
         Vector3 placePos = Ray.prevPos;
@@ -363,11 +422,12 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
           if (inventory[inventorySlot].Amount == 0)
             inventory[inventorySlot].Type = 0;
           manager.Place(placePos, type);
-          std::string mod = "mod:" + std::to_string(placePos.x) + "/" +
-                            std::to_string(placePos.y) + "/" +
-                            std::to_string(placePos.z) + ":" +
+          std::string mod = "mod:" + std::to_string((int)placePos.x) + "/" +
+                            std::to_string((int)placePos.y) + "/" +
+                            std::to_string((int)placePos.z) + ":" +
                             std::to_string(type);
           game.sendCommand(mod);
+          game.sync_inventory();
         }
       }
     }
@@ -419,30 +479,36 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
 }
 void GameLoop(GameClient &game) {
   int myId = game.get_my_id();
-  game.add_player({
-      myId,
-      {0, ChunkPrefab::ySize, 0},
-      {0.0f, 0.0f, 0.0f},
-      Color::GetColor(static_cast<PlayerColor>(
-          myId % static_cast<int>(PlayerColor::COUNT))),
-  });
+  Player localPlayer;
+  localPlayer.id = myId;
+  localPlayer.name = game.get_my_name();
+  localPlayer.Position = {0, ChunkPrefab::ySize, 0};
+  localPlayer.color = Color::GetColor(
+      static_cast<PlayerColor>(myId % static_cast<int>(PlayerColor::COUNT)));
+
+  game.add_player(localPlayer);
   auto &p = game.get_players();
   game.set_seed();
   game.set_color();
   game.sendCommand("gm"); // Request all world modifications
   game.StartListener();
 
-  Vector3 playerDirection = {0, 0};
+  // Wait a bit for server data if any
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-  std::vector<Slot> inventory;
-
-  for (int i = 0; i < 8; i++) {
-    inventory.push_back({0, 0});
+  // Initialize with defaults only if inventory is empty
+  bool empty = true;
+  for (const auto &slot : p[0].inventory) {
+    if (slot.Amount > 0) {
+      empty = false;
+      break;
+    }
   }
-
-  inventory[0] = {60, 2};
-  inventory[1] = {5, 5};
-  inventory[2] = {64, 9};
+  if (empty) {
+    p[0].inventory[0] = {60, 2};
+    p[0].inventory[1] = {5, 5};
+    p[0].inventory[2] = {64, 9};
+  }
 
   int inventorySlot = 0;
 
@@ -452,6 +518,7 @@ void GameLoop(GameClient &game) {
 
   auto lastTime = std::chrono::high_resolution_clock::now();
   float netTimer = 0.0f;
+  float invTimer = 0.0f;
 
   while (game.GetRunning()) {
     // Process pending mods from server
@@ -465,6 +532,7 @@ void GameLoop(GameClient &game) {
     }
 
     netTimer += deltaTime;
+    invTimer += deltaTime;
     static float waterTimer = 0.0f;
     waterTimer += deltaTime;
 
@@ -473,13 +541,18 @@ void GameLoop(GameClient &game) {
       netTimer = 0.0f;
     }
 
+    if (invTimer >= 2.0f) { // Sync inventory every 2 seconds
+      game.sync_inventory();
+      invTimer = 0.0f;
+    }
+
     if (waterTimer >= 0.2f) { // 5 water ticks per second
       chunkManager.TickWater();
       waterTimer = 0.0f;
     }
 
-    PlayerAction(p[0], inventorySlot, chunkManager, inventory, game);
-    RendererObject.MainRenderLoop(inventory, inventorySlot, p);
+    PlayerAction(p[0], inventorySlot, chunkManager, p[0].inventory, game);
+    RendererObject.MainRenderLoop(p[0].inventory, inventorySlot, p);
 
     auto currentTime = std::chrono::high_resolution_clock::now();
     deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();

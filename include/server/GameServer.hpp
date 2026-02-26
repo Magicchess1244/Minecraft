@@ -34,4 +34,11 @@ public:
   void broadcastModification(Vector3 pos, Uint8 type);
   void sendAllModifications(std::shared_ptr<tcp::socket> socket);
   void handlePlayers(std::shared_ptr<tcp::socket> socket, int id);
+  void saveModifications();
+  void loadModifications();
+  void savePlayers();
+  void loadPlayers();
+
+private:
+  std::unordered_map<std::string, Player> persistentPlayers;
 };

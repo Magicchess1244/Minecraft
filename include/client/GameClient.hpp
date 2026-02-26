@@ -29,19 +29,25 @@ private:
   std::vector<BlockMod> pending_mods;
   std::thread net_thread;
 
+  std::string my_name;
+
 public:
-  GameClient(std::string ip = "127.0.0.1")
-      : seed(0), player_count(0), socket(io) {
+  GameClient(std::string ip = "127.0.0.1", std::string name = "Player")
+      : seed(0), player_count(0), socket(io), my_name(name) {
     try {
       tcp::endpoint endpoint(asio::ip::make_address(ip), PORT);
       this->socket.connect(endpoint);
       std::cout << "Connected to server at " << ip << ":" << PORT << std::endl;
 
+      // Send login command first
+      sendCommand("login:" + name);
+
       // Receive ID and Seed
       std::string id_str = receiveMessage();
       if (id_str.find("id:") == 0) {
         my_id = std::stoi(id_str.substr(3));
-        std::cout << "Assigned ID: " << my_id << std::endl;
+        std::cout << "Assigned ID: " << my_id << " (Name: " << name << ")"
+                  << std::endl;
       }
       std::string seed_str = receiveMessage();
       if (seed_str.find("s:") == 0) {
@@ -127,7 +133,9 @@ public:
   std::vector<BlockMod> &get_pending_mods() { return pending_mods; }
 
   int get_my_id() const { return my_id; }
+  std::string get_my_name() const { return my_name; }
   void update_pos();
+  void sync_inventory();
 
   bool GetRunning() const { return running; }
   void Quit() { this->running = false; }

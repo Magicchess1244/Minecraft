@@ -15,8 +15,15 @@ int main(int argc, char *argv[]) {
     ip = "127.0.0.1";
   }
 
+  std::string name;
+  std::cout << "Enter player name: ";
+  std::getline(std::cin, name);
+  if (name.empty()) {
+    name = "Player" + std::to_string(rand() % 1000);
+  }
+
   {
-    GameClient client(ip);
+    GameClient client(ip, name);
 
     if (client.GetRunning()) {
       BitMiner::GameLoop(client);

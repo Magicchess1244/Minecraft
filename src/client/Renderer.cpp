@@ -15,16 +15,16 @@ constexpr int RenderDistance = 10;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
-     {1.0, 0.0, 1.0},  // 0: bottom-right
-     {0.0, 0.0, 1.0},  // 1: bottom-left
+     {0.0, 1.0, 1.0},  // 3: top-left
      {1.0, 1.0, 1.0},  // 2: top-right
-     {0.0, 1.0, 1.0}}, // 3: top-left
+     {0.0, 0.0, 1.0},  // 1: bottom-left
+     {1.0, 0.0, 1.0}}, // 0: bottom-right
     {// Back (-Z) - looking at face from outside (negative Z direction)
      // Counter-clockwise: bottom-left, bottom-right, top-left, top-right
-     {0.0, 0.0, 0.0},  // 0: bottom-left
-     {1.0, 0.0, 0.0},  // 1: bottom-right
+     {1.0, 1.0, 0.0},  // 3: top-right
      {0.0, 1.0, 0.0},  // 2: top-left
-     {1.0, 1.0, 0.0}}, // 3: top-right
+     {1.0, 0.0, 0.0},  // 1: bottom-right
+     {0.0, 0.0, 0.0}}, // 0: bottom-left
     {// Right (+X) - looking at face from outside (positive X direction)
      // Counter-clockwise when viewed from +X: front-bottom, back-bottom,
      // front-top, back-top
@@ -300,7 +300,7 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
       float pX = iconPadding / this->runTimeRenderVars.aspect;
       float pY = iconPadding;
       AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
-              (float)inventory[i].Type);
+              (float) BlockDef[inventory[i].Type].Textures[0]);
     }
 
     // Block count
@@ -569,11 +569,13 @@ void Renderer::DrawTerrain(Player &player) {
             if (face.side < 2) {
               v.x *= fw;
               v.y *= fh;
-              uv = {Verts[face.side][j].x * fw, Verts[face.side][j].y * fh};
+              uv = {(1.0f - Verts[face.side][j].x) * fw,
+                    (1.0f - Verts[face.side][j].y) * fh};
             } else if (face.side < 4) {
               v.z *= fw;
               v.y *= fh;
-              uv = {Verts[face.side][j].z * fw, Verts[face.side][j].y * fh};
+              uv = {(1.0f - Verts[face.side][j].z) * fw,
+                    (1.0f - Verts[face.side][j].y) * fh};
             } else {
               v.x *= fw;
               v.z *= fh;
@@ -691,11 +693,13 @@ void Renderer::DrawTerrain(Player &player) {
         if (face.side < 2) {
           v.x *= fw;
           v.y *= fh;
-          uv = {Verts[face.side][j].x * fw, Verts[face.side][j].y * fh};
+          uv = {(1.0f - Verts[face.side][j].x) * fw,
+                (1.0f - Verts[face.side][j].y) * fh};
         } else if (face.side < 4) {
           v.z *= fw;
           v.y *= fh;
-          uv = {Verts[face.side][j].z * fw, Verts[face.side][j].y * fh};
+          uv = {(1.0f - Verts[face.side][j].z) * fw,
+                (1.0f - Verts[face.side][j].y) * fh};
         } else {
           v.x *= fw;
           v.z *= fh;
@@ -1702,7 +1706,6 @@ void Renderer::PipelineInit() {
   this->EntityIndexTransferBuffer = SDL_CreateGPUTransferBuffer(
       this->basicInitVars.GPU, &entityIndexTransferInfo);
 }
-
 Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
     : gameClient(gameClient), chunkManager(manager) {
   TextureAtlas = nullptr;

@@ -15,7 +15,7 @@ layout(set = 3, binding = 0, std140) uniform Water { uint water; } inWater;
 float NearFog = 50.0;
 float FarFog = 150.0;
 float NearFogInWater = 5.0;
-float FarFogInWater = 25.0;
+float FarFogInWater = 50.0;
 
 void main()
 {
@@ -42,13 +42,12 @@ void main()
 
   float lightLevel = clamp(v_light / 14.0, 0.2, 1.0);
   finalColor *= lightLevel;
-  if (abs(v_blockID - 5.0) < 0.1) {
+  if (v_blockID == 5) {
     // Water
     finalColor = mix(finalColor, vec3(0.0, 0.3, 0.7), 0.5); // Stronger blue
     alpha = 0.6;
   }
   
-  // DISTANCE FOG (User's custom logic)
   float dist = v_pos.z;
   float fogFactor = clamp((dist - NearFog) / (FarFog - NearFog), 0.0, 1.0);
   vec3 skyColor = vec3(0.45, 0.75, 1.0);
@@ -56,7 +55,6 @@ void main()
 
   // Underwater tint
   if (inWater.water == 1) {
-    // DISTANCE FOG (User's custom logic)
     float dist = v_pos.z;
     float fogFactor = clamp((dist - NearFogInWater) / (FarFogInWater - NearFogInWater), 0.0, 1.0);
     vec3 skyColor = vec3(0.45, 0.75, 1.0);

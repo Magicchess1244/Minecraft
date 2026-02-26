@@ -6,13 +6,13 @@
 constexpr float ySize = 128.0f;
 
 constexpr HeightsDif ContinentelnessHeight[7] = {
-    {0.7f, 120},  // Extreme Mountains
-    {0.4f, 100},  // Huge Mountains
-    {0.15f, 50},  // Hills
-    {-0.15f, 38}, // Plains (near sea level)
-    {-0.25f, 25}, // Shallow Water / Beach
-    {-0.35f, 38}, // Plains (near sea level)
-    {-1.0f, 15}}; // Deep Ocean
+    {0.8f, 120}, // Peaks
+    {0.5f, 100}, // High Land
+    {0.2f, 45},  // Land
+    {0.0f, 35},  // Shore (Sea Level)
+    {-0.2f, 20}, // Shallow Ocean
+    {-0.5f, 10}, // Deep Ocean
+    {-1.0f, 5}}; // Abyss floor
 
 constexpr Biome Biomes[11] = {
     {"Ice", BiomeType::Ice, 20, 20, 0, 0, 20, 6},
@@ -93,6 +93,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
     newChunk.isDirty =
         true; // Mark as dirty so it generates on first access or below
     it = Chunks.emplace(key, std::move(newChunk)).first;
+    it->second.manager = this;
   }
 
   if (it->second.isDirty) {
@@ -106,8 +107,8 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
     for (auto &nKey : neighbors) {
       auto nit = Chunks.find(nKey);
       if (nit != Chunks.end() && !nit->second.isDirty) {
-        nit->second.PropagateLighting(*this);
-        nit->second.GenerateMesh(*this);
+        nit->second.PropagateLighting();
+        nit->second.GenerateMesh();
         nit->second.needsMeshUpdate = true;
       }
     }
@@ -160,9 +161,9 @@ RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
 
       int Height = CurrentChunk->GetHeight({NewPos.x, NewPos.z});
       if (CurrentChunk->isSolidBlock((int)NewPos.x, (int)NewPos.y,
-                                     (int)NewPos.z, Height, *this)) {
+                                     (int)NewPos.z, Height)) {
         Uint8 blockID = CurrentChunk->GetBlockID((int)NewPos.x, (int)NewPos.y,
-                                                 (int)NewPos.z, Height, *this);
+                                                 (int)NewPos.z, Height);
         return {true, NewPos, LastPos, blockID};
       }
 
@@ -227,29 +228,44 @@ void ChunkManager::Place(Vector3 Pos, int BlockID) {
 }
 
 void ChunkManager::AddActiveWater(Vector3 pos) {
-  // Check if already in list to avoid duplicates (could use a set for better
-  // performance)
+  // Check if already in list to avoid duplicates
   for (auto &p : activeWater) {
-    if (p == pos)
+    if (p.first == pos)
       return;
   }
-  activeWater.push_back(pos);
+  activeWater.push_back({pos, 8}); // Level 8 is source
+}
+
+void ChunkManager::AddActiveWater(Vector3 pos, int level) {
+  if (level <= 0)
+    return;
+  for (auto &p : activeWater) {
+    if (p.first == pos) {
+      if (p.second < level)
+        p.second = level;
+      return;
+    }
+  }
+  activeWater.push_back({pos, level});
 }
 
 void ChunkManager::TickWater() {
   if (activeWater.empty())
     return;
 
-  std::vector<Vector3> nextActive;
+  std::vector<std::pair<Vector3, int>> nextActive;
   std::vector<std::pair<Vector3, int>> toPlace;
 
   // Process a limited number of water blocks per tick to maintain performance
   int processed = 0;
   int limit = 200;
 
-  for (auto const &pos : activeWater) {
+  for (auto const &water : activeWater) {
+    Vector3 pos = water.first;
+    int level = water.second;
+
     if (processed++ > limit) {
-      nextActive.push_back(pos);
+      nextActive.push_back(water);
       continue;
     }
 
@@ -261,10 +277,12 @@ void ChunkManager::TickWater() {
     Vector3 down = {pos.x, pos.y - 1, pos.z};
     if (pos.y > 0 && GetBlockID(down) == 0) {
       toPlace.push_back({down, 5});
-      nextActive.push_back(down);
-      // If it can go down, it usually doesn't spread horizontally as much
-      // (Minecraft style)
-    } else {
+      nextActive.push_back(
+          {down,
+           8}); // Flowing down resets/maintains source power?
+                // Actually usually it keeps same level or 8.
+                // Let's use 8 for vertical flow to allow full spread below.
+    } else if (level > 1) {
       // 2. Try flow sideways
       Vector3 sides[4] = {{pos.x + 1, pos.y, pos.z},
                           {pos.x - 1, pos.y, pos.z},
@@ -273,10 +291,8 @@ void ChunkManager::TickWater() {
 
       for (auto &s : sides) {
         if (GetBlockID(s) == 0) {
-          // Simple limit: only spread water if it's not too far from a height
-          // source? For now, let's just spread but it might be infinite.
           toPlace.push_back({s, 5});
-          nextActive.push_back(s);
+          nextActive.push_back({s, level - 1});
         }
       }
     }
@@ -303,31 +319,31 @@ void ChunkManager::TickWater() {
 }
 
 void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
-  Vector3 chunkKey = {(float)floor(Pos.x / 16.0f), 0,
-                      (float)floor(Pos.z / 16.0f)};
+  Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
+                      (float)floor(Pos.z / ChunkPrefab::xSize)};
   chunkKey.y = 0;
+
+  if (Pos.y < 0 || Pos.y >= ChunkPrefab::ySize)
+    return;
+
+  Modifications[Pos] = BlockID;
 
   auto it = Chunks.find(chunkKey);
   if (it == Chunks.end())
     return;
-
-  if (Pos.y < 0 || Pos.y >= 128)
-    return;
-
-  Modifications[Pos] = BlockID;
 
   // Update the block in the chunk immediately if it exists
   if (!it->second.blocks.empty()) {
     int lx = (int)floor(Pos.x) - it->second.xPos;
     int ly = (int)floor(Pos.y);
     int lz = (int)floor(Pos.z) - it->second.zPos;
-    if (lx >= 0 && lx < 16 && ly >= 0 && ly < 128 && lz >= 0 && lz < 16) {
-      it->second.blocks[lx + ly * 16 + lz * 16 * 128] = BlockID;
+    if (lx >= 0 && lx < ChunkPrefab::xSize && ly >= 0 && ly < ChunkPrefab::ySize && lz >= 0 && lz < ChunkPrefab::zSize) {
+      it->second.blocks[lx + ly * ChunkPrefab::xSize + lz * ChunkPrefab::xSize * ChunkPrefab::ySize] = BlockID;
 
       // Re-calculate everything for current chunk
       it->second.GenerateLighting();
-      it->second.PropagateLighting(*this);
-      it->second.GenerateMesh(*this);
+      it->second.PropagateLighting();
+      it->second.GenerateMesh();
       it->second.needsMeshUpdate = true;
     }
   }
@@ -341,8 +357,8 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
       auto nit = Chunks.find(nKey);
       if (nit != Chunks.end() && !nit->second.blocks.empty()) {
         nit->second.GenerateLighting();
-        nit->second.PropagateLighting(*this);
-        nit->second.GenerateMesh(*this);
+        nit->second.PropagateLighting();
+        nit->second.GenerateMesh();
         nit->second.needsMeshUpdate = true;
       }
     }
