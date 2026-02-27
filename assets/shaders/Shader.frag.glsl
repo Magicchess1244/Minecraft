@@ -16,12 +16,13 @@ float NearFog = 50.0;
 float FarFog = 150.0;
 float NearFogInWater = 5.0;
 float FarFogInWater = 50.0;
+int BlockInAtlasRow = 32;
 
 void main()
 {
   int tileIndex = int(v_blockID + 0.5); 
-  float tileX = float(tileIndex % 4);
-  float tileY = float(tileIndex / 4);
+  float tileX = float(tileIndex % BlockInAtlasRow);
+  float tileY = float(tileIndex / BlockInAtlasRow);
   
   vec2 uv = clamp(fract(v_uv), 0.0, 1.0);
   
@@ -30,7 +31,7 @@ void main()
   
   // Use a small inset to avoid bleeding from neighboring tiles
   vec2 insetUV = uv * 0.98 + 0.01;
-  vec2 atlasUV = (vec2(tileX, tileY) + insetUV) * 0.25;
+  vec2 atlasUV = (vec2(tileX, tileY) + insetUV) / BlockInAtlasRow;
   vec4 texColor = texture(u_texture, atlasUV);
   
   // If texture is black/transparent, use a fallback to see if it's there
@@ -40,7 +41,7 @@ void main()
 
   vec3 finalColor = v_color.rgb * texColor.rgb;
 
-  float lightLevel = clamp(v_light / 14.0, 0.2, 1.0);
+  float lightLevel = clamp(v_light / 14.0, 0.06, 1.0);
   finalColor *= lightLevel;
   if (v_blockID == 5) {
     // Water

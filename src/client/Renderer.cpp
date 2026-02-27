@@ -162,7 +162,7 @@ bool isFaceInFrustum(const Frustum &frustum, const Vector3 faceVerts[4]) {
 }
 SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
   const int tileSize = 16;
-  const int atlasSize = 64;
+  const int atlasSize = 512;
   const float pixelNudge = 0.5f;
 
   int tilesPerRow = atlasSize / tileSize;

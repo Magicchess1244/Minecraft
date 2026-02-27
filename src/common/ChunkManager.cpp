@@ -39,6 +39,30 @@ constexpr HeightsDif PeaksAndValiesHeight[6] = {
     {0.05f, ySize * 0.35f}, {-0.4f, ySize * 0.3f}, {-0.9f, ySize * 0.1f},
 };
 
+constexpr HeightsDif CaveThickness[5] = {{128.0f, 0.005f},
+                                         {64.0f, 0.015f},
+                                         {30.0f, 0.025f},
+                                         {10.0f, 0.015f},
+                                         {0.0f, 0.005f}};
+
+constexpr HeightsDif CoalChance[5] = {{128.0f, 0.02f},
+                                      {60.0f, 0.01f},
+                                      {40.0f, 0.015f},
+                                      {20.0f, 0.005f},
+                                      {0.0f, 0.0f}};
+
+constexpr HeightsDif IronChance[5] = {{128.0f, 0.2f},
+                                      {60.0f, 0.005f},
+                                      {40.0f, 0.01f},
+                                      {20.0f, 0.012f},
+                                      {0.0f, 0.015f}};
+
+constexpr HeightsDif DiamondChance[5] = {{128.0f, 0.0f},
+                                         {60.0f, 0.0f},
+                                         {30.0f, 0.0f},
+                                         {15.0f, 0.005f},
+                                         {0.0f, 0.01f}};
+
 float SampleSpline(float value, const HeightsDif *spline, int length) {
   if (value >= spline[0].x)
     return spline[0].y;
@@ -66,6 +90,12 @@ int GetBaseHeight(float Continentalness, float Erosion, float Peaks) {
 
   return (int)(base + (erosionMultiplier * peakMultiplier * 20.0f));
 }
+
+float GetCaveThreshold(float y) { return SampleSpline(y, CaveThickness, 5); }
+
+float GetCoalChance(float y) { return SampleSpline(y, CoalChance, 5); }
+float GetIronChance(float y) { return SampleSpline(y, IronChance, 5); }
+float GetDiamondChance(float y) { return SampleSpline(y, DiamondChance, 5); }
 
 ChunkManager::ChunkManager() {
   // cache = new ChunkCache(); // Initialize cache system
@@ -337,8 +367,10 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
     int lx = (int)floor(Pos.x) - it->second.xPos;
     int ly = (int)floor(Pos.y);
     int lz = (int)floor(Pos.z) - it->second.zPos;
-    if (lx >= 0 && lx < ChunkPrefab::xSize && ly >= 0 && ly < ChunkPrefab::ySize && lz >= 0 && lz < ChunkPrefab::zSize) {
-      it->second.blocks[lx + ly * ChunkPrefab::xSize + lz * ChunkPrefab::xSize * ChunkPrefab::ySize] = BlockID;
+    if (lx >= 0 && lx < ChunkPrefab::xSize && ly >= 0 &&
+        ly < ChunkPrefab::ySize && lz >= 0 && lz < ChunkPrefab::zSize) {
+      it->second.blocks[lx + ly * ChunkPrefab::xSize +
+                        lz * ChunkPrefab::xSize * ChunkPrefab::ySize] = BlockID;
 
       // Re-calculate everything for current chunk
       it->second.GenerateLighting();

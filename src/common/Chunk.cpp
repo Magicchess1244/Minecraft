@@ -1,6 +1,7 @@
 #include "../../include/common/Chunck.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <cstdlib>
 #include <cstring>
 #include <queue>
 
@@ -58,7 +59,8 @@ Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
   if (Modifications != 255) {
     return Modifications;
   }
-  int idx = localX + localY * ChunkPrefab::xSize + localZ * ChunkPrefab::xSize * ChunkPrefab::ySize;
+  int idx = localX + localY * ChunkPrefab::xSize +
+            localZ * ChunkPrefab::xSize * ChunkPrefab::ySize;
   return this->blocks[idx];
 }
 
@@ -134,7 +136,7 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
                 float n2 = PerlinNoise({(float)worldX * 0.1f + 100.0f,
                                         (float)y * 0.1f, (float)worldZ * 0.1f},
                                        2, 0.5f);
-                if ((n1 * n1 + n2 * n2) < 0.015f)
+                if ((n1 * n1 + n2 * n2) < GetCaveThreshold((float)y))
                   isCave = true;
               }
 
@@ -148,14 +150,20 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
                                 terrainHeight >= beachLevel - 3 && cont < 0.1f);
                 bool isUnderwaterFloor = (terrainHeight < seaLevel);
 
-                if (terrainHeight - y > 3){
+                if (terrainHeight - y > 3) {
                   blockID = 3; // Stone
-                  float Ore = PerlinNoise({(float)worldX, (float)y,
-                                        (float)worldZ}, 3, 0.05f);
-                  if (Ore > 0.75f) blockID = 10; 
-                  if (Ore > 0.25f && Ore < 0.28f) blockID = 11; 
-                }
-                else if (isUnderwaterFloor || isBeach)
+                  float Ore = std::abs(PerlinNoise(
+                      {(float)worldX, (float)y, (float)worldZ}, 3, 0.05f));
+                  float coalChance = GetCoalChance((float)y);
+                  float ironChance = GetIronChance((float)y);
+                  float diamondChance = GetDiamondChance((float)y);
+                  if (Ore > 0.25f && Ore < 0.25f + coalChance)
+                    blockID = 11;
+                  else if (Ore > 0.4f && Ore < 0.4f + ironChance)
+                    blockID = 13;
+                  else if (Ore > 0.5f && Ore < 0.5f + diamondChance)
+                    blockID = 10;
+                } else if (isUnderwaterFloor || isBeach)
                   blockID = 8; // Sand
                 else if (terrainHeight - y > 0)
                   blockID = 2; // Dirt
@@ -487,7 +495,7 @@ void ChunkPrefab::GenerateLighting() {
         if (bid == 0)
           lightData[idx].sunlight = sun;
         else if (bid == 5) {
-          sun = sun > 1 ? sun - 1 : 0;
+          sun = sun > 1 ? sun - 0.5f : 0;
           lightData[idx].sunlight = sun;
         } else {
           sun = 0;

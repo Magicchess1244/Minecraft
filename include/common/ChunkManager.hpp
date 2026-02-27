@@ -15,6 +15,10 @@ typedef struct {
 
 float SampleSpline(float value, const HeightsDif *spline, int length);
 int GetBaseHeight(float Continentalness, float Erosion, float Peaks);
+float GetCaveThreshold(float y);
+float GetCoalChance(float y);
+float GetIronChance(float y);
+float GetDiamondChance(float y);
 
 enum class BiomeType {
   Ice,
