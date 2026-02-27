@@ -5,12 +5,18 @@
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_scancode.h>
 #include <SDL3/SDL_stdinc.h>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <ostream>
 #include <vector>
 
-int g_heldInventorySlot = -1;
+Slot g_heldItem = {0, 0};
+std::vector<int> g_draggedSlots;
+bool g_isRightClickDragging = false;
+bool g_isLeftClickDragging = false;
+bool g_justPickedUp = false;
+int g_initialClickSlot = -1;
 
 const float FOV = 90.0f;
 const float Znear = 0.1f;
@@ -253,24 +259,104 @@ void Renderer::UICrossHair() {
   AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY,
           thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2, {1, 1, 1});
 }
-void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
-                              int inventorySlot) {
-  // Grid dimensions
+
+struct InventoryBox {
+  int index;
+  float xNDC, yNDC, wNDC, hNDC;
+  bool isHotbar;
+};
+
+static std::vector<InventoryBox>
+BuildInventoryBoxes(float aspect, float &outPanelX, float &outPanelY,
+                    float &outPanelW, float &outPanelH) {
+  std::vector<InventoryBox> boxes;
+
+  // Storage Grid Settings
   int cols = 8;
-  int rows = 4; // 3 rows of storage + 1 hotbar row
-  float slotSpacing = 0.015f;
-  float slotSize = 0.15f; // logical height per slot
+  int rows = 5; // 4 storage + 1 hotbar
+  float slotSpacing = 0.012f;
+  float slotSize = 0.12f;
+  float hotbarGap = 0.03f;
 
-  float totalLogicalWidth = cols * slotSize + (cols + 1) * slotSpacing;
-  float totalLogicalHeight =
-      rows * slotSize + (rows + 1) * slotSpacing + 0.02f; // +gap for hotbar row
+  // Crafting Grid Settings (Smaller)
+  float craftSlotSize = 0.09f;
+  float craftGap = 0.01f;
+  float craftToStorageGap = 0.05f;
 
-  float panelW = totalLogicalWidth / this->runTimeRenderVars.aspect;
+  float storageW = cols * slotSize + (cols + 1) * slotSpacing;
+  float storageH = rows * slotSize + (rows - 1) * slotSpacing + hotbarGap;
+
+  float craftW = 3 * craftSlotSize + 2 * craftGap + 0.15f +
+                 craftSlotSize; // 3x3 grid + arrow + output
+  float craftH = 3 * craftSlotSize + 2 * craftGap;
+
+  float totalLogicalWidth = std::max(storageW, craftW);
+  float totalLogicalHeight = storageH + craftH + craftToStorageGap;
+
+  float panelW = totalLogicalWidth / aspect;
   float panelH = totalLogicalHeight;
-
-  // Center the panel
   float panelX = -panelW / 2.0f;
   float panelY = -panelH / 2.0f;
+
+  outPanelX = panelX;
+  outPanelY = panelY;
+  outPanelW = panelW;
+  outPanelH = panelH;
+
+  // 1. Build Storage & Hotbar (Bottom part)
+  for (int row = 0; row < rows; row++) {
+    for (int col = 0; col < cols; col++) {
+      int i;
+      if (row == rows - 1) {
+        i = col; // Hotbar row
+      } else {
+        i = (row + 1) * cols + col; // Storage rows
+      }
+
+      // visualRow: 0 is hotbar (bottom), 1-4 are storage above it
+      float visualRow = (rows - 1 - row);
+      float xNDC =
+          panelX + (slotSpacing + col * (slotSize + slotSpacing)) / aspect;
+      if (storageW < totalLogicalWidth) {
+        xNDC += (totalLogicalWidth - storageW) / 2.0f / aspect;
+      }
+
+      float yNDC = panelY + slotSpacing + visualRow * (slotSize + slotSpacing);
+      if (visualRow >= 1)
+        yNDC += hotbarGap; // Gap above hotbar
+
+      boxes.push_back(
+          {i, xNDC, yNDC, slotSize / aspect, slotSize, row == rows - 1});
+    }
+  }
+
+  // 2. Build Crafting Grid (Top part, 3x3)
+  float craftBaseY = panelY + storageH + (craftToStorageGap / 2.0f);
+  float craftBaseX = panelX + (totalLogicalWidth - craftW) / 2.0f / aspect;
+
+  for (int i = 0; i < 9; i++) {
+    int cx = i % 3;
+    int cy = 2 - (i / 3); // top is row 2
+    float xNDC = craftBaseX + (cx * (craftSlotSize + craftGap)) / aspect;
+    float yNDC = craftBaseY + (cy * (craftSlotSize + craftGap));
+    boxes.push_back(
+        {40 + i, xNDC, yNDC, craftSlotSize / aspect, craftSlotSize, false});
+  }
+
+  // Output slot
+  float outX = craftBaseX + (3 * (craftSlotSize + craftGap) + 0.1f) / aspect;
+  float outY = craftBaseY + (1.0f * craftSlotSize + 0.5f * craftGap);
+  boxes.push_back(
+      {49, outX, outY, craftSlotSize / aspect, craftSlotSize, false});
+
+  return boxes;
+}
+
+void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
+                              int inventorySlot) {
+  float panelX, panelY, panelW, panelH;
+  std::vector<InventoryBox> boxes = BuildInventoryBoxes(
+      this->runTimeRenderVars.aspect, panelX, panelY, panelW, panelH);
 
   // Dimmed background overlay (full screen)
   AddRect(-2.0f, -2.0f, 4.0f, 4.0f, {0.0f, 0.0f, 0.0f}, -1.0f);
@@ -278,108 +364,197 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
   // Panel background
   AddRect(panelX, panelY, panelW, panelH, {0.1f, 0.1f, 0.1f});
 
-  // Separate top 3 rows (storage) from bottom hotbar row
-  // We'll leave a small visual gap between row 3 and row 4 (the hotbar)
-  float hotbarGap = 0.02f;
+  // 2. Determine crafting positions for labels
+  float storageH_labels = 5 * 0.12f + (5 - 1) * 0.012f + 0.03f;
+  float craftSlotSize_labels = 0.09f;
+  float craftGap_labels = 0.01f;
+  float craftToStorageGap_labels = 0.05f;
+  float craftW_labels = 3 * 0.09f + 2 * 0.01f + 0.15f + 0.09f;
+  float totalLogicalWidth_labels =
+      std::max(8 * 0.12f + 9 * 0.012f, craftW_labels);
 
-  for (int row = 0; row < rows; row++) {
-    for (int col = 0; col < cols; col++) {
-      int i;
-      if (row == rows - 1) {
-        i = col;
-      } else {
-        i = (row + 1) * cols + col;
-      }
+  float craftBaseY_labels =
+      panelY + storageH_labels + (craftToStorageGap_labels / 2.0f);
+  float craftBaseX_labels =
+      panelX + (totalLogicalWidth_labels - craftW_labels) / 2.0f /
+                   this->runTimeRenderVars.aspect;
 
-      // Y: row 0 is at the top visually, so invert
-      // For the hotbar row (row == rows-1), push it down by hotbarGap
-      float extraGapY = (row == rows - 1) ? 0.0f : hotbarGap;
-      float visualRow = (rows - 1 - row); // flip so row 0 renders at top
+  // Label above the 3x3 grid
+  DrawText("Crafting", craftBaseX_labels,
+           craftBaseY_labels +
+               (3 * craftSlotSize_labels + 2 * craftGap_labels) + 0.01f,
+           0.55f, {1, 1, 1});
 
-      float xNDC = panelX + (slotSpacing + col * (slotSize + slotSpacing)) /
-                                this->runTimeRenderVars.aspect;
-      float yNDC = panelY + slotSpacing + visualRow * (slotSize + slotSpacing) +
-                   (visualRow >= 1 ? hotbarGap : 0.0f); // gap above hotbar row
+  // Arrow between grid and output
+  float arrowX = craftBaseX_labels +
+                 (3.0f * (craftSlotSize_labels + craftGap_labels) + 0.05f) /
+                     this->runTimeRenderVars.aspect;
+  DrawText("->", arrowX, craftBaseY_labels + craftSlotSize_labels * 1.1f, 1.0f,
+           {0.8f, 0.8f, 0.8f});
 
-      float wNDC = slotSize / this->runTimeRenderVars.aspect;
-      float hNDC = slotSize;
+  for (const auto &box : boxes) {
+    int i = box.index;
+    float xNDC = box.xNDC;
+    float yNDC = box.yNDC;
+    float wNDC = box.wNDC;
+    float hNDC = box.hNDC;
 
-      // Check mouse hover
-      float mx, my;
-      SDL_GetMouseState(&mx, &my);
+    // Check mouse hover
+    float mx, my;
+    SDL_GetMouseState(&mx, &my);
 
-      // Convert mouse from screen to NDC [-1, 1], Y goes up
-      float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-      float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
+    // Convert mouse from screen to NDC [-1, 1], Y goes up
+    float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
+    float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
 
-      bool isHovered = (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC &&
-                        ndc_my >= yNDC && ndc_my <= yNDC + hNDC);
+    bool isHovered = (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC &&
+                      ndc_my >= yNDC && ndc_my <= yNDC + hNDC);
 
-      // Slot background - highlight selected hotbar slot or hovered slot
-      bool isSelected = (row == rows - 1) && (col == inventorySlot);
-      Vector3 bgColor;
-      if (isHovered) {
-        bgColor = Vector3{0.5f, 0.5f, 0.5f};
-      } else if (isSelected) {
-        bgColor = Vector3{0.4f, 0.4f, 0.4f};
-      } else {
-        bgColor = Vector3{0.2f, 0.2f, 0.2f};
-      }
-      AddRect(xNDC, yNDC, wNDC, hNDC, bgColor);
+    // Slot background - highlight selected hotbar slot or hovered slot
+    bool isSelected = box.isHotbar && (i == inventorySlot);
+    Vector3 bgColor;
+    if (isHovered) {
+      bgColor = Vector3{0.5f, 0.5f, 0.5f};
+    } else if (isSelected) {
+      bgColor = Vector3{0.4f, 0.4f, 0.4f};
+    } else {
+      bgColor = Vector3{0.2f, 0.2f, 0.2f};
+    }
+    AddRect(xNDC, yNDC, wNDC, hNDC, bgColor);
 
-      // Border highlight for selected slot
-      if (isSelected) {
-        float b = 0.005f;
-        float bX = b / this->runTimeRenderVars.aspect;
-        float bY = b;
-        AddRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY,
-                {1.0f, 1.0f, 1.0f}); // top
-        AddRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY,
-                {1.0f, 1.0f, 1.0f});                              // bottom
-        AddRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});   // left
-        AddRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f}); // right
-      }
+    // Border highlight for selected slot
+    if (isSelected) {
+      float b = 0.005f;
+      float bX = b / this->runTimeRenderVars.aspect;
+      float bY = b;
+      AddRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY,
+              {1.0f, 1.0f, 1.0f}); // top
+      AddRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY,
+              {1.0f, 1.0f, 1.0f});                              // bottom
+      AddRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});   // left
+      AddRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f}); // right
+    }
 
-      // Item icon
-      if (i < (int)inventory.size() && inventory[i].Type != 0 &&
-          i != g_heldInventorySlot) {
-        float iconPadding = 0.02f;
-        float pX = iconPadding / this->runTimeRenderVars.aspect;
-        float pY = iconPadding;
-        AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
-                (float)BlockDef[inventory[i].Type].Textures[0]);
-      }
+    // Item icon
+    if (i < (int)inventory.size() && inventory[i].Type != 0) {
+      float iconPadding = 0.02f;
+      float pX = iconPadding / this->runTimeRenderVars.aspect;
+      float pY = iconPadding;
+      AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
+              (float)BlockDef[inventory[i].Type].Textures[0]);
+    }
 
-      // Stack count
-      if (i < (int)inventory.size() && inventory[i].Type != 0 &&
-          inventory[i].Amount > 1 && i != g_heldInventorySlot) {
-        std::string amountStr = std::to_string(inventory[i].Amount);
-        float textScale = 0.7f;
-        float textX = xNDC + wNDC * 0.58f;
-        float textY = yNDC + 0.008f;
-        DrawText(amountStr, textX, textY, textScale, {1.0f, 1.0f, 1.0f});
-      }
+    // Stack count
+    if (i < (int)inventory.size() && inventory[i].Type != 0 &&
+        inventory[i].Amount > 1) {
+      std::string amountStr = std::to_string(inventory[i].Amount);
+      float textScale = 0.7f;
+      float textX = xNDC + wNDC * 0.58f;
+      float textY = yNDC + 0.008f;
+      DrawText(amountStr, textX, textY, textScale, {1.0f, 1.0f, 1.0f});
     }
   }
 
   // Draw globally held item
-  if (g_heldInventorySlot != -1 && g_heldInventorySlot < inventory.size() &&
-      inventory[g_heldInventorySlot].Type != 0) {
+  if (g_heldItem.Type != 0) {
     float mx, my;
+    unsigned int w, h;
+    SDL_GetWindowSizeInPixels(this->basicInitVars.window, (int *)&w, (int *)&h);
     SDL_GetMouseState(&mx, &my);
-    float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-    float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
+    float ndc_mx = (mx / (float)w) * 2.0f - 1.0f;
+    float ndc_my = 1.0f - (my / (float)h) * 2.0f;
 
-    float wNDC = slotSize / this->runTimeRenderVars.aspect;
-    float hNDC = slotSize;
-    float pX = 0.02f / this->runTimeRenderVars.aspect;
-    float pY = 0.02f;
+    float heldSlotSize = 0.12f; // Standard size for held
+    float wNDC_held = heldSlotSize / this->runTimeRenderVars.aspect;
+    float hNDC_held = heldSlotSize;
+    float pX_held = 0.012f / this->runTimeRenderVars.aspect;
+    float pY_held = 0.012f;
 
-    AddRect(ndc_mx - wNDC / 2 + pX, ndc_my - hNDC / 2 + pY, wNDC - 2 * pX,
-            hNDC - 2 * pY, {1, 1, 1},
-            (float)BlockDef[inventory[g_heldInventorySlot].Type].Textures[0]);
+    AddRect(ndc_mx - wNDC_held / 2 + pX_held, ndc_my - hNDC_held / 2 + pY_held,
+            wNDC_held - 2 * pX_held, hNDC_held - 2 * pY_held, {1, 1, 1},
+            (float)BlockDef[g_heldItem.Type].Textures[0]);
+
+    if (g_heldItem.Amount > 1) {
+      std::string amountStr = std::to_string(g_heldItem.Amount);
+      DrawText(amountStr, ndc_mx + wNDC_held * 0.15f,
+               ndc_my - hNDC_held * 0.35f, 0.7f, {1.0f, 1.0f, 1.0f});
+    }
   }
 }
+
+static void UpdateCraftingSelection(Player &player) {
+  auto &inv = player.inventory;
+  inv[49] = {0, 0}; // Output 49
+
+  // 1. Trim input grid (slots 40-48: 3x3)
+  int minX = 3, minY = 3, maxX = -1, maxY = -1;
+  bool inputEmpty = true;
+  for (int y = 0; y < 3; y++) {
+    for (int x = 0; x < 3; x++) {
+      if (inv[40 + y * 3 + x].Type != 0) {
+        minX = std::min(minX, x);
+        minY = std::min(minY, y);
+        maxX = std::max(maxX, x);
+        maxY = std::max(maxY, y);
+        inputEmpty = false;
+      }
+    }
+  }
+
+  if (inputEmpty)
+    return;
+
+  int inputW = maxX - minX + 1;
+  int inputH = maxY - minY + 1;
+
+  for (int i = 1; i < (int)BlockNum; i++) {
+    if (BlockDef[i].recipeAmount > 0) {
+      // 2. Trim recipe grid (3x3)
+      int rMinX = 3, rMinY = 3, rMaxX = -1, rMaxY = -1;
+      bool recipeEmpty = true;
+      for (int ry = 0; ry < 3; ry++) {
+        for (int rx = 0; rx < 3; rx++) {
+          if (BlockDef[i].recipe[ry * 3 + rx].blockID != 0) {
+            rMinX = std::min(rMinX, rx);
+            rMinY = std::min(rMinY, ry);
+            rMaxX = std::max(rMaxX, rx);
+            rMaxY = std::max(rMaxY, ry);
+            recipeEmpty = false;
+          }
+        }
+      }
+
+      if (recipeEmpty)
+        continue;
+
+      int recipeW = rMaxX - rMinX + 1;
+      int recipeH = rMaxY - rMinY + 1;
+
+      // 3. Compare bounding boxes
+      if (inputW == recipeW && inputH == recipeH) {
+        bool match = true;
+        for (int y = 0; y < inputH; y++) {
+          for (int x = 0; x < inputW; x++) {
+            int inType = inv[40 + (minY + y) * 3 + (minX + x)].Type;
+            int reType =
+                BlockDef[i].recipe[(rMinY + y) * 3 + (rMinX + x)].blockID;
+            if (inType != reType) {
+              match = false;
+              break;
+            }
+          }
+          if (!match)
+            break;
+        }
+        if (match) {
+          inv[49] = {(short)i, (short)BlockDef[i].recipeAmount};
+          return;
+        }
+      }
+    }
+  }
+}
+
 void Renderer::UIInventory(const std::vector<Slot> &inventory,
                            int inventorySlot) {
   // 2. Inventory / Hotbar
@@ -1122,117 +1297,171 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
       break;
     }
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      if (this->bingInventory &&
-          this->basicInitVars.event.button.button == SDL_BUTTON_LEFT) {
+      if (this->bingInventory) {
         float mx = this->basicInitVars.event.button.x;
         float my = this->basicInitVars.event.button.y;
         float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
         float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
 
-        // Re-compute UI bounds here or store them. For simplicity, we
-        // re-compute the grid logic:
-        int cols = 8;
-        int rows = 4;
-        float slotSpacing = 0.015f;
-        float slotSize = 0.15f;
-        float totalLogicalWidth = cols * slotSize + (cols + 1) * slotSpacing;
-        float totalLogicalHeight =
-            rows * slotSize + (rows + 1) * slotSpacing + 0.02f;
-        float panelW = totalLogicalWidth / this->runTimeRenderVars.aspect;
-        float panelH = totalLogicalHeight;
-        float panelX = -panelW / 2.0f;
-        float panelY = -panelH / 2.0f;
-        float hotbarGap = 0.02f;
+        float panelX, panelY, panelW, panelH;
+        std::vector<InventoryBox> boxes = BuildInventoryBoxes(
+            this->runTimeRenderVars.aspect, panelX, panelY, panelW, panelH);
 
-        for (int row = 0; row < rows; row++) {
-          for (int col = 0; col < cols; col++) {
-            int i;
-            if (row == rows - 1) {
-              i = col;
-            } else {
-              i = (row + 1) * cols + col;
-            }
-            float visualRow = (rows - 1 - row);
-            float xNDC =
-                panelX + (slotSpacing + col * (slotSize + slotSpacing)) /
-                             this->runTimeRenderVars.aspect;
-            float yNDC = panelY + slotSpacing +
-                         visualRow * (slotSize + slotSpacing) +
-                         (visualRow >= 1 ? hotbarGap : 0.0f);
-            float wNDC = slotSize / this->runTimeRenderVars.aspect;
-            float hNDC = slotSize;
+        for (const auto &box : boxes) {
+          int i = box.index;
+          if (ndc_mx >= box.xNDC && ndc_mx <= box.xNDC + box.wNDC &&
+              ndc_my >= box.yNDC && ndc_my <= box.yNDC + box.hNDC) {
 
-            if (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC && ndc_my >= yNDC &&
-                ndc_my <= yNDC + hNDC) {
-              if (row == rows - 1) {
-                inventorySlot = col;
+            g_initialClickSlot = i;
+            g_draggedSlots.clear();
+            g_draggedSlots.push_back(i);
+            g_justPickedUp = false;
+
+            if (this->basicInitVars.event.button.button == SDL_BUTTON_LEFT) {
+              g_isLeftClickDragging = true;
+              g_isRightClickDragging = false;
+              if (g_heldItem.Type == 0) { // Pick up whole stack
+                g_heldItem = player.inventory[i];
+                player.inventory[i] = {0, 0};
+                g_justPickedUp = true;
+                if (i == 49 && g_heldItem.Type != 0) {
+                  for (int s = 40; s <= 48; s++) {
+                    if (player.inventory[s].Amount > 0) {
+                      player.inventory[s].Amount--;
+                      if (player.inventory[s].Amount == 0)
+                        player.inventory[s].Type = 0;
+                    }
+                  }
+                }
+                UpdateCraftingSelection(player);
               }
-              // Pick up item block
-              if (i < player.inventory.size() &&
-                  player.inventory[i].Type != 0) {
-                g_heldInventorySlot = i;
+            } else if (this->basicInitVars.event.button.button ==
+                       SDL_BUTTON_RIGHT) {
+              g_isRightClickDragging = true;
+              g_isLeftClickDragging = false;
+              if (g_heldItem.Type == 0) { // Pick up half stack
+                if (i != 49 && player.inventory[i].Type != 0) {
+                  int take = (player.inventory[i].Amount + 1) / 2;
+                  g_heldItem = {player.inventory[i].Type, (short)take};
+                  player.inventory[i].Amount -= take;
+                  if (player.inventory[i].Amount <= 0)
+                    player.inventory[i].Type = 0;
+                  g_justPickedUp = true;
+                  UpdateCraftingSelection(player);
+                } else if (i == 49 &&
+                           player.inventory[i].Type != 0) { // Craft one
+                  g_heldItem = player.inventory[i];
+                  player.inventory[i] = {0, 0};
+                  for (int s = 40; s <= 48; s++) {
+                    if (player.inventory[s].Amount > 0) {
+                      player.inventory[s].Amount--;
+                      if (player.inventory[s].Amount == 0)
+                        player.inventory[s].Type = 0;
+                    }
+                  }
+                  g_justPickedUp = true;
+                  UpdateCraftingSelection(player);
+                }
+              } else { // Place one immediately
+                if (i != 49 && (player.inventory[i].Type == 0 ||
+                                player.inventory[i].Type == g_heldItem.Type)) {
+                  player.inventory[i].Type = g_heldItem.Type;
+                  player.inventory[i].Amount++;
+                  g_heldItem.Amount--;
+                  if (g_heldItem.Amount <= 0)
+                    g_heldItem = {0, 0};
+                  UpdateCraftingSelection(player);
+                }
               }
-              break;
             }
+            break;
+          }
+        }
+      }
+      break;
+    }
+    case SDL_EVENT_MOUSE_MOTION: {
+      if (this->bingInventory &&
+          (g_isLeftClickDragging || g_isRightClickDragging)) {
+        float mx = this->basicInitVars.event.motion.x;
+        float my = this->basicInitVars.event.motion.y;
+        float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
+        float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
+
+        float panelX, panelY, panelW, panelH;
+        std::vector<InventoryBox> boxes = BuildInventoryBoxes(
+            this->runTimeRenderVars.aspect, panelX, panelY, panelW, panelH);
+
+        for (const auto &box : boxes) {
+          int i = box.index;
+          if (ndc_mx >= box.xNDC && ndc_mx <= box.xNDC + box.wNDC &&
+              ndc_my >= box.yNDC && ndc_my <= box.yNDC + box.hNDC) {
+
+            if (std::find(g_draggedSlots.begin(), g_draggedSlots.end(), i) ==
+                g_draggedSlots.end()) {
+              g_draggedSlots.push_back(i);
+              if (g_isRightClickDragging && g_heldItem.Type != 0 && i != 49) {
+                if (player.inventory[i].Type == 0 ||
+                    player.inventory[i].Type == g_heldItem.Type) {
+                  player.inventory[i].Type = g_heldItem.Type;
+                  player.inventory[i].Amount++;
+                  g_heldItem.Amount--;
+                  if (g_heldItem.Amount <= 0)
+                    g_heldItem = {0, 0};
+                  UpdateCraftingSelection(player);
+                }
+              }
+            }
+            break;
           }
         }
       }
       break;
     }
     case SDL_EVENT_MOUSE_BUTTON_UP: {
-      if (this->bingInventory &&
-          this->basicInitVars.event.button.button == SDL_BUTTON_LEFT) {
-
-        if (g_heldInventorySlot != -1) {
-          float mx = this->basicInitVars.event.button.x;
-          float my = this->basicInitVars.event.button.y;
-          float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-          float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
-
-          int cols = 8;
-          int rows = 4;
-          float slotSpacing = 0.015f;
-          float slotSize = 0.15f;
-          float totalLogicalWidth = cols * slotSize + (cols + 1) * slotSpacing;
-          float totalLogicalHeight =
-              rows * slotSize + (rows + 1) * slotSpacing + 0.02f;
-          float panelW = totalLogicalWidth / this->runTimeRenderVars.aspect;
-          float panelH = totalLogicalHeight;
-          float panelX = -panelW / 2.0f;
-          float panelY = -panelH / 2.0f;
-          float hotbarGap = 0.02f;
-
-          for (int row = 0; row < rows; row++) {
-            for (int col = 0; col < cols; col++) {
-              int i;
-              if (row == rows - 1) {
-                i = col;
-              } else {
-                i = (row + 1) * cols + col;
-              }
-              float visualRow = (rows - 1 - row);
-              float xNDC =
-                  panelX + (slotSpacing + col * (slotSize + slotSpacing)) /
-                               this->runTimeRenderVars.aspect;
-              float yNDC = panelY + slotSpacing +
-                           visualRow * (slotSize + slotSpacing) +
-                           (visualRow >= 1 ? hotbarGap : 0.0f);
-              float wNDC = slotSize / this->runTimeRenderVars.aspect;
-              float hNDC = slotSize;
-
-              if (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC && ndc_my >= yNDC &&
-                  ndc_my <= yNDC + hNDC) {
-                // Drop/swap
-                if (i < player.inventory.size()) {
-                  std::swap(player.inventory[g_heldInventorySlot],
-                            player.inventory[i]);
+      if (this->bingInventory) {
+        int btn = this->basicInitVars.event.button.button;
+        if (btn == SDL_BUTTON_LEFT && g_isLeftClickDragging) {
+          if (!g_justPickedUp && g_heldItem.Type != 0) {
+            if (g_draggedSlots.size() > 1) {
+              // Divide equally among unique slots that are not the result slot
+              std::vector<int> targetSlots;
+              for (int sIdx : g_draggedSlots)
+                if (sIdx != 49)
+                  targetSlots.push_back(sIdx);
+              if (!targetSlots.empty()) {
+                int amountPer = g_heldItem.Amount / targetSlots.size();
+                int remainder = g_heldItem.Amount % targetSlots.size();
+                for (size_t j = 0; j < targetSlots.size(); j++) {
+                  int sIdx = targetSlots[j];
+                  player.inventory[sIdx].Type = g_heldItem.Type;
+                  player.inventory[sIdx].Amount += amountPer;
+                  if (j < (size_t)remainder)
+                    player.inventory[sIdx].Amount++;
                 }
-                break;
+                g_heldItem = {0, 0};
+                UpdateCraftingSelection(player);
+              }
+            } else if (g_draggedSlots.size() <= 1) {
+              // Simple click release - swap or merge
+              int i = g_draggedSlots.empty() ? -1 : g_draggedSlots[0];
+              if (i != -1 && i != 49) {
+                if (player.inventory[i].Type == g_heldItem.Type) {
+                  player.inventory[i].Amount += g_heldItem.Amount;
+                  g_heldItem = {0, 0};
+                } else {
+                  std::swap(g_heldItem, player.inventory[i]);
+                }
+                UpdateCraftingSelection(player);
               }
             }
           }
-          g_heldInventorySlot = -1;
         }
+        g_isLeftClickDragging = false;
+        g_isRightClickDragging = false;
+        g_draggedSlots.clear();
+        g_initialClickSlot = -1;
+        g_justPickedUp = false;
       }
       break;
     }

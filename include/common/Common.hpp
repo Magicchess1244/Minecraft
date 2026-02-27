@@ -335,7 +335,7 @@ struct Player {
 
   Player()
       : id(-1), Position(0, 0, 0), Rotation(0, 0, 0), color{255, 255, 255} {
-    inventory.assign(8 * 4, {0, 0});
+    inventory.assign(8 * 5 + 10, {0, 0});
   }
 };
 
