@@ -16,6 +16,8 @@ void main() {
         vec2 atlasUV = (vec2(blockID % BlockInAtlasRow, blockID / BlockInAtlasRow) + fract(v_uv)) / BlockInAtlasRow;
         FragColor = v_color * texture(texSampler, atlasUV);
         FragColor.a = 1.0;
+    } else if (v_blockID <= -0.5) {
+        FragColor = vec4(0.0, 0.0, 0.0, 0.7);
     } else {
         FragColor = v_color;
     }
