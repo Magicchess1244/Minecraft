@@ -496,19 +496,6 @@ void GameLoop(GameClient &game) {
   // Wait a bit for server data if any
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-  // Initialize with defaults only if inventory is empty
-  bool empty = true;
-  for (const auto &slot : p[0].inventory) {
-    if (slot.Amount > 0) {
-      empty = false;
-      break;
-    }
-  }
-  if (empty) {
-    p[0].inventory[0] = {60, 2};
-    p[0].inventory[1] = {5, 5};
-    p[0].inventory[2] = {64, 9};
-  }
 
   int inventorySlot = 0;
 

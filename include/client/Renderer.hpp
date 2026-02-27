@@ -307,6 +307,7 @@ private:
   ChunkManager &chunkManager;
   GameClient &gameClient;
   bool fullScreen = false;
+  bool bingInventory = false;
   Frustum frustum;
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
@@ -323,6 +324,8 @@ private:
   void DrawText(const std::string &text, float x, float y, float scale,
                 Vector3 color);
   void UICrossHair();
+  void UIBigInventory();
+  void UIBigInventory(const std::vector<Slot> &inventory, int inventorySlot);
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
   std::vector<ChunkDistance> SortChunks(Player &player);
   void DrawTerrain(Player &player);

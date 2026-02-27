@@ -1,7 +1,9 @@
 #include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameClient.hpp"
 #include "../../include/common/EntityDef.hpp"
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_scancode.h>
 #include <SDL3/SDL_stdinc.h>
 #include <cmath>
 #include <iostream>
@@ -249,6 +251,89 @@ void Renderer::UICrossHair() {
   AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY,
           thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2, {1, 1, 1});
 }
+void Renderer::UIBigInventory(const std::vector<Slot> &inventory, int inventorySlot) {
+    // Grid dimensions
+    int cols = 8;
+    int rows = 4; // 3 rows of storage + 1 hotbar row
+    float slotSpacing = 0.01f;
+    float slotSize = 0.10f; // logical height per slot
+
+    float totalLogicalWidth = cols * slotSize + (cols + 1) * slotSpacing;
+    float totalLogicalHeight = rows * slotSize + (rows + 1) * slotSpacing + 0.02f; // +gap for hotbar row
+
+    float panelW = totalLogicalWidth / this->runTimeRenderVars.aspect;
+    float panelH = totalLogicalHeight;
+
+    // Center the panel
+    float panelX = -panelW / 2.0f;
+    float panelY = -panelH / 2.0f;
+
+    // Dimmed background overlay (full screen)
+    //AddRect(-1.0f, -1.0f, 2.0f, 2.0f, {0.0f, 0.0f, 0.0f, 0.5f});
+
+    // Panel background
+    AddRect(panelX, panelY, panelW, panelH, {0.1f, 0.1f, 0.1f});
+
+    // Separate top 3 rows (storage) from bottom hotbar row
+    // We'll leave a small visual gap between row 3 and row 4 (the hotbar)
+    float hotbarGap = 0.02f;
+
+    for (int row = 0; row < rows; row++) {
+        for (int col = 0; col < cols; col++) {
+            int i = row * cols + col;
+
+            // Y: row 0 is at the top visually, so invert
+            // For the hotbar row (row == rows-1), push it down by hotbarGap
+            float extraGapY = (row == rows - 1) ? 0.0f : hotbarGap;
+            float visualRow = row;//(rows - 1 - row); // flip so row 0 renders at top
+
+            float xNDC = panelX + (slotSpacing + col * (slotSize + slotSpacing)) /
+                         this->runTimeRenderVars.aspect;
+            float yNDC = panelY + slotSpacing +
+                         visualRow * (slotSize + slotSpacing) +
+                         (visualRow >= 1 ? hotbarGap : 0.0f); // gap above hotbar row
+
+            float wNDC = slotSize / this->runTimeRenderVars.aspect;
+            float hNDC = slotSize;
+
+            // Slot background - highlight selected hotbar slot
+            bool isSelected = (row == rows - 1) && (col == inventorySlot);
+            Vector3 bgColor = isSelected ? Vector3{0.4f, 0.4f, 0.4f}
+                                         : Vector3{0.2f, 0.2f, 0.2f};
+            AddRect(xNDC, yNDC, wNDC, hNDC, bgColor);
+
+            // Border highlight for selected slot
+            if (isSelected) {
+                float b = 0.005f;
+                float bX = b / this->runTimeRenderVars.aspect;
+                float bY = b;
+                AddRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f}); // top
+                AddRect(xNDC - bX, yNDC - bY,   wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f}); // bottom
+                AddRect(xNDC - bX, yNDC,          bX,           hNDC, {1.0f, 1.0f, 1.0f}); // left
+                AddRect(xNDC + wNDC, yNDC,         bX,           hNDC, {1.0f, 1.0f, 1.0f}); // right
+            }
+
+            // Item icon
+            if (i < (int)inventory.size() && inventory[i].Type != 0) {
+                float iconPadding = 0.015f;
+                float pX = iconPadding / this->runTimeRenderVars.aspect;
+                float pY = iconPadding;
+                AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY,
+                        {1, 1, 1}, (float)BlockDef[inventory[i].Type].Textures[0]);
+            }
+
+            // Stack count
+            if (i < (int)inventory.size() && inventory[i].Type != 0 &&
+                inventory[i].Amount > 1) {
+                std::string amountStr = std::to_string(inventory[i].Amount);
+                float textScale = 0.55f;
+                float textX = xNDC + wNDC * 0.62f;
+                float textY = yNDC + 0.008f;
+                DrawText(amountStr, textX, textY, textScale, {1.0f, 1.0f, 1.0f});
+            }
+        }
+    }
+}
 void Renderer::UIInventory(const std::vector<Slot> &inventory,
                            int inventorySlot) {
   // 2. Inventory / Hotbar
@@ -322,6 +407,7 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
 
   UICrossHair();
   UIInventory(inventory, inventorySlot);
+  if (this->bingInventory) UIBigInventory(inventory, inventorySlot);
 
   // 1. Upload UI (Rects/Atlas)
   if (!uiVars.uiVertices.empty()) {
@@ -1004,6 +1090,8 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
         // Update screen size immediately
         UpdateViewportAndProjection();
+      } else if (key == SDL_SCANCODE_E){
+        this->bingInventory = !this->bingInventory;
       }
       break;
     }
