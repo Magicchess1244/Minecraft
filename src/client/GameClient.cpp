@@ -15,6 +15,7 @@ float JumpTimer = 0;
 float bodyHeight = 1.6f;
 Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
+bool g_inUI = false;
 
 void GameClient::set_seed() {
   // Seed is now received in the constructor.
@@ -209,7 +210,8 @@ void GameClient::sync_inventory() {
 namespace BitMiner {
 int FindSlot(std::vector<Slot> &Inventory, short Type) {
   int index = 0;
-  if(Type == 0) return -1;
+  if (Type == 0)
+    return -1;
   for (Slot slot : Inventory) {
     if ((slot.Type == Type || slot.Type == 0) && slot.Amount < 64) {
       // std::cout << "Found slot" << index << std::endl;
@@ -242,16 +244,19 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
   float mouseX, mouseY;
   Uint32 mouseState = SDL_GetRelativeMouseState(&mouseX, &mouseY);
 
-  // Detect mouse button clicks
-  LeftClick = (mouseState & SDL_BUTTON_LMASK) != 0;
-  RightClick = (mouseState & SDL_BUTTON_RMASK) != 0;
-
-  // Apply mouse movement to rotation
-  // Mouse X controls yaw (Y-axis rotation)
-  // Mouse Y controls pitch (X-axis rotation)
-  PlayerRot.y = mouseX; // Yaw (left/right)
-  PlayerRot.x = mouseY; // Pitch (up/down)
-  PlayerRot.z = 0;      // Roll (not used for FPS camera)
+  if (g_inUI) {
+    LeftClick = false;
+    RightClick = false;
+    PlayerRot.y = 0;
+    PlayerRot.x = 0;
+    PlayerRot.z = 0;
+  } else {
+    LeftClick = (mouseState & SDL_BUTTON_LMASK) != 0;
+    RightClick = (mouseState & SDL_BUTTON_RMASK) != 0;
+    PlayerRot.y = mouseX; // Yaw (left/right)
+    PlayerRot.x = mouseY; // Pitch (up/down)
+    PlayerRot.z = 0;      // Roll (not used for FPS camera)
+  }
 
   if (move_left || move_right) {
     PlayerDirection.x = move_left ? -1 : 1;
@@ -495,7 +500,6 @@ void GameLoop(GameClient &game) {
 
   // Wait a bit for server data if any
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
 
   int inventorySlot = 0;
 

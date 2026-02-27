@@ -10,6 +10,8 @@
 #include <ostream>
 #include <vector>
 
+int g_heldInventorySlot = -1;
+
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
@@ -292,7 +294,7 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
       // Y: row 0 is at the top visually, so invert
       // For the hotbar row (row == rows-1), push it down by hotbarGap
       float extraGapY = (row == rows - 1) ? 0.0f : hotbarGap;
-      float visualRow = row; //(rows - 1 - row); // flip so row 0 renders at top
+      float visualRow = (rows - 1 - row); // flip so row 0 renders at top
 
       float xNDC = panelX + (slotSpacing + col * (slotSize + slotSpacing)) /
                                 this->runTimeRenderVars.aspect;
@@ -306,9 +308,9 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
       float mx, my;
       SDL_GetMouseState(&mx, &my);
 
-      // Convert mouse from screen to NDC [-1, 1]
+      // Convert mouse from screen to NDC [-1, 1], Y goes up
       float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-      float ndc_my = (my / (float)this->basicInitVars.Height) * 2.0f - 1.0f;
+      float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
 
       bool isHovered = (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC &&
                         ndc_my >= yNDC && ndc_my <= yNDC + hNDC);
@@ -339,7 +341,8 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
       }
 
       // Item icon
-      if (i < (int)inventory.size() && inventory[i].Type != 0) {
+      if (i < (int)inventory.size() && inventory[i].Type != 0 &&
+          i != g_heldInventorySlot) {
         float iconPadding = 0.02f;
         float pX = iconPadding / this->runTimeRenderVars.aspect;
         float pY = iconPadding;
@@ -349,7 +352,7 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
 
       // Stack count
       if (i < (int)inventory.size() && inventory[i].Type != 0 &&
-          inventory[i].Amount > 1) {
+          inventory[i].Amount > 1 && i != g_heldInventorySlot) {
         std::string amountStr = std::to_string(inventory[i].Amount);
         float textScale = 0.7f;
         float textX = xNDC + wNDC * 0.58f;
@@ -357,6 +360,24 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
         DrawText(amountStr, textX, textY, textScale, {1.0f, 1.0f, 1.0f});
       }
     }
+  }
+
+  // Draw globally held item
+  if (g_heldInventorySlot != -1 && g_heldInventorySlot < inventory.size() &&
+      inventory[g_heldInventorySlot].Type != 0) {
+    float mx, my;
+    SDL_GetMouseState(&mx, &my);
+    float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
+    float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
+
+    float wNDC = slotSize / this->runTimeRenderVars.aspect;
+    float hNDC = slotSize;
+    float pX = 0.02f / this->runTimeRenderVars.aspect;
+    float pY = 0.02f;
+
+    AddRect(ndc_mx - wNDC / 2 + pX, ndc_my - hNDC / 2 + pY, wNDC - 2 * pX,
+            hNDC - 2 * pY, {1, 1, 1},
+            (float)BlockDef[inventory[g_heldInventorySlot].Type].Textures[0]);
   }
 }
 void Renderer::UIInventory(const std::vector<Slot> &inventory,
@@ -1106,7 +1127,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
         float mx = this->basicInitVars.event.button.x;
         float my = this->basicInitVars.event.button.y;
         float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-        float ndc_my = (my / (float)this->basicInitVars.Height) * 2.0f - 1.0f;
+        float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
 
         // Re-compute UI bounds here or store them. For simplicity, we
         // re-compute the grid logic:
@@ -1131,7 +1152,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
             } else {
               i = (row + 1) * cols + col;
             }
-            float visualRow = row;
+            float visualRow = (rows - 1 - row);
             float xNDC =
                 panelX + (slotSpacing + col * (slotSize + slotSpacing)) /
                              this->runTimeRenderVars.aspect;
@@ -1144,19 +1165,73 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
             if (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC && ndc_my >= yNDC &&
                 ndc_my <= yNDC + hNDC) {
               if (row == rows - 1) {
-                // Clicked a hotbar slot
                 inventorySlot = col;
-              } else {
-                // Clicked a storage block - set current hotbar slot to this
-                // block
-                if (i < player.inventory.size() &&
-                    player.inventory[i].Type != 0) {
-                  player.inventory[inventorySlot] = player.inventory[i];
-                }
+              }
+              // Pick up item block
+              if (i < player.inventory.size() &&
+                  player.inventory[i].Type != 0) {
+                g_heldInventorySlot = i;
               }
               break;
             }
           }
+        }
+      }
+      break;
+    }
+    case SDL_EVENT_MOUSE_BUTTON_UP: {
+      if (this->bingInventory &&
+          this->basicInitVars.event.button.button == SDL_BUTTON_LEFT) {
+
+        if (g_heldInventorySlot != -1) {
+          float mx = this->basicInitVars.event.button.x;
+          float my = this->basicInitVars.event.button.y;
+          float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
+          float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
+
+          int cols = 8;
+          int rows = 4;
+          float slotSpacing = 0.015f;
+          float slotSize = 0.15f;
+          float totalLogicalWidth = cols * slotSize + (cols + 1) * slotSpacing;
+          float totalLogicalHeight =
+              rows * slotSize + (rows + 1) * slotSpacing + 0.02f;
+          float panelW = totalLogicalWidth / this->runTimeRenderVars.aspect;
+          float panelH = totalLogicalHeight;
+          float panelX = -panelW / 2.0f;
+          float panelY = -panelH / 2.0f;
+          float hotbarGap = 0.02f;
+
+          for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+              int i;
+              if (row == rows - 1) {
+                i = col;
+              } else {
+                i = (row + 1) * cols + col;
+              }
+              float visualRow = (rows - 1 - row);
+              float xNDC =
+                  panelX + (slotSpacing + col * (slotSize + slotSpacing)) /
+                               this->runTimeRenderVars.aspect;
+              float yNDC = panelY + slotSpacing +
+                           visualRow * (slotSize + slotSpacing) +
+                           (visualRow >= 1 ? hotbarGap : 0.0f);
+              float wNDC = slotSize / this->runTimeRenderVars.aspect;
+              float hNDC = slotSize;
+
+              if (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC && ndc_my >= yNDC &&
+                  ndc_my <= yNDC + hNDC) {
+                // Drop/swap
+                if (i < player.inventory.size()) {
+                  std::swap(player.inventory[g_heldInventorySlot],
+                            player.inventory[i]);
+                }
+                break;
+              }
+            }
+          }
+          g_heldInventorySlot = -1;
         }
       }
       break;
@@ -1178,7 +1253,11 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
         // Update screen size immediately
         UpdateViewportAndProjection();
       } else if (key == SDL_SCANCODE_E) {
+        extern bool g_inUI;
         this->bingInventory = !this->bingInventory;
+        g_inUI = this->bingInventory;
+        SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
+                                       !this->bingInventory);
       }
       break;
     }
