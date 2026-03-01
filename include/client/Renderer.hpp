@@ -290,6 +290,27 @@ struct UIVars {
   SDL_GPUBuffer *textVertexBuffer = nullptr;
   SDL_GPUTransferBuffer *textVertexTransferBuffer = nullptr;
 };
+struct InventoryBox {
+  int index;
+  float xNDC, yNDC, wNDC, hNDC;
+  bool isHotbar;
+};
+struct CraftingVars{
+  bool is3x3;
+  int gridSize;
+  float storageBaseY, storageH, craftToStorageGap, 
+  craftW, panelX, panelW, craftSlotSize, 
+  craftGap, craftGridH, craftGridW;
+  std::vector<InventoryBox>& boxes;
+};
+struct UIRuntimeVars{
+  bool fullScreen = false, 
+  bigInventory = false,
+  isCraftingTable = false,
+  showDebug = false,
+  usingUI = false,
+  isFurnace = false; 
+};
 class Renderer {
 private:
   std::unordered_map<Vector3, CachedChunkMesh> opaqueMeshCache;
@@ -306,10 +327,7 @@ private:
   SDL_GPUTransferBuffer *EntityIndexTransferBuffer = nullptr;
   ChunkManager &chunkManager;
   GameClient &gameClient;
-  bool fullScreen = false;
-  bool bigInventory = false;
-  bool isCraftingTable = false;
-  bool showDebug = false;
+  UIRuntimeVars uiRuntimeVars;
   Frustum frustum;
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
@@ -326,7 +344,8 @@ private:
   void DrawText(const std::string &text, float x, float y, float scale,
                 Vector3 color);
   void UICrossHair();
-  void UIBigInventory();
+  std::vector<InventoryBox> BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX, float &outPanelY, float &outPanelW, float &outPanelH);
+  void CraftingTable(CraftingVars& Crafting);
   void UIBigInventory(const std::vector<Slot> &inventory, int inventorySlot);
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
   std::vector<ChunkDistance> SortChunks(Player &player);
@@ -450,6 +469,16 @@ public:
     runTimeRenderVars.cmdRender = nullptr;
   };
 
+  void SetUi(int i){ 
+    if(i == 24){
+      OpenInventory(true);
+    }
+    else if (i == 25){
+      this->uiRuntimeVars.isFurnace = true; 
+      OpenInventory(false);
+    }
+  };
+  bool UsingUI(){return this->uiRuntimeVars.usingUI;};
   void Stats(Player &player);
   void UIDebug(Player &player);
   void DrawBg(std::vector<Player> &players);

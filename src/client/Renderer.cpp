@@ -9,6 +9,7 @@
 #include <cmath>
 #include <iostream>
 #include <ostream>
+#include <sys/types.h>
 #include <vector>
 
 constexpr Uint32 FacesPerChunk = 2100;
@@ -261,14 +262,11 @@ void Renderer::UICrossHair() {
   AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY,
           thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2, {1, 1, 1});
 }
-struct InventoryBox {
-  int index;
-  float xNDC, yNDC, wNDC, hNDC;
-  bool isHotbar;
-};
-static std::vector<InventoryBox>
-BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
+
+std::vector<InventoryBox>
+Renderer::BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
                     float &outPanelY, float &outPanelW, float &outPanelH) {
+
   std::vector<InventoryBox> boxes;
 
   // Constants for layout
@@ -289,7 +287,7 @@ BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
   int gridSize = is3x3 ? 3 : 2;
   float craftGridW = gridSize * craftSlotSize + (gridSize - 1) * craftGap;
   float craftGridH = gridSize * craftSlotSize + (gridSize - 1) * craftGap;
-  float craftW = craftGridW + 0.15f + craftSlotSize; // grid + arrow + output
+  float craftW = craftGridW + 0.15f + craftSlotSize;
   float craftH = craftGridH;
 
   float totalLogicalWidth = std::max(storageW, craftW);
@@ -309,7 +307,7 @@ BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
   float storageBaseX = panelX + (panelW - (storageW / aspect)) / 2.0f;
   float storageBaseY = panelY + slotSpacing;
 
-  for (int row = 0; row < 4; row++) {
+  for (int row = 0; row < storageRows + 1; row++) {
     for (int col = 0; col < cols; col++) {
       int i = (row == 0) ? col : (row * cols + col);
       float xNDC = storageBaseX +
@@ -321,39 +319,61 @@ BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
       boxes.push_back({i, xNDC, yNDC, slotSize / aspect, slotSize, row == 0});
     }
   }
+  if (this->uiRuntimeVars.isFurnace){
 
-  // 2. Crafting Grid
-  float craftBaseY = storageBaseY + storageH + (craftToStorageGap / 2.0f);
-  float craftAreaW = craftW / aspect;
-  float craftBaseX = panelX + (panelW - craftAreaW) / 2.0f;
+  }
+  else {
+    CraftingVars Crafting = {
+      is3x3,
+      gridSize,
+      storageBaseY, 
+      storageH, 
+      craftToStorageGap,
+      craftW,
+      panelX,
+      panelW,
+      craftSlotSize,
+      craftGap,
+      craftGridH,
+      craftGridW,
+      boxes
+    };
+    CraftingTable(Crafting);
+  }
+  return boxes;
+}
+void Renderer::CraftingTable(CraftingVars& Crafting){
+  float craftingOffset = !Crafting.is3x3? 0.3 : 1;
+  float aspect = this->runTimeRenderVars.aspect;
+  float craftBaseY = Crafting.storageBaseY + Crafting.storageH + (Crafting.craftToStorageGap / 2.0f);
+  float craftAreaW = Crafting.craftW / aspect;
+  float craftBaseX = Crafting.panelX * craftingOffset + (Crafting.panelW - craftAreaW) / 2.0f;
 
-  for (int y = 0; y < gridSize; y++) {
-    for (int x = 0; x < gridSize; x++) {
-      int slotIdx = 40 + (gridSize - 1 - y) * 3 + x; // Map to 3x3 logical grid
-      if (!is3x3) {
+  for (int y = 0; y < Crafting.gridSize; y++) {
+    for (int x = 0; x < Crafting.gridSize; x++) {
+      int slotIdx = 40 + (Crafting.gridSize - 1 - y) * 3 + x; // Map to 3x3 logical grid
+      if (!Crafting.is3x3) {
         // If 2x2, we use 40,41 and 43,44
         slotIdx = 40 + (1 - y) * 3 + x;
       }
-      float xNDC = craftBaseX + (x * (craftSlotSize + craftGap)) / aspect;
-      float yNDC = craftBaseY + (y * (craftSlotSize + craftGap));
-      boxes.push_back(
-          {slotIdx, xNDC, yNDC, craftSlotSize / aspect, craftSlotSize, false});
+      float xNDC = craftBaseX + (x * (Crafting.craftSlotSize + Crafting.craftGap)) / aspect;
+      float yNDC = craftBaseY + (y * (Crafting.craftSlotSize + Crafting.craftGap));
+      Crafting.boxes.push_back(
+          {slotIdx, xNDC, yNDC, Crafting.craftSlotSize / aspect, Crafting.craftSlotSize, false});
     }
   }
 
   // Output slot
-  float outX = craftBaseX + (craftGridW + 0.1f) / aspect;
-  float outY = craftBaseY + (craftGridH - craftSlotSize) / 2.0f;
-  boxes.push_back(
-      {49, outX, outY, craftSlotSize / aspect, craftSlotSize, false});
-
-  return boxes;
+  float outX = craftBaseX + 0.05f + Crafting.craftGridW / aspect;
+  float outY = craftBaseY + (Crafting.craftGridH - Crafting.craftSlotSize) / 2.0f;
+  Crafting.boxes.push_back(
+      {49, outX, outY, Crafting.craftSlotSize / aspect, Crafting.craftSlotSize, false});
 }
 void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
                               int inventorySlot) {
   float panelX, panelY, panelW, panelH;
   std::vector<InventoryBox> boxes =
-      BuildInventoryBoxes(this->runTimeRenderVars.aspect, this->isCraftingTable,
+      BuildInventoryBoxes(this->runTimeRenderVars.aspect, this->uiRuntimeVars.isCraftingTable,
                           panelX, panelY, panelW, panelH);
 
   // Dimmed background overlay (full screen)
@@ -582,7 +602,7 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
   }
 }
 void Renderer::UIDebug(Player &player) {
-  if (!this->showDebug)
+  if (!this->uiRuntimeVars.showDebug)
     return;
 
   float startX = -0.98f;
@@ -616,7 +636,7 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
 
   UICrossHair();
   UIInventory(inventory, inventorySlot);
-  if (this->bigInventory)
+  if (this->uiRuntimeVars.bigInventory)
     UIBigInventory(inventory, inventorySlot);
 
   UIDebug(player);
@@ -1278,14 +1298,13 @@ void Renderer::UpdateViewportAndProjection() {
       Frustum().createFrustumFromCamera(aspect, tanHalfFov, Znear, Zfar);
 }
 void Renderer::OpenInventory(bool craftingTable) {
-  extern bool g_inUI;
-  this->bigInventory = !this->bigInventory;
-  this->isCraftingTable = craftingTable;
-  g_inUI = this->bigInventory;
+  this->uiRuntimeVars.usingUI = !this->uiRuntimeVars.usingUI;
+  this->uiRuntimeVars.bigInventory = !this->uiRuntimeVars.bigInventory;
+  this->uiRuntimeVars.isCraftingTable = craftingTable;
   SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
-                                 !this->bigInventory);
-  if (!this->bigInventory)
-    this->isCraftingTable = false;
+                                 !this->uiRuntimeVars.bigInventory);
+  if (!this->uiRuntimeVars.bigInventory)
+    this->uiRuntimeVars.isCraftingTable = false;
 }
 void Renderer::EventManager(Player &player, int &inventorySlot) {
   while (SDL_PollEvent(&this->basicInitVars.event)) {
@@ -1308,7 +1327,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
       break;
     }
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      if (this->bigInventory) {
+      if (this->uiRuntimeVars.bigInventory) {
         float mx = this->basicInitVars.event.button.x;
         float my = this->basicInitVars.event.button.y;
         float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
@@ -1316,7 +1335,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
         float panelX, panelY, panelW, panelH;
         std::vector<InventoryBox> boxes = BuildInventoryBoxes(
-            this->runTimeRenderVars.aspect, this->isCraftingTable, panelX,
+            this->runTimeRenderVars.aspect, this->uiRuntimeVars.isCraftingTable, panelX,
             panelY, panelW, panelH);
 
         for (const auto &box : boxes) {
@@ -1396,7 +1415,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
       break;
     }
     case SDL_EVENT_MOUSE_MOTION: {
-      if (this->bigInventory &&
+      if (this->uiRuntimeVars.bigInventory &&
           (g_isLeftClickDragging || g_isRightClickDragging)) {
         float mx = this->basicInitVars.event.motion.x;
         float my = this->basicInitVars.event.motion.y;
@@ -1405,7 +1424,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
         float panelX, panelY, panelW, panelH;
         std::vector<InventoryBox> boxes = BuildInventoryBoxes(
-            this->runTimeRenderVars.aspect, this->isCraftingTable, panelX,
+            this->runTimeRenderVars.aspect, this->uiRuntimeVars.isCraftingTable, panelX,
             panelY, panelW, panelH);
 
         for (const auto &box : boxes) {
@@ -1441,7 +1460,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
       break;
     }
     case SDL_EVENT_MOUSE_BUTTON_UP: {
-      if (this->bigInventory) {
+      if (this->uiRuntimeVars.bigInventory) {
         int btn = this->basicInitVars.event.button.button;
         if (btn == SDL_BUTTON_LEFT && g_isLeftClickDragging) {
           if (!g_justPickedUp && g_heldItem.Type != 0) {
@@ -1493,23 +1512,29 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
     case SDL_EVENT_KEY_DOWN: {
       SDL_Keycode key = this->basicInitVars.event.key.scancode;
 
-      if (key == SDL_SCANCODE_ESCAPE) {
-        this->gameClient.Quit();
+      if (key == SDL_SCANCODE_ESCAPE && this->uiRuntimeVars.usingUI) {
+        this->uiRuntimeVars.bigInventory = false;
+        this->uiRuntimeVars.isCraftingTable = false;
+        this->uiRuntimeVars.isFurnace = false;
+        this->uiRuntimeVars.usingUI = false;
+        SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
+                                 !this->uiRuntimeVars.bigInventory);
         break;
       } else if (key == SDL_SCANCODE_F11) {
 
-        this->fullScreen = !this->fullScreen;
+        this->uiRuntimeVars.fullScreen = !this->uiRuntimeVars.fullScreen;
         std::cout << "Toggling fullscreen: "
-                  << (this->fullScreen ? "ON" : "OFF") << std::endl;
+                  << (this->uiRuntimeVars.fullScreen ? "ON" : "OFF") << std::endl;
 
-        SDL_SetWindowFullscreen(this->basicInitVars.window, this->fullScreen);
+        SDL_SetWindowFullscreen(this->basicInitVars.window, this->uiRuntimeVars.fullScreen);
 
         // Update screen size immediately
         UpdateViewportAndProjection();
       } else if (key == SDL_SCANCODE_F3) {
-        this->showDebug = !this->showDebug;
+        this->uiRuntimeVars.showDebug = !this->uiRuntimeVars.showDebug;
       } else if (key == SDL_SCANCODE_E) {
         this->OpenInventory(false);
+        this->uiRuntimeVars.usingUI = this->uiRuntimeVars.bigInventory;
       }
       break;
     }
@@ -1544,7 +1569,6 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
     return;
   }
 }
-
 SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
                           Uint32 sampler_count, Uint32 uniform_buffer_count,
                           Uint32 storage_buffer_count,

@@ -15,7 +15,6 @@ float JumpTimer = 0;
 float bodyHeight = 1.6f;
 Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
-bool g_inUI = false;
 
 void GameClient::set_seed() {
   // Seed is now received in the constructor.
@@ -244,19 +243,11 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
   float mouseX, mouseY;
   Uint32 mouseState = SDL_GetRelativeMouseState(&mouseX, &mouseY);
 
-  if (g_inUI) {
-    LeftClick = false;
-    RightClick = false;
-    PlayerRot.y = 0;
-    PlayerRot.x = 0;
-    PlayerRot.z = 0;
-  } else {
-    LeftClick = (mouseState & SDL_BUTTON_LMASK) != 0;
-    RightClick = (mouseState & SDL_BUTTON_RMASK) != 0;
-    PlayerRot.y = mouseX; // Yaw (left/right)
-    PlayerRot.x = mouseY; // Pitch (up/down)
-    PlayerRot.z = 0;      // Roll (not used for FPS camera)
-  }
+  LeftClick = (mouseState & SDL_BUTTON_LMASK) != 0;
+  RightClick = (mouseState & SDL_BUTTON_RMASK) != 0;
+  PlayerRot.y = mouseX;
+  PlayerRot.x = mouseY;
+  PlayerRot.z = 0;
 
   if (move_left || move_right) {
     PlayerDirection.x = move_left ? -1 : 1;
@@ -389,11 +380,6 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
     RaycastResult Ray =
         manager.RayCast(player.Position, player.Rotation.Forward(), 7);
     if (Ray.hit) {
-      if (justRight && BlockDef[Ray.BlockID].hasUI) { // e.g., Crafting Table
-        if (renderer)
-          renderer->OpenInventory(true);
-        return;
-      }
       if (justLeft) {
         if (Ray.BlockID == 4)
           return; // Can't break bedrock
@@ -412,13 +398,10 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
         }
         game.sendCommand(mod);
         game.sync_inventory();
-      } else {
-        // Prevent placing block inside player's body
+      } else if (!BlockDef[Ray.BlockID].hasUI){
         Vector3 placePos = Ray.prevPos;
         bool collides = false;
 
-        // Check if the placed block intersects with the player's bounding box
-        // Player is roughly from CameraY-1.6 to CameraY+0.2
         for (float yOff = -1.5f; yOff <= 0.1f; yOff += 0.5f) {
           Vector3 check = (player.Position + Vector3(0, yOff, 0)).Truncate();
           if (check == placePos) {
@@ -440,6 +423,8 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
           game.sendCommand(mod);
           game.sync_inventory();
         }
+      } else {
+        renderer->SetUi(Ray.BlockID);
       }
     }
   }
@@ -481,6 +466,7 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   } catch (...) {
     player.Inwater = false;
   }
+  if (renderer->UsingUI()) return;
 
   PlayerInput(playerDirection, OnGround, player.Inwater, inventorySlot,
               RotationDir, LeftClick, RightClick);
