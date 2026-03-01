@@ -260,32 +260,37 @@ struct InventoryBox {
   float xNDC, yNDC, wNDC, hNDC;
   bool isHotbar;
 };
-static std::vector<InventoryBox> BuildInventoryBoxes(float aspect, float &outPanelX, float &outPanelY,
-                    float &outPanelW, float &outPanelH) {
+static std::vector<InventoryBox>
+BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
+                    float &outPanelY, float &outPanelW, float &outPanelH) {
   std::vector<InventoryBox> boxes;
 
-  int cols = 9;
-  int rows = 4;
-  float slotSpacing = 0.012f;
-  float slotSize = 0.1f;
-  float hotbarGap = 0.03f;
-
-  float craftSlotSize = 0.08f;
-  float craftGap = 0.01f;
-  float craftToStorageGap = 0.1f;
+  // Constants for layout
+  const int cols = 9;
+  const int storageRows = 3;
+  const float slotSize = 0.1f;
+  const float slotSpacing = 0.012f;
+  const float hotbarGap = 0.03f;
+  const float craftSlotSize = 0.08f;
+  const float craftGap = 0.01f;
+  const float craftToStorageGap = 0.1f;
 
   float storageW = cols * slotSize + (cols + 1) * slotSpacing;
-  float storageH = rows * slotSize + (rows - 1) * slotSpacing + hotbarGap;
+  float storageH = (storageRows + 1) * slotSize + storageRows * slotSpacing +
+                   hotbarGap + 2 * slotSpacing;
 
-  float craftW = 3 * craftSlotSize + 2 * craftGap + 0.15f +
-                 craftSlotSize; // 3x3 grid + arrow + output
-  float craftH = 3 * craftSlotSize + 2 * craftGap;
+  // Calculate crafting area size
+  int gridSize = is3x3 ? 3 : 2;
+  float craftGridW = gridSize * craftSlotSize + (gridSize - 1) * craftGap;
+  float craftGridH = gridSize * craftSlotSize + (gridSize - 1) * craftGap;
+  float craftW = craftGridW + 0.15f + craftSlotSize; // grid + arrow + output
+  float craftH = craftGridH;
 
   float totalLogicalWidth = std::max(storageW, craftW);
   float totalLogicalHeight = storageH + craftH + craftToStorageGap;
 
-  float panelW = totalLogicalWidth / aspect;
-  float panelH = totalLogicalHeight;
+  float panelW = (totalLogicalWidth + 0.1f) / aspect;
+  float panelH = totalLogicalHeight + 0.1f;
   float panelX = -panelW / 2.0f;
   float panelY = -panelH / 2.0f;
 
@@ -294,49 +299,45 @@ static std::vector<InventoryBox> BuildInventoryBoxes(float aspect, float &outPan
   outPanelW = panelW;
   outPanelH = panelH;
 
-  // 1. Build Storage & Hotbar (Bottom part)
-  for (int row = 0; row < rows; row++) {
+  // 1. Storage & Hotbar
+  float storageBaseX = panelX + (panelW - (storageW / aspect)) / 2.0f;
+  float storageBaseY = panelY + slotSpacing;
+
+  for (int row = 0; row < 4; row++) {
     for (int col = 0; col < cols; col++) {
-      int i;
-      if (row == rows - 1) {
-        i = col; // Hotbar row
-      } else {
-        i = (row + 1) * cols + col; // Storage rows
-      }
+      int i = (row == 0) ? col : (row * cols + col);
+      float xNDC = storageBaseX +
+                   (slotSpacing + col * (slotSize + slotSpacing)) / aspect;
+      float yNDC = storageBaseY + row * (slotSize + slotSpacing);
+      if (row >= 1)
+        yNDC += hotbarGap;
 
-      // visualRow: 0 is hotbar (bottom), 1-4 are storage above it
-      float visualRow = (rows - 1 - row);
-      float xNDC =
-          panelX + (slotSpacing + col * (slotSize + slotSpacing)) / aspect;
-      if (storageW < totalLogicalWidth) {
-        xNDC += (totalLogicalWidth - storageW) / 2.0f / aspect;
-      }
-
-      float yNDC = panelY + slotSpacing + visualRow * (slotSize + slotSpacing);
-      if (visualRow >= 1)
-        yNDC += hotbarGap; // Gap above hotbar
-
-      boxes.push_back(
-          {i, xNDC, yNDC, slotSize / aspect, slotSize, row == rows - 1});
+      boxes.push_back({i, xNDC, yNDC, slotSize / aspect, slotSize, row == 0});
     }
   }
 
-  // 2. Build Crafting Grid (Top part, 3x3)
-  float craftBaseY = panelY + storageH + (craftToStorageGap / 2.0f);
-  float craftBaseX = panelX * 0.4f  + (totalLogicalWidth - craftW) / 2.0f / aspect;
+  // 2. Crafting Grid
+  float craftBaseY = storageBaseY + storageH + (craftToStorageGap / 2.0f);
+  float craftAreaW = craftW / aspect;
+  float craftBaseX = panelX + (panelW - craftAreaW) / 2.0f;
 
-  for (int i = 0; i < 4; i++) {
-    int cx = i % 2;
-    int cy = 2 - (i / 2);
-    float xNDC = craftBaseX + (cx * (craftSlotSize + craftGap)) / aspect;
-    float yNDC = craftBaseY + (cy * (craftSlotSize + craftGap));
-    boxes.push_back(
-        {40 + i, xNDC, yNDC, craftSlotSize / aspect, craftSlotSize, false});
+  for (int y = 0; y < gridSize; y++) {
+    for (int x = 0; x < gridSize; x++) {
+      int slotIdx = 40 + (gridSize - 1 - y) * 3 + x; // Map to 3x3 logical grid
+      if (!is3x3) {
+        // If 2x2, we use 40,41 and 43,44
+        slotIdx = 40 + (1 - y) * 3 + x;
+      }
+      float xNDC = craftBaseX + (x * (craftSlotSize + craftGap)) / aspect;
+      float yNDC = craftBaseY + (y * (craftSlotSize + craftGap));
+      boxes.push_back(
+          {slotIdx, xNDC, yNDC, craftSlotSize / aspect, craftSlotSize, false});
+    }
   }
 
   // Output slot
-  float outX = craftBaseX + (1.3f * (craftSlotSize + craftGap) + 0.1f) / aspect;
-  float outY = craftBaseY + (1.5f * craftSlotSize + 0.5f * craftGap);
+  float outX = craftBaseX + (craftGridW + 0.1f) / aspect;
+  float outY = craftBaseY + (craftGridH - craftSlotSize) / 2.0f;
   boxes.push_back(
       {49, outX, outY, craftSlotSize / aspect, craftSlotSize, false});
 
@@ -345,25 +346,15 @@ static std::vector<InventoryBox> BuildInventoryBoxes(float aspect, float &outPan
 void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
                               int inventorySlot) {
   float panelX, panelY, panelW, panelH;
-  std::vector<InventoryBox> boxes = BuildInventoryBoxes(
-      this->runTimeRenderVars.aspect, panelX, panelY, panelW, panelH);
+  std::vector<InventoryBox> boxes =
+      BuildInventoryBoxes(this->runTimeRenderVars.aspect, this->isCraftingTable,
+                          panelX, panelY, panelW, panelH);
 
   // Dimmed background overlay (full screen)
   AddRect(-2.0f, -2.0f, 4.0f, 4.0f, {0.0f, 0.0f, 0.0f}, -1.0f);
 
   // Panel background
   AddRect(panelX, panelY, panelW, panelH, {0.1f, 0.1f, 0.1f});
-
-  // 2. Determine crafting positions for labels
-  float storageH_labels = 5 * 0.12f + (5 - 1) * 0.012f + 0.03f;
-  float craftSlotSize_labels = 0.09f;
-  float craftGap_labels = 0.01f;
-  float craftToStorageGap_labels = 0.05f;
-  float craftW_labels = 3 * 0.09f + 2 * 0.01f + 0.15f + 0.09f;
-  float totalLogicalWidth_labels = std::max(8 * 0.12f + 9 * 0.012f, craftW_labels);
-
-  float craftBaseY_labels = panelY + storageH_labels + (craftToStorageGap_labels / 2.0f);
-  float craftBaseX_labels = panelX + (totalLogicalWidth_labels - craftW_labels) / 2.0f / this->runTimeRenderVars.aspect;
 
   float mx, my;
   SDL_GetMouseState(&mx, &my);
@@ -453,14 +444,16 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
 }
 static void UpdateCraftingSelection(Player &player) {
   auto &inv = player.inventory;
-  inv[49] = {0, 0}; // Output 49
+  const int resultSlot = 49;
+  const int gridStart = 40;
+  inv[resultSlot] = {0, 0};
 
-  // 1. Trim input grid (slots 40-48: 3x3)
-  int minX = 2, minY = 2, maxX = -1, maxY = -1;
+  // 1. Identify valid bounding box of the input items
+  int minX = 3, minY = 3, maxX = -1, maxY = -1;
   bool inputEmpty = true;
   for (int y = 0; y < 3; y++) {
     for (int x = 0; x < 3; x++) {
-      if (inv[40 + y * 3 + x].Type != 0) {
+      if (inv[gridStart + y * 3 + x].Type != 0) {
         minX = std::min(minX, x);
         minY = std::min(minY, y);
         maxX = std::max(maxX, x);
@@ -476,49 +469,52 @@ static void UpdateCraftingSelection(Player &player) {
   int inputW = maxX - minX + 1;
   int inputH = maxY - minY + 1;
 
-  for (int i = 1; i < (int)BlockNum; i++) {
-    if (BlockDef[i].recipeAmount > 0) {
-      // 2. Trim recipe grid (3x3)
-      int rMinX = 3, rMinY = 3, rMaxX = -1, rMaxY = -1;
-      bool recipeEmpty = true;
-      for (int ry = 0; ry < 3; ry++) {
-        for (int rx = 0; rx < 3; rx++) {
-          if (BlockDef[i].recipe[ry * 3 + rx].blockID != 0) {
-            rMinX = std::min(rMinX, rx);
-            rMinY = std::min(rMinY, ry);
-            rMaxX = std::max(rMaxX, rx);
-            rMaxY = std::max(rMaxY, ry);
-            recipeEmpty = false;
-          }
+  // 2. Iterate through recipes
+  for (int bID = 1; bID < (int)BlockNum; bID++) {
+    const auto &block = BlockDef[bID];
+    if (block.recipeAmount <= 0)
+      continue;
+
+    // 3. Identify valid bounding box of the recipe
+    int rMinX = 3, rMinY = 3, rMaxX = -1, rMaxY = -1;
+    bool recipeEmpty = true;
+    for (int ry = 0; ry < 3; ry++) {
+      for (int rx = 0; rx < 3; rx++) {
+        if (block.recipe[ry * 3 + rx].blockID != 0) {
+          rMinX = std::min(rMinX, rx);
+          rMinY = std::min(rMinY, ry);
+          rMaxX = std::max(rMaxX, rx);
+          rMaxY = std::max(rMaxY, ry);
+          recipeEmpty = false;
         }
       }
+    }
 
-      if (recipeEmpty)
-        continue;
+    if (recipeEmpty)
+      continue;
 
-      int recipeW = rMaxX - rMinX + 1;
-      int recipeH = rMaxY - rMinY + 1;
+    int recipeW = rMaxX - rMinX + 1;
+    int recipeH = rMaxY - rMinY + 1;
 
-      // 3. Compare bounding boxes
-      if (inputW == recipeW && inputH == recipeH) {
-        bool match = true;
-        for (int y = 0; y < inputH; y++) {
-          for (int x = 0; x < inputW; x++) {
-            int inType = inv[40 + (minY + y) * 3 + (minX + x)].Type;
-            int reType =
-                BlockDef[i].recipe[(rMinY + y) * 3 + (rMinX + x)].blockID;
-            if (inType != reType) {
-              match = false;
-              break;
-            }
-          }
-          if (!match)
+    // 3. Compare bounding boxes
+    if (inputW == recipeW && inputH == recipeH) {
+      bool match = true;
+      for (int y = 0; y < inputH; y++) {
+        for (int x = 0; x < inputW; x++) {
+          int inputType = inv[gridStart + (minY + y) * 3 + (minX + x)].Type;
+          int recipeType = block.recipe[(rMinY + y) * 3 + (rMinX + x)].blockID;
+          if (inputType != recipeType) {
+            match = false;
             break;
+          }
         }
-        if (match) {
-          inv[49] = {(short)BlockDefinitions[i].recipeAmount, (short)i};
-          return;
-        }
+        if (!match)
+          break;
+      }
+
+      if (match) {
+        inv[resultSlot] = {(short)block.recipeAmount, (short)bID};
+        return;
       }
     }
   }
@@ -586,16 +582,23 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
 
   UICrossHair();
   UIInventory(inventory, inventorySlot);
-  if (this->bingInventory)  UIBigInventory(inventory, inventorySlot);
-  
-  void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
+  if (this->bigInventory)
+    UIBigInventory(inventory, inventorySlot);
+
+  void *mapData = SDL_MapGPUTransferBuffer(
+      this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
   if (mapData) {
-    SDL_memcpy(mapData, uiVars.uiVertices.data(), uiVars.uiVertices.size() * sizeof(Vertex));
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
+    SDL_memcpy(mapData, uiVars.uiVertices.data(),
+               uiVars.uiVertices.size() * sizeof(Vertex));
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               this->uiVars.UIVertexTransferBuffer);
 
     SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
-    SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer, 0};
-    SDL_GPUBufferRegion dst = { this->uiVars.UIVertexBuffer, 0, (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
+    SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer,
+                                         0};
+    SDL_GPUBufferRegion dst = {
+        this->uiVars.UIVertexBuffer, 0,
+        (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
     SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
     SDL_EndGPUCopyPass(copyPass);
   }
@@ -626,28 +629,33 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
   color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
   color_target_info.store_op = SDL_GPU_STOREOP_STORE;
 
-  SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
+  SDL_GPURenderPass *pass =
+      SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
 
   if (!uiVars.uiVertices.empty()) {
     SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.uiPipeline);
     if (this->TextureAtlas && this->Sampler) {
-      SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas, this->Sampler};
+      SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
+                                                     this->Sampler};
       SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
     }
     SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
     SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
-    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.uiVertices.size(), 1, 0, 0);
+    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.uiVertices.size(), 1, 0,
+                          0);
   }
 
   if (!uiVars.textVertices.empty() && this->pipelineInitVars.textPipeline) {
     SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.textPipeline);
     if (this->uiVars.fontTexture && this->uiVars.fontSampler) {
-      SDL_GPUTextureSamplerBinding samplerBinding = {this->uiVars.fontTexture, this->uiVars.fontSampler};
+      SDL_GPUTextureSamplerBinding samplerBinding = {this->uiVars.fontTexture,
+                                                     this->uiVars.fontSampler};
       SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
     }
     SDL_GPUBufferBinding vBinding = {this->uiVars.textVertexBuffer, 0};
     SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
-    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.textVertices.size(), 1, 0, 0);
+    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.textVertices.size(), 1, 0,
+                          0);
   }
 
   SDL_EndGPURenderPass(pass);
@@ -1212,6 +1220,16 @@ void Renderer::UpdateViewportAndProjection() {
   this->frustum =
       Frustum().createFrustumFromCamera(aspect, tanHalfFov, Znear, Zfar);
 }
+void Renderer::OpenInventory(bool craftingTable) {
+  extern bool g_inUI;
+  this->bigInventory = !this->bigInventory;
+  this->isCraftingTable = craftingTable;
+  g_inUI = this->bigInventory;
+  SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
+                                 !this->bigInventory);
+  if (!this->bigInventory)
+    this->isCraftingTable = false;
+}
 void Renderer::EventManager(Player &player, int &inventorySlot) {
   while (SDL_PollEvent(&this->basicInitVars.event)) {
     switch (this->basicInitVars.event.type) {
@@ -1233,7 +1251,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
       break;
     }
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      if (this->bingInventory) {
+      if (this->bigInventory) {
         float mx = this->basicInitVars.event.button.x;
         float my = this->basicInitVars.event.button.y;
         float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
@@ -1241,7 +1259,8 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
         float panelX, panelY, panelW, panelH;
         std::vector<InventoryBox> boxes = BuildInventoryBoxes(
-            this->runTimeRenderVars.aspect, panelX, panelY, panelW, panelH);
+            this->runTimeRenderVars.aspect, this->isCraftingTable, panelX,
+            panelY, panelW, panelH);
 
         for (const auto &box : boxes) {
           int i = box.index;
@@ -1250,7 +1269,10 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
             g_initialClickSlot = i;
             g_draggedSlots.clear();
-            g_draggedSlots.push_back(i);
+            if (g_heldItem.Type == 0 || player.inventory[i].Type == 0 ||
+                player.inventory[i].Type == g_heldItem.Type) {
+              g_draggedSlots.push_back(i);
+            }
             g_justPickedUp = false;
 
             if (this->basicInitVars.event.button.button == SDL_BUTTON_LEFT) {
@@ -1278,7 +1300,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
               if (g_heldItem.Type == 0) { // Pick up half stack
                 if (i != 49 && player.inventory[i].Type != 0) {
                   int take = (player.inventory[i].Amount + 1) / 2;
-                  g_heldItem = {player.inventory[i].Type, (short)take};
+                  g_heldItem = {(short)take, player.inventory[i].Type};
                   player.inventory[i].Amount -= take;
                   if (player.inventory[i].Amount <= 0)
                     player.inventory[i].Type = 0;
@@ -1317,7 +1339,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
       break;
     }
     case SDL_EVENT_MOUSE_MOTION: {
-      if (this->bingInventory &&
+      if (this->bigInventory &&
           (g_isLeftClickDragging || g_isRightClickDragging)) {
         float mx = this->basicInitVars.event.motion.x;
         float my = this->basicInitVars.event.motion.y;
@@ -1326,7 +1348,8 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
         float panelX, panelY, panelW, panelH;
         std::vector<InventoryBox> boxes = BuildInventoryBoxes(
-            this->runTimeRenderVars.aspect, panelX, panelY, panelW, panelH);
+            this->runTimeRenderVars.aspect, this->isCraftingTable, panelX,
+            panelY, panelW, panelH);
 
         for (const auto &box : boxes) {
           int i = box.index;
@@ -1335,10 +1358,16 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
             if (std::find(g_draggedSlots.begin(), g_draggedSlots.end(), i) ==
                 g_draggedSlots.end()) {
-              g_draggedSlots.push_back(i);
-              if (g_isRightClickDragging && g_heldItem.Type != 0 && i != 49) {
-                if (player.inventory[i].Type == 0 ||
-                    player.inventory[i].Type == g_heldItem.Type) {
+
+              bool isCompatible = (i != 49) && (g_heldItem.Type != 0) &&
+                                  (player.inventory[i].Type == 0 ||
+                                   player.inventory[i].Type == g_heldItem.Type);
+
+              if (isCompatible) {
+                if (g_isLeftClickDragging) {
+                  g_draggedSlots.push_back(i);
+                } else if (g_isRightClickDragging && g_heldItem.Amount > 0) {
+                  g_draggedSlots.push_back(i);
                   player.inventory[i].Type = g_heldItem.Type;
                   player.inventory[i].Amount++;
                   g_heldItem.Amount--;
@@ -1355,7 +1384,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
       break;
     }
     case SDL_EVENT_MOUSE_BUTTON_UP: {
-      if (this->bingInventory) {
+      if (this->bigInventory) {
         int btn = this->basicInitVars.event.button.button;
         if (btn == SDL_BUTTON_LEFT && g_isLeftClickDragging) {
           if (!g_justPickedUp && g_heldItem.Type != 0) {
@@ -1371,17 +1400,19 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
                 int remainder = g_heldItem.Amount % targetSlots.size();
                 for (size_t j = 0; j < targetSlots.size(); j++) {
                   int sIdx = targetSlots[j];
-                  player.inventory[sIdx].Type = g_heldItem.Type;
-                  player.inventory[sIdx].Amount += amountPer;
-                  if (j < (size_t)remainder)
-                    player.inventory[sIdx].Amount++;
+                  int toAdd = amountPer + (j < (size_t)remainder ? 1 : 0);
+                  if (toAdd > 0) {
+                    player.inventory[sIdx].Type = g_heldItem.Type;
+                    player.inventory[sIdx].Amount += toAdd;
+                  }
                 }
                 g_heldItem = {0, 0};
                 UpdateCraftingSelection(player);
               }
             } else if (g_draggedSlots.size() <= 1) {
               // Simple click release - swap or merge
-              int i = g_draggedSlots.empty() ? -1 : g_draggedSlots[0];
+              int i = g_draggedSlots.empty() ? g_initialClickSlot
+                                             : g_draggedSlots[0];
               if (i != -1 && i != 49) {
                 if (player.inventory[i].Type == g_heldItem.Type) {
                   player.inventory[i].Amount += g_heldItem.Amount;
@@ -1419,11 +1450,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
         // Update screen size immediately
         UpdateViewportAndProjection();
       } else if (key == SDL_SCANCODE_E) {
-        extern bool g_inUI;
-        this->bingInventory = !this->bingInventory;
-        g_inUI = this->bingInventory;
-        SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
-                                       !this->bingInventory);
+        this->OpenInventory(false);
       }
       break;
     }

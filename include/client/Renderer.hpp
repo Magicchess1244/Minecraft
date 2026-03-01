@@ -307,7 +307,8 @@ private:
   ChunkManager &chunkManager;
   GameClient &gameClient;
   bool fullScreen = false;
-  bool bingInventory = false;
+  bool bigInventory = false;
+  bool isCraftingTable = false;
   Frustum frustum;
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
@@ -456,4 +457,5 @@ public:
 
   void MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
                       std::vector<Player> &players);
+  void OpenInventory(bool craftingTable);
 };

@@ -374,7 +374,8 @@ void PlayerMove(Player &player, Vector3 playerDirection,
 }
 void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
                        Player &player, int inventorySlot,
-                       std::vector<Slot> &inventory, GameClient &game) {
+                       std::vector<Slot> &inventory, GameClient &game,
+                       Renderer *renderer) {
   static bool lastLeft = false;
   static bool lastRight = false;
 
@@ -388,6 +389,11 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
     RaycastResult Ray =
         manager.RayCast(player.Position, player.Rotation.Forward(), 7);
     if (Ray.hit) {
+      if (justRight && BlockDef[Ray.BlockID].hasUI) { // e.g., Crafting Table
+        if (renderer)
+          renderer->OpenInventory(true);
+        return;
+      }
       if (justLeft) {
         if (Ray.BlockID == 4)
           return; // Can't break bedrock
@@ -440,7 +446,8 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
 }
 
 void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
-                  std::vector<Slot> &inventory, GameClient &game) {
+                  std::vector<Slot> &inventory, GameClient &game,
+                  Renderer *renderer) {
 
   JumpTimer += deltaTime;
   Vector3 RotationDir = {0, 0, 0};
@@ -480,7 +487,7 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   PlayerRotation(player, RotationDir);
   PlayerMove(player, playerDirection, manager);
   PlayerBreackPlace(LeftClick, RightClick, manager, player, inventorySlot,
-                    inventory, game);
+                    inventory, game, renderer);
 }
 void GameLoop(GameClient &game) {
   int myId = game.get_my_id();
@@ -542,7 +549,8 @@ void GameLoop(GameClient &game) {
       waterTimer = 0.0f;
     }
 
-    PlayerAction(p[0], inventorySlot, chunkManager, p[0].inventory, game);
+    PlayerAction(p[0], inventorySlot, chunkManager, p[0].inventory, game,
+                 &RendererObject);
     RendererObject.MainRenderLoop(p[0].inventory, inventorySlot, p);
 
     auto currentTime = std::chrono::high_resolution_clock::now();

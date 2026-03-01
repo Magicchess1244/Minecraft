@@ -254,7 +254,7 @@ const Block BlockDefinitions[] = {
      {28, 28, 27, 27, 26, 25},
      0,
      15,
-     false,
+     true,
      false,
      false,
      false,
