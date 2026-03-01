@@ -90,7 +90,6 @@ Matrix Perspective(float Fov, float Aspect, float Near, float Far) {
   m(3, 3) = 0.0f;
   return m;
 }
-// Rotation matrices look correct
 Matrix RotationX(float angleRad) {
   Matrix m = Matrix::Identity(4);
   float c = std::cos(angleRad);
@@ -102,7 +101,6 @@ Matrix RotationX(float angleRad) {
   m(2, 2) = c;
   return m;
 }
-
 Matrix RotationY(float angleRad) {
   Matrix m = Matrix::Identity(4);
   float c = std::cos(angleRad);
@@ -114,7 +112,6 @@ Matrix RotationY(float angleRad) {
   m(2, 2) = c;
   return m;
 }
-
 Matrix RotationZ(float angleRad) {
   Matrix m = Matrix::Identity(4);
   float c = std::cos(angleRad);
@@ -125,7 +122,6 @@ Matrix RotationZ(float angleRad) {
   m(1, 1) = c;
   return m;
 }
-
 Matrix Rotation(Vector3 Rotation) {
   return RotationZ(Rotation.AngleToRadians().z) *
          RotationY(Rotation.AngleToRadians().y) *
@@ -259,29 +255,24 @@ void Renderer::UICrossHair() {
   AddRect(-thickness / this->runTimeRenderVars.aspect, -sizeY,
           thickness * 2 / this->runTimeRenderVars.aspect, sizeY * 2, {1, 1, 1});
 }
-
 struct InventoryBox {
   int index;
   float xNDC, yNDC, wNDC, hNDC;
   bool isHotbar;
 };
-
-static std::vector<InventoryBox>
-BuildInventoryBoxes(float aspect, float &outPanelX, float &outPanelY,
+static std::vector<InventoryBox> BuildInventoryBoxes(float aspect, float &outPanelX, float &outPanelY,
                     float &outPanelW, float &outPanelH) {
   std::vector<InventoryBox> boxes;
 
-  // Storage Grid Settings
-  int cols = 8;
-  int rows = 5; // 4 storage + 1 hotbar
+  int cols = 9;
+  int rows = 4;
   float slotSpacing = 0.012f;
-  float slotSize = 0.12f;
+  float slotSize = 0.1f;
   float hotbarGap = 0.03f;
 
-  // Crafting Grid Settings (Smaller)
-  float craftSlotSize = 0.09f;
+  float craftSlotSize = 0.08f;
   float craftGap = 0.01f;
-  float craftToStorageGap = 0.05f;
+  float craftToStorageGap = 0.1f;
 
   float storageW = cols * slotSize + (cols + 1) * slotSpacing;
   float storageH = rows * slotSize + (rows - 1) * slotSpacing + hotbarGap;
@@ -332,11 +323,11 @@ BuildInventoryBoxes(float aspect, float &outPanelX, float &outPanelY,
 
   // 2. Build Crafting Grid (Top part, 3x3)
   float craftBaseY = panelY + storageH + (craftToStorageGap / 2.0f);
-  float craftBaseX = panelX + (totalLogicalWidth - craftW) / 2.0f / aspect;
+  float craftBaseX = panelX * 0.4f  + (totalLogicalWidth - craftW) / 2.0f / aspect;
 
-  for (int i = 0; i < 9; i++) {
-    int cx = i % 3;
-    int cy = 2 - (i / 3); // top is row 2
+  for (int i = 0; i < 4; i++) {
+    int cx = i % 2;
+    int cy = 2 - (i / 2);
     float xNDC = craftBaseX + (cx * (craftSlotSize + craftGap)) / aspect;
     float yNDC = craftBaseY + (cy * (craftSlotSize + craftGap));
     boxes.push_back(
@@ -344,14 +335,13 @@ BuildInventoryBoxes(float aspect, float &outPanelX, float &outPanelY,
   }
 
   // Output slot
-  float outX = craftBaseX + (3 * (craftSlotSize + craftGap) + 0.1f) / aspect;
-  float outY = craftBaseY + (1.0f * craftSlotSize + 0.5f * craftGap);
+  float outX = craftBaseX + (1.3f * (craftSlotSize + craftGap) + 0.1f) / aspect;
+  float outY = craftBaseY + (1.5f * craftSlotSize + 0.5f * craftGap);
   boxes.push_back(
       {49, outX, outY, craftSlotSize / aspect, craftSlotSize, false});
 
   return boxes;
 }
-
 void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
                               int inventorySlot) {
   float panelX, panelY, panelW, panelH;
@@ -370,27 +360,15 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
   float craftGap_labels = 0.01f;
   float craftToStorageGap_labels = 0.05f;
   float craftW_labels = 3 * 0.09f + 2 * 0.01f + 0.15f + 0.09f;
-  float totalLogicalWidth_labels =
-      std::max(8 * 0.12f + 9 * 0.012f, craftW_labels);
+  float totalLogicalWidth_labels = std::max(8 * 0.12f + 9 * 0.012f, craftW_labels);
 
-  float craftBaseY_labels =
-      panelY + storageH_labels + (craftToStorageGap_labels / 2.0f);
-  float craftBaseX_labels =
-      panelX + (totalLogicalWidth_labels - craftW_labels) / 2.0f /
-                   this->runTimeRenderVars.aspect;
+  float craftBaseY_labels = panelY + storageH_labels + (craftToStorageGap_labels / 2.0f);
+  float craftBaseX_labels = panelX + (totalLogicalWidth_labels - craftW_labels) / 2.0f / this->runTimeRenderVars.aspect;
 
-  // Label above the 3x3 grid
-  DrawText("Crafting", craftBaseX_labels,
-           craftBaseY_labels +
-               (3 * craftSlotSize_labels + 2 * craftGap_labels) + 0.01f,
-           0.55f, {1, 1, 1});
-
-  // Arrow between grid and output
-  float arrowX = craftBaseX_labels +
-                 (3.0f * (craftSlotSize_labels + craftGap_labels) + 0.05f) /
-                     this->runTimeRenderVars.aspect;
-  DrawText("->", arrowX, craftBaseY_labels + craftSlotSize_labels * 1.1f, 1.0f,
-           {0.8f, 0.8f, 0.8f});
+  float mx, my;
+  SDL_GetMouseState(&mx, &my);
+  float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
+  float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
 
   for (const auto &box : boxes) {
     int i = box.index;
@@ -398,14 +376,6 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
     float yNDC = box.yNDC;
     float wNDC = box.wNDC;
     float hNDC = box.hNDC;
-
-    // Check mouse hover
-    float mx, my;
-    SDL_GetMouseState(&mx, &my);
-
-    // Convert mouse from screen to NDC [-1, 1], Y goes up
-    float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-    float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
 
     bool isHovered = (ndc_mx >= xNDC && ndc_mx <= xNDC + wNDC &&
                       ndc_my >= yNDC && ndc_my <= yNDC + hNDC);
@@ -481,13 +451,12 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
     }
   }
 }
-
 static void UpdateCraftingSelection(Player &player) {
   auto &inv = player.inventory;
   inv[49] = {0, 0}; // Output 49
 
   // 1. Trim input grid (slots 40-48: 3x3)
-  int minX = 3, minY = 3, maxX = -1, maxY = -1;
+  int minX = 2, minY = 2, maxX = -1, maxY = -1;
   bool inputEmpty = true;
   for (int y = 0; y < 3; y++) {
     for (int x = 0; x < 3; x++) {
@@ -547,21 +516,19 @@ static void UpdateCraftingSelection(Player &player) {
             break;
         }
         if (match) {
-          inv[49] = {(short)i, (short)BlockDef[i].recipeAmount};
+          inv[49] = {(short)BlockDefinitions[i].recipeAmount, (short)i};
           return;
         }
       }
     }
   }
 }
-
 void Renderer::UIInventory(const std::vector<Slot> &inventory,
                            int inventorySlot) {
-  // 2. Inventory / Hotbar
   float hotbarHeight = 0.12f;
-  float slotCount = 8;
+  float slotCount = 9;
   float slotSpacing = 0.01f;
-  // Logical width (same as height for square slots)
+
   float logicalSlotSize = hotbarHeight - 2 * slotSpacing;
   float logicalTotalWidth =
       slotCount * logicalSlotSize + (slotCount + 1) * slotSpacing;
@@ -570,7 +537,6 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
   float hotbarX = -hotbarWidthNDC / 2.0f;
   float hotbarY = -0.95f;
 
-  // Background
   AddRect(hotbarX, hotbarY, hotbarWidthNDC, hotbarHeight, {0.1f, 0.1f, 0.1f});
 
   for (int i = 0; i < slotCount; i++) {
@@ -580,27 +546,21 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
     float wNDC = logicalSlotSize / this->runTimeRenderVars.aspect;
     float hNDC = logicalSlotSize;
 
-    // Slot background
     Vector3 bgColor = (i == inventorySlot) ? Vector3{0.4f, 0.4f, 0.4f}
                                            : Vector3{0.2f, 0.2f, 0.2f};
     AddRect(xNDC, yNDC, wNDC, hNDC, bgColor);
 
-    // Border highlight
     if (i == inventorySlot) {
       float b = 0.005f;
       float bX = b / this->runTimeRenderVars.aspect;
       float bY = b;
-      // top
+
       AddRect(xNDC - bX, yNDC + hNDC, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
-      // bottom
       AddRect(xNDC - bX, yNDC - bY, wNDC + 2 * bX, bY, {1.0f, 1.0f, 1.0f});
-      // left
       AddRect(xNDC - bX, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
-      // right
       AddRect(xNDC + wNDC, yNDC, bX, hNDC, {1.0f, 1.0f, 1.0f});
     }
 
-    // Item icon
     if (i < inventory.size() && inventory[i].Type != 0) {
       float iconPadding = 0.015f;
       float pX = iconPadding / this->runTimeRenderVars.aspect;
@@ -609,12 +569,10 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
               (float)BlockDef[inventory[i].Type].Textures[0]);
     }
 
-    // Block count
     if (i < inventory.size() && inventory[i].Type != 0 &&
         inventory[i].Amount > 1) {
       std::string amountStr = std::to_string(inventory[i].Amount);
       float textScale = 0.55f;
-      // Position more towards the bottom right of the slot
       float textX = xNDC + wNDC * 0.62f;
       float textY = yNDC + 0.008f;
       DrawText(amountStr, textX, textY, textScale, {1.0f, 1.0f, 1.0f});
@@ -628,31 +586,20 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
 
   UICrossHair();
   UIInventory(inventory, inventorySlot);
-  if (this->bingInventory)
-    UIBigInventory(inventory, inventorySlot);
+  if (this->bingInventory)  UIBigInventory(inventory, inventorySlot);
+  
+  void *mapData = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
+  if (mapData) {
+    SDL_memcpy(mapData, uiVars.uiVertices.data(), uiVars.uiVertices.size() * sizeof(Vertex));
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer);
 
-  // 1. Upload UI (Rects/Atlas)
-  if (!uiVars.uiVertices.empty()) {
-    void *mapData = SDL_MapGPUTransferBuffer(
-        this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
-    if (mapData) {
-      SDL_memcpy(mapData, uiVars.uiVertices.data(),
-                 uiVars.uiVertices.size() * sizeof(Vertex));
-      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                                 this->uiVars.UIVertexTransferBuffer);
-
-      SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
-      SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer,
-                                           0};
-      SDL_GPUBufferRegion dst = {
-          this->uiVars.UIVertexBuffer, 0,
-          (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
-      SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
-      SDL_EndGPUCopyPass(copyPass);
-    }
+    SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer, 0};
+    SDL_GPUBufferRegion dst = { this->uiVars.UIVertexBuffer, 0, (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
+    SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
+    SDL_EndGPUCopyPass(copyPass);
   }
 
-  // 2. Upload Text
   if (!uiVars.textVertices.empty()) {
     void *mapData = SDL_MapGPUTransferBuffer(
         this->basicInitVars.GPU, this->uiVars.textVertexTransferBuffer, true);
@@ -673,42 +620,34 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
     }
   }
 
-  // Draw passes
   SDL_GPUColorTargetInfo color_target_info;
   SDL_zero(color_target_info);
   color_target_info.texture = this->runTimeRenderVars.swap_texture;
   color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
   color_target_info.store_op = SDL_GPU_STOREOP_STORE;
 
-  SDL_GPURenderPass *pass =
-      SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
+  SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
 
-  // UI Pass
   if (!uiVars.uiVertices.empty()) {
     SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.uiPipeline);
     if (this->TextureAtlas && this->Sampler) {
-      SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                     this->Sampler};
+      SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas, this->Sampler};
       SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
     }
     SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
     SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
-    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.uiVertices.size(), 1, 0,
-                          0);
+    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.uiVertices.size(), 1, 0, 0);
   }
 
-  // Text Pass
   if (!uiVars.textVertices.empty() && this->pipelineInitVars.textPipeline) {
     SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.textPipeline);
     if (this->uiVars.fontTexture && this->uiVars.fontSampler) {
-      SDL_GPUTextureSamplerBinding samplerBinding = {this->uiVars.fontTexture,
-                                                     this->uiVars.fontSampler};
+      SDL_GPUTextureSamplerBinding samplerBinding = {this->uiVars.fontTexture, this->uiVars.fontSampler};
       SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
     }
     SDL_GPUBufferBinding vBinding = {this->uiVars.textVertexBuffer, 0};
     SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
-    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.textVertices.size(), 1, 0,
-                          0);
+    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.textVertices.size(), 1, 0, 0);
   }
 
   SDL_EndGPURenderPass(pass);
@@ -757,66 +696,39 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
   this->cachedVisibleChunks = visibleChunkList;
   return visibleChunkList;
 }
-
 void Renderer::DrawTerrain(Player &player) {
   // 1. Collect visible chunks
   std::vector<ChunkDistance> visibleChunks = SortChunks(player);
 
-  // 2. Prepare Opaque list (stable sort for buffer consistency)
-  // Only re-prepare if the set of visible chunks changed
-  bool setChanged = false;
-  if (visibleChunks.size() != this->lastVisibleChunks.size()) {
-    setChanged = true;
-  } else {
-    for (size_t i = 0; i < visibleChunks.size(); i++) {
-      if (visibleChunks[i].chunk != lastVisibleChunks[i]) {
-        setChanged = true;
-        break;
-      }
+  static std::vector<ChunkPrefab *>
+      bucketChunks[22]; // Static to persist for "current" check
+  std::vector<ChunkPrefab *> newBuckets[22];
+
+  // 2. Distribute visible chunks into stable buckets based on coordinates
+  for (auto &cd : visibleChunks) {
+    int bx = cd.chunk->xPos / 16;
+    int bz = cd.chunk->zPos / 16;
+    // Simple hash to distribute chunks stably across available opaque buffers
+    // (totalBuffers-1)
+    int bIdx = (std::abs(bx) * 7 + std::abs(bz)) % (this->totalBuffers - 1);
+    if (newBuckets[bIdx].size() < (size_t)chunksPerBuffer) {
+      newBuckets[bIdx].push_back(cd.chunk);
     }
   }
 
-  if (setChanged) {
-    opaqueChunks.clear();
-    lastVisibleChunks.clear();
-    opaqueChunks.reserve(visibleChunks.size());
-    lastVisibleChunks.reserve(visibleChunks.size());
-    for (auto &cd : visibleChunks) {
-      opaqueChunks.push_back(cd.chunk);
-      lastVisibleChunks.push_back(cd.chunk);
-    }
-
-    // Stable sort by coordinates to keep chunks in the same buffers
-    std::sort(opaqueChunks.begin(), opaqueChunks.end(),
-              [](ChunkPrefab *a, ChunkPrefab *b) {
-                if (a->xPos != b->xPos)
-                  return a->xPos < b->xPos;
-                return a->zPos < b->zPos;
-              });
-  }
-
-  // 3. Opaque Pass - Fill buffers 0 to totalBuffers-2 using stable chunks
-  int currentOpaqueIdx = 0;
+  // 3. Opaque Pass - Fill buffers 0 to totalBuffers-2 using stable buckets
   for (int bufferIdx = 0; bufferIdx < this->totalBuffers - 1; bufferIdx++) {
     auto *mesh = &this->Terrain[bufferIdx];
+    const std::vector<ChunkPrefab *> &newChunks = newBuckets[bufferIdx];
 
-    std::vector<ChunkPrefab *> newChunks;
     bool anyChunkDirty = false;
-
-    for (int i = 0;
-         i < chunksPerBuffer && currentOpaqueIdx < (int)opaqueChunks.size();
-         i++) {
-      ChunkPrefab *c = opaqueChunks[currentOpaqueIdx++];
-      newChunks.push_back(c);
+    for (auto *c : newChunks)
       if (c->needsMeshUpdate)
         anyChunkDirty = true;
-    }
 
-    // Check if buffer needs re-upload
-    bool setChanged = (newChunks != mesh->currentChunks);
-    if (!setChanged && !anyChunkDirty && !mesh->needsUpdate) {
-      // Buffer is up to date, but we still need to clear transparency from it
-      // if it had any from previous versions of the code
+    // Check if buffer needs re-upload - stable buckets mean most stay same
+    if (newChunks == mesh->currentChunks && !anyChunkDirty &&
+        !mesh->needsUpdate) {
       mesh->TransparentIndexCount = 0;
       continue;
     }
@@ -945,11 +857,18 @@ void Renderer::DrawTerrain(Player &player) {
   }
 
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
+  static std::vector<TransparentDrawnFace> cachedTransparentFaces;
+  static Vector3 lastSortPos;
+  static float lastSortRotY = -999.0f;
+
   std::vector<TransparentDrawnFace> transparentFaces;
   transparentFaces.reserve(500);
 
+  bool anyTransparentDirty = false;
   for (auto &cd : visibleChunks) {
     ChunkPrefab *chunk = cd.chunk;
+    if (chunk->needsMeshUpdate)
+      anyTransparentDirty = true;
     Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
     for (auto &face : chunk->allFaces) {
       if (face.Transparent) {
@@ -965,8 +884,25 @@ void Renderer::DrawTerrain(Player &player) {
 
   if (transparentFaces.empty()) {
     tMesh->TransparentIndexCount = 0;
+    cachedTransparentFaces.clear();
     return;
   }
+
+  // Optimize: Only re-sort and re-upload if player moved/rotated significantly
+  // or chunk changed
+  float moveDist = (player.Position - lastSortPos).LengthSquared();
+  float rotDist = std::abs(player.Rotation.y - lastSortRotY);
+  bool needsRebuild =
+      anyTransparentDirty ||
+      (transparentFaces.size() != cachedTransparentFaces.size()) ||
+      (moveDist > 0.5f) || (rotDist > 0.1f);
+
+  if (!needsRebuild && !tMesh->needsUpdate)
+    return;
+
+  lastSortPos = player.Position;
+  lastSortRotY = player.Rotation.y;
+  cachedTransparentFaces = transparentFaces;
 
   std::sort(
       transparentFaces.begin(), transparentFaces.end(),
@@ -1290,9 +1226,9 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
     }
     case SDL_EVENT_MOUSE_WHEEL: {
       if (this->basicInitVars.event.wheel.y > 0) {
-        inventorySlot = (inventorySlot + 7) % 8; // Previous
+        inventorySlot = (inventorySlot + 7) % 9; // Previous
       } else if (this->basicInitVars.event.wheel.y < 0) {
-        inventorySlot = (inventorySlot + 1) % 8; // Next
+        inventorySlot = (inventorySlot + 1) % 9; // Next
       }
       break;
     }
@@ -1424,7 +1360,8 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
         if (btn == SDL_BUTTON_LEFT && g_isLeftClickDragging) {
           if (!g_justPickedUp && g_heldItem.Type != 0) {
             if (g_draggedSlots.size() > 1) {
-              // Divide equally among unique slots that are not the result slot
+              // Divide equally among unique slots that are not the result
+              // slot
               std::vector<int> targetSlots;
               for (int sIdx : g_draggedSlots)
                 if (sIdx != 49)
