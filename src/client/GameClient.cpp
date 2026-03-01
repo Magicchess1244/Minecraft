@@ -166,14 +166,21 @@ void GameClient::listen() {
           size_t start = 0;
           size_t end = inv_str.find('|');
           int slotIdx = 0;
-          while (end != std::string::npos && slotIdx < 8) {
+          while (end != std::string::npos &&
+                 slotIdx < (int)players[0].inventory.size()) {
             std::string slot_info = inv_str.substr(start, end - start);
             size_t comma = slot_info.find(',');
             if (comma != std::string::npos) {
-              players[0].inventory[slotIdx].Type =
-                  static_cast<short>(std::stoi(slot_info.substr(0, comma)));
-              players[0].inventory[slotIdx].Amount =
-                  static_cast<short>(std::stoi(slot_info.substr(comma + 1)));
+              size_t second_comma = slot_info.find(',', comma + 1);
+              if (second_comma != std::string::npos) {
+                players[0].inventory[slotIdx].Type =
+                    static_cast<short>(std::stoi(slot_info.substr(0, comma)));
+                players[0].inventory[slotIdx].Amount =
+                    static_cast<short>(std::stoi(
+                        slot_info.substr(comma + 1, second_comma - comma - 1)));
+                players[0].inventory[slotIdx].isEntity =
+                    (slot_info.substr(second_comma + 1) == "1");
+              }
             }
             start = end + 1;
             end = inv_str.find('|', start);
@@ -200,19 +207,21 @@ void GameClient::sync_inventory() {
   auto &p = get_players()[0];
   std::string msg = "inv:";
   for (const auto &slot : p.inventory) {
-    msg += std::to_string(slot.Type) + "," + std::to_string(slot.Amount) + "|";
+    msg += std::to_string(slot.Type) + "," + std::to_string(slot.Amount) + "," +
+           (slot.isEntity ? "1" : "0") + "|";
   }
   this->sendCommand(msg);
 }
 
 // UI function
 namespace BitMiner {
-int FindSlot(std::vector<Slot> &Inventory, short Type) {
+int FindSlot(std::vector<Slot> &Inventory, short Type, bool isEntity) {
   int index = 0;
   if (Type == 0)
     return -1;
   for (Slot slot : Inventory) {
-    if ((slot.Type == Type || slot.Type == 0) && slot.Amount < 64) {
+    if ((slot.Type == Type && slot.isEntity == isEntity || slot.Type == 0) &&
+        slot.Amount < 64) {
       // std::cout << "Found slot" << index << std::endl;
       return index;
     }
@@ -389,16 +398,17 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
                           std::to_string(Ray.pos.y) + "/" +
                           std::to_string(Ray.pos.z) + ":0";
 
-        int slotIdx = FindSlot(inventory, BlockDef[Ray.BlockID].Drop);
+        int slotIdx = FindSlot(inventory, BlockDef[Ray.BlockID].Drop, false);
         if (slotIdx != -1) {
           if (inventory[slotIdx].Amount == 0) {
             inventory[slotIdx].Type = BlockDef[Ray.BlockID].Drop;
+            inventory[slotIdx].isEntity = false;
           }
           inventory[slotIdx].Amount++;
         }
         game.sendCommand(mod);
         game.sync_inventory();
-      } else if (!BlockDef[Ray.BlockID].hasUI){
+      } else if (!BlockDef[Ray.BlockID].hasUI) {
         Vector3 placePos = Ray.prevPos;
         bool collides = false;
 
@@ -410,7 +420,9 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
           }
         }
 
-        if (!collides && inventory[inventorySlot].Amount > 0) {
+        if (!collides && inventory[inventorySlot].Amount > 0 &&
+            !inventory[inventorySlot].isEntity &&
+            BlockDef[inventory[inventorySlot].Type].canPlace) {
           Uint8 type = inventory[inventorySlot].Type;
           inventory[inventorySlot].Amount--;
           if (inventory[inventorySlot].Amount == 0)
@@ -466,7 +478,8 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   } catch (...) {
     player.Inwater = false;
   }
-  if (renderer->UsingUI()) return;
+  if (renderer->UsingUI())
+    return;
 
   PlayerInput(playerDirection, OnGround, player.Inwater, inventorySlot,
               RotationDir, LeftClick, RightClick);

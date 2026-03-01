@@ -127,7 +127,8 @@ void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
                  std::to_string(p.Rotation.z) + "|";
           for (const auto &slot : p.inventory) {
             msg += std::to_string(slot.Type) + "," +
-                   std::to_string(slot.Amount) + "|";
+                   std::to_string(slot.Amount) + "," +
+                   (slot.isEntity ? "1" : "0") + "|";
           }
           msg += "\n";
 
@@ -192,14 +193,21 @@ void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
             size_t start = 0;
             size_t end = inv_str.find('|');
             int slotIdx = 0;
-            while (end != std::string::npos && slotIdx < 8) {
+            while (end != std::string::npos &&
+                   slotIdx < (int)players[id].inventory.size()) {
               std::string slot_info = inv_str.substr(start, end - start);
               size_t comma = slot_info.find(',');
               if (comma != std::string::npos) {
-                players[id].inventory[slotIdx].Type =
-                    static_cast<short>(std::stoi(slot_info.substr(0, comma)));
-                players[id].inventory[slotIdx].Amount =
-                    static_cast<short>(std::stoi(slot_info.substr(comma + 1)));
+                size_t second_comma = slot_info.find(',', comma + 1);
+                if (second_comma != std::string::npos) {
+                  players[id].inventory[slotIdx].Type =
+                      static_cast<short>(std::stoi(slot_info.substr(0, comma)));
+                  players[id].inventory[slotIdx].Amount =
+                      static_cast<short>(std::stoi(slot_info.substr(
+                          comma + 1, second_comma - comma - 1)));
+                  players[id].inventory[slotIdx].isEntity =
+                      (slot_info.substr(second_comma + 1) == "1");
+                }
               }
               start = end + 1;
               end = inv_str.find('|', start);

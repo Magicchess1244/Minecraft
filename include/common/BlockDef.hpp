@@ -7,11 +7,6 @@ struct BoundingBox {
   Vector3 max;
 };
 
-struct RecipeItem {
-  int blockID;
-  int amount;
-};
-
 struct Block {
   char Name[20];
   short Textures[6]; // Front, Back, Right, Left, Top, Bottom
@@ -23,9 +18,8 @@ struct Block {
   bool isWater;
   bool isSolid;
   bool isFullBlock;
+  bool canPlace;
 
-  RecipeItem recipe[9];
-  int recipeAmount;
   BoundingBox *collisionBoxes;
   std::pair<int, int> *Storage;
 };
@@ -42,8 +36,7 @@ const Block BlockDefinitions[] = {
      false,
      false,
      false,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     false,
      nullptr,
      nullptr},
     // 1: Grass
@@ -57,8 +50,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     // 2: Dirt
@@ -72,8 +64,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     // 3: Stone
@@ -87,8 +78,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     // 4: Bedrock
@@ -102,8 +92,8 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     false,
+     nullptr,
      nullptr},
     // 5: Water
     {"Water",
@@ -116,8 +106,7 @@ const Block BlockDefinitions[] = {
      true,
      false,
      false,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     false,
      nullptr,
      nullptr},
     // 6: Wood
@@ -131,8 +120,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     // 7: Leaves
@@ -146,8 +134,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     // 8: Sand
@@ -161,8 +148,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     // 9: Glowstone
@@ -176,8 +162,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Diamond",
@@ -190,8 +175,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Coal",
@@ -204,8 +188,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Redstone",
@@ -218,8 +201,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Iron",
@@ -232,8 +214,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Lapiz Lazuli",
@@ -246,8 +227,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Gold",
@@ -260,8 +240,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Emerald",
@@ -274,8 +253,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Copper",
@@ -288,8 +266,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Nederite",
@@ -302,8 +279,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Cobelstone",
@@ -316,8 +292,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Gravel",
@@ -330,8 +305,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Ice",
@@ -344,8 +318,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Snow",
@@ -358,8 +331,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     0,
+     true,
      nullptr,
      nullptr},
     {"Planks",
@@ -372,8 +344,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{6, 1}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
-     4,
+     true,
      nullptr,
      nullptr},
     {"Crafting Table",
@@ -386,16 +357,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {{23, 1},
-      {23, 1},
-      {0, 0},
-      {23, 1},
-      {23, 1},
-      {0, 0},
-      {0, 0},
-      {0, 0},
-      {0, 0}},
-     1,
+     true,
      nullptr,
      nullptr},
     {"Furnace",
@@ -408,17 +370,7 @@ const Block BlockDefinitions[] = {
      false,
      true,
      true,
-     {
-      {19, 1},
-      {19, 1},
-      {19, 1},
-      {19, 1},
-      {0, 0},
-      {19, 1},
-      {19, 1},
-      {19, 1},
-      {19, 1}},
-     1,
+     true,
      nullptr,
      nullptr},
 };
