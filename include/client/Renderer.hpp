@@ -144,7 +144,7 @@ struct Frustum {
   // Check if an axis-aligned bounding box (AABB) is inside or intersecting the
   // frustum Uses the "p-vertex/n-vertex" test for each plane
   bool isChunkInFrustum(const Vector3 &minPoint, const Vector3 &maxPoint,
-                        float tolerance = 5.0f) const {
+                        float tolerance = 10.0f) const {
     const Plane *const planes[6] = {&nearFace,  &farFace, &leftFace,
                                     &rightFace, &topFace, &bottomFace};
 

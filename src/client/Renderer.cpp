@@ -11,6 +11,8 @@
 #include <ostream>
 #include <vector>
 
+constexpr Uint32 FacesPerChunk = 2100;
+
 Slot g_heldItem = {0, 0};
 std::vector<int> g_draggedSlots;
 bool g_isRightClickDragging = false;
@@ -239,10 +241,10 @@ void Renderer::DrawText(const std::string &text, float x, float y, float scale,
     float uvX1 = (float)idx / (float)numChars;
     float uvX2 = (float)(idx + 1) / (float)numChars;
 
-    float padding = 0.0001f;
+    float padding = 0.0008f;
     AddTextRect(currentX, y, charW, charH, {uvX1 + padding, 0.0f},
                 {uvX2 - padding, 1.0f}, color);
-    currentX += charW * 0.85f;
+    currentX += charW * 1.2f;
   }
 }
 void Renderer::UICrossHair() {
@@ -803,8 +805,8 @@ void Renderer::DrawTerrain(Player &player) {
 
     size_t currentVertexOffset = 0;
     size_t currentIndexOffset = 0;
-    const size_t maxVertices = chunksPerBuffer * 4 * 2100;
-    const size_t maxIndices = chunksPerBuffer * 6 * 2100;
+    const size_t maxVertices = chunksPerBuffer * 4 * FacesPerChunk;
+    const size_t maxIndices = chunksPerBuffer * 6 * FacesPerChunk;
 
     for (auto *chunk : newChunks) {
       Vector3 chunkPosKey = {(float)chunk->xPos / (float)ChunkPrefab::xSize, 0,
@@ -850,10 +852,18 @@ void Renderer::DrawTerrain(Player &player) {
               v.z *= fh;
               uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
             }
-            cache.vertices.push_back(
-                {v + worldPos, faceColor, uv,
-                 (float)BlockDef[face.blockID].Textures[face.side],
-                 (float)face.LightLevel});
+            Vertex vert;
+            vert.Position = worldPos + v;
+            vert.Color = faceColor;
+            vert.UV = uv;
+            vert.BlockID =
+                (float)BlockDef[face.blockID]
+                    .Textures[face.side]; // shader location 3 maps to offset 8
+            vert.TileID =
+                (float)face.LightLevel; // shader location 4 maps to offset 9
+            vert.LightLevel =
+                (float)face.LightLevel; // consistent with the above for safety
+            cache.vertices.push_back(vert);
           }
           cache.indices.push_back(baseV + 0);
           cache.indices.push_back(baseV + 2);
@@ -871,7 +881,7 @@ void Renderer::DrawTerrain(Player &player) {
 
       if (currentVertexOffset + cache.vertices.size() > maxVertices ||
           currentIndexOffset + cache.indices.size() > maxIndices)
-        break;
+        continue;
 
       memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
              cache.vertices.size() * sizeof(Vertex));
@@ -968,12 +978,12 @@ void Renderer::DrawTerrain(Player &player) {
   if (vData && iData) {
     size_t vOffset = 0;
     size_t iOffset = 0;
-    const size_t maxV = chunksPerBuffer * 4 * 2100;
-    const size_t maxI = chunksPerBuffer * 6 * 2100;
+    const size_t maxV = chunksPerBuffer * 4 * FacesPerChunk;
+    const size_t maxI = chunksPerBuffer * 6 * FacesPerChunk;
 
     for (auto &face : transparentFaces) {
       if (vOffset + 4 > maxV || iOffset + 12 > maxI)
-        break;
+        continue;
 
       Vector3 faceColor =
           Vector3(1.0f, 1.0f, 1.0f) - Colors[(int)(face.side)].ToFloat();
@@ -998,9 +1008,15 @@ void Renderer::DrawTerrain(Player &player) {
           v.z *= fh;
           uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
         }
-        vData[vOffset + j] = {v + face.blockPos, faceColor, uv,
-                              (float)BlockDef[face.blockID].Textures[face.side],
-                              (float)face.light};
+        Vertex vert;
+        vert.Position = v + face.blockPos;
+        vert.Color = faceColor;
+        vert.UV = uv;
+        vert.BlockID =
+            (float)BlockDef[face.blockID].Textures[face.side]; // Location 3
+        vert.TileID = (float)face.light;                       // Location 4
+        vert.LightLevel = (float)face.light;
+        vData[vOffset + j] = vert;
       }
 
       if (face.blockID == 5) { // Water (double sided)
@@ -1681,8 +1697,8 @@ void Renderer::GenerateBuffer() {
                        1; // +1 for dedicated transparency
 
   // Each buffer now holds multiple chunks
-  constexpr Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * 2100;
-  constexpr Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * 2100;
+  const Uint32 singleChunkVertexSize = sizeof(Vertex) * 4 * FacesPerChunk;
+  const Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * FacesPerChunk;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
   const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
 

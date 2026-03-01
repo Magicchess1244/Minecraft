@@ -41,13 +41,14 @@ void main()
 
   vec3 finalColor = v_color.rgb * texColor.rgb;
 
-  float lightLevel = clamp(v_light / 14.0, 0.06, 1.0);
-  finalColor *= lightLevel;
   if (v_blockID == 5) {
     // Water
     finalColor = mix(finalColor, vec3(0.0, 0.3, 0.7), 0.5); // Stronger blue
     alpha = 0.6;
   }
+
+  float lightLevel = clamp(v_light / 14.0, 0.06, 1.0);
+  finalColor *= lightLevel;
   
   float dist = v_pos.z;
   float fogFactor = clamp((dist - NearFog) / (FarFog - NearFog), 0.0, 1.0);

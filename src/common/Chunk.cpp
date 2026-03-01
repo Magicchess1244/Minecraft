@@ -32,14 +32,16 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
   int localY = worldY;
   int localZ = worldZ - zPos;
 
-  if (isValidPos(localX, localY, localZ) && !blocks.empty()) {
+  if (isValidPos(localX, localY, localZ)) {
+    if (blocks.empty())
+      return false;
     Uint8 blockID = blocks[localX + localY * ChunkPrefab::xSize +
                            localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
     return blockID != 0 && BlockDef[blockID].isSolid;
   }
 
-  Uint8 blockID = GetBlockID(worldX, worldY, worldZ, terrainHeight);
-  return blockID != 0 && BlockDef[blockID].isSolid;
+  // If outside this chunk, use manager's global check
+  return manager->IsSolid({(float)worldX, (float)worldY, (float)worldZ});
 }
 
 Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
@@ -48,20 +50,15 @@ Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
   int localY = worldY;
   int localZ = worldZ - zPos;
 
-  if (isValidPos(localX, localY, localZ) && !blocks.empty()) {
+  if (isValidPos(localX, localY, localZ)) {
+    if (blocks.empty())
+      return 0;
     return blocks[localX + localY * ChunkPrefab::xSize +
                   localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
   }
 
-  // Priority 1: User modifications (placing/breaking)
-  Uint8 Modifications =
-      manager->GetMod({(float)worldX, (float)worldY, (float)worldZ});
-  if (Modifications != 255) {
-    return Modifications;
-  }
-  int idx = localX + localY * ChunkPrefab::xSize +
-            localZ * ChunkPrefab::xSize * ChunkPrefab::ySize;
-  return this->blocks[idx];
+  // For neighbor queries during generation or meshing, fall back to manager
+  return manager->GetBlockID({(float)worldX, (float)worldY, (float)worldZ});
 }
 
 void ChunkPrefab::GenerateChunk(ChunkManager &manager) {

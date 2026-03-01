@@ -11,8 +11,8 @@ void main() {
     float alpha = texture(texSampler, v_uv).a;
     
     // Sample neighbors for a 1px outline
-    // The atlas is 10 digits wide, so step is roughly 1/17 per digit
-    vec2 step = vec2(0.1, 0.1); 
+    vec2 texSize = textureSize(texSampler, 0);
+    vec2 step = 1.0 / texSize; 
     
     float outline = 0.0;
     outline = max(outline, texture(texSampler, v_uv + vec2(step.x, 0.0)).a);
