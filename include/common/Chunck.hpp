@@ -30,12 +30,13 @@ struct LightData {
 
 class ChunkPrefab {
 public:
-  static constexpr Uint8 xSize = 16;
-  static constexpr Uint8 zSize = 16;
-  static constexpr Uint8 ySize = 128;
+  static constexpr int xSize = 16;
+  static constexpr int zSize = 16;
+  static constexpr int ySize = 192;
+  static constexpr int SeaLevel = 64;
   static constexpr float Frecuence = 0.03f;
-  static constexpr Uint8 BaseHeight = 35;
-  static constexpr Uint8 HeightVar = 30;
+  static constexpr int BaseHeight = 64;
+  static constexpr int HeightVar = 40;
 
   int xPos = -1;
   int zPos = -1;
@@ -64,6 +65,19 @@ private:
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Biome> &biomeMap,
                           std::vector<bool> &solidCache);
+
+  // Tree models
+  void PlaceStandardTree(int x, int y, int z, int trunkHeight,
+                         std::vector<bool> &solidCache);
+  void PlacePineTree(int x, int y, int z, int trunkHeight,
+                     std::vector<bool> &solidCache);
+  void PlaceLargeTree(int x, int y, int z, int trunkHeight,
+                      std::vector<bool> &solidCache);
+  void PlaceSavannaTree(int x, int y, int z, int trunkHeight,
+                        std::vector<bool> &solidCache);
+  void PlaceJungleTree(int x, int y, int z, int trunkHeight,
+                       std::vector<bool> &solidCache);
+
   Uint8 GetCombinedLight(int x, int y, int z);
 };
 

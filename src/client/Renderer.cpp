@@ -219,26 +219,30 @@ void Renderer::DrawText(const std::string &text, float x, float y, float scale,
   if (text.empty())
     return;
 
+  static const char *fontChars =
+      " 0123456789:.XYZ/-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  static const int numChars = (int)strlen(fontChars);
+
   float currentX = x;
-  // Font atlas (0-9) is 170x30, so each digit is ~17x30 pixels.
-  // Native ratio = 17 / 30 = 0.566
-  float fontAspectRatio = 0.566f;
+  float fontAspectRatio = 0.5f; // Adjusted for variable width font in atlas
   float baseCharSize = 0.08f * scale;
   float charW =
       (baseCharSize * fontAspectRatio) / this->runTimeRenderVars.aspect;
   float charH = baseCharSize;
 
   for (char c : text) {
-    if (c >= '0' && c <= '9') {
-      int idx = c - '0';
-      float uvX1 = (float)idx / 10.0f;
-      float uvX2 = (float)(idx + 1) / 10.0f;
+    const char *ptr = strchr(fontChars, c);
+    if (!ptr)
+      continue;
 
-      float padding = 0.001f;
-      AddTextRect(currentX, y, charW, charH, {uvX1 + padding, 0.0f},
-                  {uvX2 - padding, 1.0f}, color);
-      currentX += charW * 0.9f; // Kerning (90% width)
-    }
+    int idx = (int)(ptr - fontChars);
+    float uvX1 = (float)idx / (float)numChars;
+    float uvX2 = (float)(idx + 1) / (float)numChars;
+
+    float padding = 0.0001f;
+    AddTextRect(currentX, y, charW, charH, {uvX1 + padding, 0.0f},
+                {uvX2 - padding, 1.0f}, color);
+    currentX += charW * 0.85f;
   }
 }
 void Renderer::UICrossHair() {
@@ -575,8 +579,36 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
     }
   }
 }
+void Renderer::UIDebug(Player &player) {
+  if (!this->showDebug)
+    return;
+
+  float startX = -0.98f;
+  float startY = 0.95f;
+  float lineStep = 0.08f;
+  float scale = 0.8f;
+
+  char buf[256];
+  // Coordinates
+  SDL_snprintf(buf, sizeof(buf), "XYZ: %.3f / %.3f / %.3f", player.Position.x,
+               player.Position.y, player.Position.z);
+  DrawText(buf, startX, startY, scale, {1, 1, 1});
+
+  // Rotation
+  SDL_snprintf(buf, sizeof(buf), "ROT: %.1f / %.1f", player.Rotation.x,
+               player.Rotation.y);
+  DrawText(buf, startX, startY - lineStep, scale, {1, 1, 1});
+
+  // Chunks
+  int cx = (int)floor(player.Position.x / 16.0f);
+  int cz = (int)floor(player.Position.z / 16.0f);
+  SDL_snprintf(buf, sizeof(buf), "Chunk: %d / %d", cx, cz);
+  DrawText(buf, startX, startY - lineStep * 2.0f, scale, {1, 1, 1});
+}
+
 void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
-                      const std::vector<Slot> &inventory, int inventorySlot) {
+                      const std::vector<Slot> &inventory, int inventorySlot,
+                      Player &player) {
   this->uiVars.uiVertices.clear();
   this->uiVars.textVertices.clear();
 
@@ -584,6 +616,8 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
   UIInventory(inventory, inventorySlot);
   if (this->bigInventory)
     UIBigInventory(inventory, inventorySlot);
+
+  UIDebug(player);
 
   void *mapData = SDL_MapGPUTransferBuffer(
       this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
@@ -661,7 +695,9 @@ void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
   SDL_EndGPURenderPass(pass);
 }
 std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
-  Vector3 PlayerChunk = (player.Position / 16).Truncate();
+  Vector3 PlayerChunk = {
+      (float)floor(player.Position.x / (float)ChunkPrefab::xSize), 0,
+      (float)floor(player.Position.z / (float)ChunkPrefab::zSize)};
   PlayerChunk.y = 0;
 
   float rotDiff = (player.Rotation - lastRot).LengthSquared();
@@ -685,17 +721,22 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player) {
     Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
     ChunkPos += PlayerChunk;
 
-    Vector3 Min = {ChunkPos.x * ChunkPrefab::xSize, 0,
-                   ChunkPos.z * ChunkPrefab::zSize};
-    Vector3 Max = {(ChunkPos.x + 1) * ChunkPrefab::xSize, ChunkPrefab::ySize,
-                   (ChunkPos.z + 1) * ChunkPrefab::zSize};
+    Vector3 Min = {ChunkPos.x * (float)ChunkPrefab::xSize, 0,
+                   ChunkPos.z * (float)ChunkPrefab::zSize};
+    Vector3 Max = {(ChunkPos.x + 1) * (float)ChunkPrefab::xSize,
+                   (float)ChunkPrefab::ySize,
+                   (ChunkPos.z + 1) * (float)ChunkPrefab::zSize};
 
     if (!frustum.isChunkInFrustum(Min, Max))
       continue;
 
     ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
 
-    Vector3 chunkCenter = ChunkPos * 16.0f + Vector3(8, 0, 8);
+    Vector3 chunkCenter = {ChunkPos.x * (float)ChunkPrefab::xSize +
+                               (float)ChunkPrefab::xSize / 2.0f,
+                           (float)ChunkPrefab::ySize / 2.0f,
+                           ChunkPos.z * (float)ChunkPrefab::zSize +
+                               (float)ChunkPrefab::zSize / 2.0f};
     float d2 = (chunkCenter - player.Position).LengthSquared();
 
     visibleChunkList.push_back({&chunk, d2});
@@ -714,8 +755,8 @@ void Renderer::DrawTerrain(Player &player) {
 
   // 2. Distribute visible chunks into stable buckets based on coordinates
   for (auto &cd : visibleChunks) {
-    int bx = cd.chunk->xPos / 16;
-    int bz = cd.chunk->zPos / 16;
+    int bx = cd.chunk->xPos / ChunkPrefab::xSize;
+    int bz = cd.chunk->zPos / ChunkPrefab::zSize;
     // Simple hash to distribute chunks stably across available opaque buffers
     // (totalBuffers-1)
     int bIdx = (std::abs(bx) * 7 + std::abs(bz)) % (this->totalBuffers - 1);
@@ -766,8 +807,8 @@ void Renderer::DrawTerrain(Player &player) {
     const size_t maxIndices = chunksPerBuffer * 6 * 2100;
 
     for (auto *chunk : newChunks) {
-      Vector3 chunkPosKey = {(float)chunk->xPos / 16, 0,
-                             (float)chunk->zPos / 16};
+      Vector3 chunkPosKey = {(float)chunk->xPos / (float)ChunkPrefab::xSize, 0,
+                             (float)chunk->zPos / (float)ChunkPrefab::zSize};
 
       if (chunk->needsMeshUpdate ||
           opaqueMeshCache.find(chunkPosKey) == opaqueMeshCache.end()) {
@@ -1449,6 +1490,8 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
 
         // Update screen size immediately
         UpdateViewportAndProjection();
+      } else if (key == SDL_SCANCODE_F3) {
+        this->showDebug = !this->showDebug;
       } else if (key == SDL_SCANCODE_E) {
         this->OpenInventory(false);
       }
@@ -1477,7 +1520,8 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
 
   DrawBg(players);
 
-  DrawUI(this->runTimeRenderVars.cmdRender, inventory, inventorySlot);
+  DrawUI(this->runTimeRenderVars.cmdRender, inventory, inventorySlot,
+         players[0]);
 
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
     std::cout << "Failed to submit render command buffer\n";
@@ -1855,9 +1899,11 @@ void Renderer::LoadTexture() {
   }
   SDL_Log("Loaded font: %s", fullFontPath);
 
-  // Create digit atlas (0-9)
-  SDL_Surface *digitSurface = TTF_RenderText_Blended(uiVars.font, "0123456789",
-                                                     10, {255, 255, 255, 255});
+  // Create font atlas (Alphanumeric + basic symbols)
+  const char *fontChars =
+      " 0123456789:.XYZ/-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  SDL_Surface *digitSurface =
+      TTF_RenderText_Blended(uiVars.font, fontChars, 0, {255, 255, 255, 255});
   if (digitSurface) {
     SDL_Log("Digit surface created: %dx%d, format: %s", digitSurface->w,
             digitSurface->h, SDL_GetPixelFormatName(digitSurface->format));

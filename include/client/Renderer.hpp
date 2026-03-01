@@ -309,6 +309,7 @@ private:
   bool fullScreen = false;
   bool bigInventory = false;
   bool isCraftingTable = false;
+  bool showDebug = false;
   Frustum frustum;
   std::vector<Mesh> Terrain;
   int chunksPerBuffer = 25, totalBuffers = 0;
@@ -450,10 +451,11 @@ public:
   };
 
   void Stats(Player &player);
+  void UIDebug(Player &player);
   void DrawBg(std::vector<Player> &players);
   void DrawPlayers(std::vector<Player> &players);
   void DrawUI(SDL_GPUCommandBuffer *cmd, const std::vector<Slot> &inventory,
-              int inventorySlot);
+              int inventorySlot, Player &player);
 
   void MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
                       std::vector<Player> &players);

@@ -7,7 +7,7 @@
 
 constexpr float CaveThreshold = -0.18f;
 constexpr int CaveMinY = 5;
-constexpr int CaveMaxY = 50;
+constexpr int CaveMaxY = 100;
 
 const Vector3 Direction[6] = {
     {0, 0, 1},  // Front
@@ -17,8 +17,6 @@ const Vector3 Direction[6] = {
     {0, 1, 0},  // Top
     {0, -1, 0}  // Bottom
 };
-
-// Local spline constants removed as they are now in ChunkManager.cpp
 
 int ChunkPrefab::GetHeight(Vector2 Pos) {
   float cont = PerlinNoise2D(Pos, 3, 0.005); // Lowered period
@@ -35,7 +33,8 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
   int localZ = worldZ - zPos;
 
   if (isValidPos(localX, localY, localZ) && !blocks.empty()) {
-    Uint8 blockID = blocks[localX + localY * xSize + localZ * xSize * ySize];
+    Uint8 blockID = blocks[localX + localY * ChunkPrefab::xSize +
+                           localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
     return blockID != 0 && BlockDef[blockID].isSolid;
   }
 
@@ -50,7 +49,8 @@ Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
   int localZ = worldZ - zPos;
 
   if (isValidPos(localX, localY, localZ) && !blocks.empty()) {
-    return blocks[localX + localY * xSize + localZ * xSize * ySize];
+    return blocks[localX + localY * ChunkPrefab::xSize +
+                  localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
   }
 
   // Priority 1: User modifications (placing/breaking)
@@ -68,13 +68,26 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   this->manager = &manager;
   this->allFaces.clear();
 
-  if (this->blocks.size() != (size_t)xSize * ySize * zSize) {
-    this->blocks.assign(xSize * ySize * zSize, 0);
+  if (this->blocks.size() !=
+      (size_t)ChunkPrefab::xSize * ChunkPrefab::ySize * ChunkPrefab::zSize) {
+    this->blocks.assign(
+        ChunkPrefab::xSize * ChunkPrefab::ySize * ChunkPrefab::zSize, 0);
   }
 
   std::vector<int> heightCache((xSize + 2) * (zSize + 2));
   std::vector<Biome> biomeCache(xSize * zSize);
   std::vector<bool> solidCache(xSize * ySize * zSize, false);
+
+  std::vector<float> caveTrCache(ySize);
+  std::vector<float> coalChCache(ySize);
+  std::vector<float> ironChCache(ySize);
+  std::vector<float> diamChCache(ySize);
+  for (int y = 0; y < (int)ySize; y++) {
+    caveTrCache[y] = GetCaveThreshold((float)y);
+    coalChCache[y] = GetCoalChance((float)y);
+    ironChCache[y] = GetIronChance((float)y);
+    diamChCache[y] = GetDiamondChance((float)y);
+  }
 
   // Unified generation loop: iterates over all columns including padding for
   // heightmap
@@ -95,10 +108,24 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
       if (isValidPos(x, 0, z)) {
         // 2. Determine Biome
         float hum = PerlinNoise2D(
-            {(float)worldX * 0.015f, (float)worldZ * 0.015f}, 2, 0.5f);
+            {(float)worldX * 0.02f, (float)worldZ * 0.02f}, 2, 0.5f);
         float temp = PerlinNoise2D(
-            {(float)worldX * 0.015f + 500.0f, (float)worldZ * 0.015f + 500.0f},
-            2, 0.5f);
+            {(float)worldX * 0.02f + 500.0f, (float)worldZ * 0.02f + 500.0f}, 2,
+            0.5f);
+
+        // Height-based temperature (lapse rate)
+        float seaLevel = (float)ChunkPrefab::SeaLevel;
+        float heightFactor = (float)(terrainHeight - seaLevel) /
+                             (float)(ChunkPrefab::ySize - seaLevel);
+        if (heightFactor > 0.0f) {
+          temp -= heightFactor * 1.0f;
+          temp = SDL_clamp(temp, -1.0f, 1.0f);
+        }
+
+        // Apply contrast for more variety
+        hum = (hum > 0) ? pow(hum, 0.7f) : -pow(-hum, 0.7f);
+        temp = (temp > 0) ? pow(temp, 0.7f) : -pow(-temp, 0.7f);
+
         Biome biome =
             manager.GetBiome((hum + 1.0f) * 50.0f, (temp + 1.0f) * 50.0f);
         biomeCache[x + z * xSize] = biome;
@@ -108,10 +135,17 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
           surfaceBlockID = 8; // Sand
         else if (biome.Type == BiomeType::Savanna)
           surfaceBlockID = 2; // Dirt
+        else if (biome.Type == BiomeType::Ice)
+          surfaceBlockID = 21;
+        else if (biome.Type == BiomeType::Tundra ||
+                 biome.Type == BiomeType::BigTaiga ||
+                 biome.Type == BiomeType::Taiga)
+          surfaceBlockID = 22;
 
         // 3. Populate Vertical Blocks
-        for (int y = 0; y < (int)ySize; y++) {
-          int idx = x + y * xSize + z * xSize * ySize;
+        for (int y = 0; y < (int)ChunkPrefab::ySize; y++) {
+          int idx = x + y * ChunkPrefab::xSize +
+                    z * ChunkPrefab::xSize * ChunkPrefab::ySize;
           Uint8 blockID = 0;
           bool isSolid = false;
 
@@ -125,18 +159,18 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
               blockID = 4; // Bedrock
               isSolid = true;
             } else if (y <= terrainHeight) {
-              const int seaLevel = 35;
+              const int seaLevelInt = ChunkPrefab::SeaLevel;
               bool isCave = false;
 
               // Priority 2: Caves
               if (y >= CaveMinY && y <= CaveMaxY) {
                 float n1 = PerlinNoise({(float)worldX * 0.08f, (float)y * 0.08f,
                                         (float)worldZ * 0.08f},
-                                       2, 0.5f);
+                                       1, 0.5f);
                 float n2 = PerlinNoise({(float)worldX * 0.1f + 100.0f,
                                         (float)y * 0.1f, (float)worldZ * 0.1f},
-                                       2, 0.5f);
-                if ((n1 * n1 + n2 * n2) < GetCaveThreshold((float)y))
+                                       1, 0.5f);
+                if ((n1 * n1 + n2 * n2) < caveTrCache[y])
                   isCave = true;
               }
 
@@ -145,18 +179,18 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
                 isSolid = false;
               } else {
                 isSolid = true;
-                const int beachLevel = 37;
+                const int beachLevel = ChunkPrefab::SeaLevel + 2;
                 bool isBeach = (terrainHeight <= beachLevel &&
                                 terrainHeight >= beachLevel - 3 && cont < 0.1f);
-                bool isUnderwaterFloor = (terrainHeight < seaLevel);
+                bool isUnderwaterFloor = (terrainHeight < seaLevelInt);
 
                 if (terrainHeight - y > 3) {
                   blockID = 3; // Stone
                   float Ore = std::abs(PerlinNoise(
-                      {(float)worldX, (float)y, (float)worldZ}, 3, 0.05f));
-                  float coalChance = GetCoalChance((float)y);
-                  float ironChance = GetIronChance((float)y);
-                  float diamondChance = GetDiamondChance((float)y);
+                      {(float)worldX, (float)y, (float)worldZ}, 1, 0.05f));
+                  float coalChance = coalChCache[y];
+                  float ironChance = ironChCache[y];
+                  float diamondChance = diamChCache[y];
                   if (Ore > 0.25f && Ore < 0.25f + coalChance)
                     blockID = 11;
                   else if (Ore > 0.4f && Ore < 0.4f + ironChance)
@@ -166,12 +200,19 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
                 } else if (isUnderwaterFloor || isBeach)
                   blockID = 8; // Sand
                 else if (terrainHeight - y > 0)
-                  blockID = 2; // Dirt
+                  if (surfaceBlockID == 22 || surfaceBlockID == 8)
+                    blockID = 3;
+                  else
+                    blockID = 2; // Dirt
                 else
                   blockID = surfaceBlockID;
               }
-            } else if (y < 35) { // Below sea level but above terrain
-              blockID = 5;       // Water
+            } else if (y == ChunkPrefab::SeaLevel - 1 &&
+                       biome.Type == BiomeType::Ice) {
+              blockID = 21;
+            } else if (y < ChunkPrefab::SeaLevel) { // Below sea level but above
+                                                    // terrain
+              blockID = 5;                          // Water
               isSolid = false;
             }
           }
@@ -191,6 +232,7 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   needsMeshUpdate = true;
   allFaces.shrink_to_fit();
 }
+
 void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
                                      const std::vector<Biome> &biomeMap,
                                      std::vector<bool> &solidCache) {
@@ -246,8 +288,8 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
             this->blocks[idx] == 2) { // On Grass or Dirt
           // Proximity check: don't place if there's wood nearby
           bool tooClose = false;
-          for (int dx = -3; dx <= 3; dx++) {
-            for (int dz = -3; dz <= 3; dz++) {
+          for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
               if (dx == 0 && dz == 0)
                 continue;
               int nx = x + dx;
@@ -279,38 +321,172 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
           int trunkHeight = 4 + (int)((treeNoise - treeChanceThreshold) * 6.0f);
           if (trunkHeight > 10)
             trunkHeight = 10;
-          for (int ty = 1; ty <= trunkHeight; ty++) {
-            if (height + ty < ySize) {
-              int tidx = x + (height + ty) * xSize + z * xSize * ySize;
-              // Check manager directly instead of using a 3D cache for the
-              // WHOLE chunk
-              if (manager->GetMod({(float)worldX, (float)(height + ty),
-                                   (float)worldZ}) == 255) {
-                solidCache[tidx] = true;
-                this->blocks[tidx] = 6; // Wood
-              }
+
+          if (biome.Type == BiomeType::Taiga ||
+              biome.Type == BiomeType::Tundra) {
+            PlacePineTree(x, height, z, trunkHeight, solidCache);
+          } else if (biome.Type == BiomeType::BigTaiga ||
+                     biome.Type == BiomeType::DarkForest) {
+            PlaceLargeTree(x, height, z, trunkHeight, solidCache);
+          } else if (biome.Type == BiomeType::Jungle) {
+            PlaceJungleTree(x, height, z, trunkHeight, solidCache);
+          } else if (biome.Type == BiomeType::Savanna) {
+            PlaceSavannaTree(x, height, z, trunkHeight, solidCache);
+          } else if (biome.Type == BiomeType::Ice ||
+                     biome.Type == BiomeType::Desert) {
+            // No trees
+          } else {
+            PlaceStandardTree(x, height, z, trunkHeight, solidCache);
+          }
+        }
+      }
+    }
+  }
+}
+
+void ChunkPrefab::PlaceStandardTree(int x, int y, int z, int trunkHeight,
+                                    std::vector<bool> &solidCache) {
+  for (int ty = 1; ty <= trunkHeight; ty++) {
+    if (isValidPos(x, y + ty, z)) {
+      int tidx = x + (y + ty) * xSize + z * xSize * ySize;
+      if (manager->GetMod(
+              {(float)(xPos + x), (float)(y + ty), (float)(zPos + z)}) == 255) {
+        this->blocks[tidx] = 6; // Wood
+        solidCache[tidx] = true;
+      }
+    }
+  }
+  for (int ly = trunkHeight - 1; ly <= trunkHeight + 1; ly++) {
+    for (int lx = -2; lx <= 2; lx++) {
+      for (int lz = -2; lz <= 2; lz++) {
+        int nx = x + lx, ny = y + ly, nz = z + lz;
+        if (isValidPos(nx, ny, nz)) {
+          int lidx = nx + ny * xSize + nz * xSize * ySize;
+          if (this->blocks[lidx] == 0 &&
+              manager->GetMod(
+                  {(float)(xPos + nx), (float)ny, (float)(zPos + nz)}) == 255) {
+            if (lx * lx + lz * lz + (ly - trunkHeight) * (ly - trunkHeight) <=
+                5) {
+              solidCache[lidx] = true;
+              this->blocks[lidx] = 7; // Leaves
             }
           }
-          for (int ly = trunkHeight - 1; ly <= trunkHeight + 1; ly++) {
-            for (int lx = -2; lx <= 2; lx++) {
-              for (int lz = -2; lz <= 2; lz++) {
-                int nx = x + lx, ny = height + ly, nz = z + lz;
-                if (nx >= 0 && nx < xSize && ny >= 0 && ny < ySize && nz >= 0 &&
-                    nz < zSize) {
-                  int lidx = nx + ny * xSize + nz * xSize * ySize;
-                  if (this->blocks[lidx] == 0 &&
-                      manager->GetMod({(float)(xPos + nx), (float)ny,
-                                       (float)(zPos + nz)}) == 255) {
-                    if (lx * lx + lz * lz +
-                            (ly - trunkHeight) * (ly - trunkHeight) <=
-                        5) {
-                      solidCache[lidx] = true;
-                      this->blocks[lidx] = 7; // Leaves
-                    }
-                  }
-                }
-              }
+        }
+      }
+    }
+  }
+}
+
+void ChunkPrefab::PlacePineTree(int x, int y, int z, int trunkHeight,
+                                std::vector<bool> &solidCache) {
+  trunkHeight = (trunkHeight < 6) ? 6 : trunkHeight;
+  for (int ty = 1; ty <= trunkHeight; ty++) {
+    if (isValidPos(x, y + ty, z)) {
+      int tidx = x + (y + ty) * xSize + z * xSize * ySize;
+      this->blocks[tidx] = 6;
+      solidCache[tidx] = true;
+    }
+  }
+  for (int ly = 2; ly <= trunkHeight + 1; ly++) {
+    int radius = (ly < trunkHeight - 2) ? 2 : (ly < trunkHeight) ? 1 : 0;
+    if (ly % 2 == 0 || ly == trunkHeight + 1) { // Layered spruce style
+      for (int lx = -radius; lx <= radius; lx++) {
+        for (int lz = -radius; lz <= radius; lz++) {
+          int nx = x + lx, ny = y + ly, nz = z + lz;
+          if (isValidPos(nx, ny, nz)) {
+            int lidx = nx + ny * xSize + nz * xSize * ySize;
+            if (this->blocks[lidx] == 0) {
+              this->blocks[lidx] = 7;
+              solidCache[lidx] = true;
             }
+          }
+        }
+      }
+    }
+  }
+}
+
+void ChunkPrefab::PlaceLargeTree(int x, int y, int z, int trunkHeight,
+                                 std::vector<bool> &solidCache) {
+  trunkHeight += 2;
+  for (int ty = 1; ty <= trunkHeight; ty++) {
+    if (isValidPos(x, y + ty, z)) {
+      int tidx = x + (y + ty) * xSize + z * xSize * ySize;
+      this->blocks[tidx] = 6;
+      solidCache[tidx] = true;
+    }
+  }
+  for (int ly = trunkHeight - 3; ly <= trunkHeight + 2; ly++) {
+    int r = (ly > trunkHeight) ? 1 : 3;
+    for (int lx = -r; lx <= r; lx++) {
+      for (int lz = -r; lz <= r; lz++) {
+        if (lx * lx + lz * lz > r * r + 1)
+          continue;
+        int nx = x + lx, ny = y + ly, nz = z + lz;
+        if (isValidPos(nx, ny, nz)) {
+          int lidx = nx + ny * xSize + nz * xSize * ySize;
+          if (this->blocks[lidx] == 0) {
+            this->blocks[lidx] = 7;
+            solidCache[lidx] = true;
+          }
+        }
+      }
+    }
+  }
+}
+
+void ChunkPrefab::PlaceSavannaTree(int x, int y, int z, int trunkHeight,
+                                   std::vector<bool> &solidCache) {
+  for (int ty = 1; ty <= trunkHeight; ty++) {
+    if (isValidPos(x, y + ty, z)) {
+      int tidx = x + (y + ty) * xSize + z * xSize * ySize;
+      this->blocks[tidx] = 6;
+      solidCache[tidx] = true;
+    }
+  }
+  for (int lx = -3; lx <= 3; lx++) {
+    for (int lz = -3; lz <= 3; lz++) {
+      if (lx * lx + lz * lz > 10)
+        continue;
+      int nx = x + lx, ny = y + trunkHeight, nz = z + lz;
+      if (isValidPos(nx, ny, nz)) {
+        int lidx = nx + ny * xSize + nz * xSize * ySize;
+        if (this->blocks[lidx] == 0) {
+          this->blocks[lidx] = 7;
+          solidCache[lidx] = true;
+        }
+      }
+      if (lx * lx + lz * lz < 5 && isValidPos(nx, ny + 1, nz)) {
+        int lidx = nx + (ny + 1) * xSize + nz * xSize * ySize;
+        if (this->blocks[lidx] == 0) {
+          this->blocks[lidx] = 7;
+          solidCache[lidx] = true;
+        }
+      }
+    }
+  }
+}
+
+void ChunkPrefab::PlaceJungleTree(int x, int y, int z, int trunkHeight,
+                                  std::vector<bool> &solidCache) {
+  trunkHeight += 10;
+  for (int ty = 1; ty <= trunkHeight; ty++) {
+    if (isValidPos(x, y + ty, z)) {
+      int tidx = x + (y + ty) * xSize + z * xSize * ySize;
+      this->blocks[tidx] = 6;
+      solidCache[tidx] = true;
+    }
+  }
+  for (int ly = trunkHeight - 2; ly <= trunkHeight + 1; ly++) {
+    int r = (ly > trunkHeight) ? 1 : 2;
+    for (int lx = -r; lx <= r; lx++) {
+      for (int lz = -r; lz <= r; lz++) {
+        int nx = x + lx, ny = y + ly, nz = z + lz;
+        if (isValidPos(nx, ny, nz)) {
+          int lidx = nx + ny * xSize + nz * xSize * ySize;
+          if (this->blocks[lidx] == 0) {
+            this->blocks[lidx] = 7;
+            solidCache[lidx] = true;
           }
         }
       }
@@ -336,7 +512,7 @@ void ChunkPrefab::GenerateMesh() {
       v = 1;
     }
 
-    int dims[3] = {xSize, ySize, zSize};
+    int dims[3] = {ChunkPrefab::xSize, ChunkPrefab::ySize, ChunkPrefab::zSize};
 
     for (int slice = 0; slice < dims[d]; slice++) {
       std::fill(mask.begin(), mask.begin() + (dims[u] * dims[v]), 0);
@@ -349,7 +525,8 @@ void ChunkPrefab::GenerateMesh() {
           x[u] = i;
           x[v] = j;
 
-          int idx = x[0] + x[1] * xSize + x[2] * xSize * ySize;
+          int idx = x[0] + x[1] * ChunkPrefab::xSize +
+                    x[2] * ChunkPrefab::xSize * ChunkPrefab::ySize;
           Uint8 bid = this->blocks[idx];
 
           if (bid != 0) {
@@ -375,9 +552,11 @@ void ChunkPrefab::GenerateMesh() {
 
             Uint8 nBid = 0;
 
-            if (nx[0] >= 0 && nx[0] < xSize && nx[1] >= 0 && nx[1] < ySize &&
-                nx[2] >= 0 && nx[2] < zSize) {
-              int nIdx = nx[0] + nx[1] * xSize + nx[2] * xSize * ySize;
+            if (nx[0] >= 0 && nx[0] < ChunkPrefab::xSize && nx[1] >= 0 &&
+                nx[1] < ChunkPrefab::ySize && nx[2] >= 0 &&
+                nx[2] < ChunkPrefab::zSize) {
+              int nIdx = nx[0] + nx[1] * ChunkPrefab::xSize +
+                         nx[2] * ChunkPrefab::xSize * ChunkPrefab::ySize;
               nBid = this->blocks[nIdx];
             } else {
               nBid = manager->GetBlockID(
@@ -469,9 +648,11 @@ void ChunkPrefab::GenerateMesh() {
 }
 Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
   // If within bounds, get from this chunk directly
-  if (x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize) {
+  if (x >= 0 && x < ChunkPrefab::xSize && y >= 0 && y < ChunkPrefab::ySize &&
+      z >= 0 && z < ChunkPrefab::zSize) {
     if (!lightData.empty()) {
-      int idx = x + y * xSize + z * xSize * ySize;
+      int idx = x + y * ChunkPrefab::xSize +
+                z * ChunkPrefab::xSize * ChunkPrefab::ySize;
       return std::max(lightData[idx].sunlight, lightData[idx].blockLight);
     }
     return 0;
@@ -484,11 +665,12 @@ Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
 void ChunkPrefab::GenerateLighting() {
   lightData.assign(blocks.size(), {0, 0});
 
-  for (int x = 0; x < xSize; x++) {
-    for (int z = 0; z < zSize; z++) {
+  for (int x = 0; x < ChunkPrefab::xSize; x++) {
+    for (int z = 0; z < ChunkPrefab::zSize; z++) {
       Uint8 sun = manager->DayLightLevel;
-      for (int y = ySize - 1; y >= 0; y--) {
-        int idx = x + y * xSize + z * xSize * ySize;
+      for (int y = ChunkPrefab::ySize - 1; y >= 0; y--) {
+        int idx = x + y * ChunkPrefab::xSize +
+                  z * ChunkPrefab::xSize * ChunkPrefab::ySize;
         Uint8 bid = blocks[idx];
 
         // Seed Sunlight
@@ -528,21 +710,24 @@ void ChunkPrefab::PropagateLighting() {
   }
 
   // 2. Pull light from neighbors
-  for (int x = 0; x < xSize; x++) {
-    for (int y = 0; y < ySize; y++) {
-      for (int z = 0; z < zSize; z++) {
-        if (x > 0 && x < xSize - 1 && z > 0 && z < zSize - 1)
+  for (int x = 0; x < ChunkPrefab::xSize; x++) {
+    for (int y = 0; y < ChunkPrefab::ySize; y++) {
+      for (int z = 0; z < ChunkPrefab::zSize; z++) {
+        if (x > 0 && x < ChunkPrefab::xSize - 1 && z > 0 &&
+            z < ChunkPrefab::zSize - 1)
           continue;
 
         for (int i = 0; i < 4; i++) {
           int nx = (int)x + (int)Direction[i].x;
           int nz = (int)z + (int)Direction[i].z;
 
-          if (nx < 0 || nx >= xSize || nz < 0 || nz >= zSize) {
+          if (nx < 0 || nx >= ChunkPrefab::xSize || nz < 0 ||
+              nz >= ChunkPrefab::zSize) {
             Vector3 worldPos = {(float)(nx + xPos), (float)y,
                                 (float)(nz + zPos)};
 
-            int idx = x + y * xSize + z * xSize * ySize;
+            int idx = x + y * ChunkPrefab::xSize +
+                      z * ChunkPrefab::xSize * ChunkPrefab::ySize;
             if (blocks[idx] != 0 && blocks[idx] != 5 && blocks[idx] != 9)
               continue;
 
@@ -595,9 +780,10 @@ void ChunkPrefab::PropagateLighting() {
         int ny = (int)pos.y + (int)Direction[i].y;
         int nz = (int)pos.z + (int)Direction[i].z;
 
-        if (nx >= 0 && nx < xSize && ny >= 0 && ny < ySize && nz >= 0 &&
-            nz < zSize) {
-          int nIdx = nx + ny * xSize + nz * xSize * ySize;
+        if (nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 &&
+            ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize) {
+          int nIdx = nx + ny * ChunkPrefab::xSize +
+                     nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
           Uint8 neighborBlock = blocks[nIdx];
 
           // Light only passes through non-solid/transparent blocks or emitters

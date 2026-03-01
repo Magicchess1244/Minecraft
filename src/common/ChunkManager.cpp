@@ -3,65 +3,81 @@
 
 #include <set>
 
-constexpr float ySize = 128.0f;
-
-constexpr HeightsDif ContinentelnessHeight[7] = {
-    {0.8f, 120}, // Peaks
-    {0.5f, 100}, // High Land
-    {0.2f, 45},  // Land
-    {0.0f, 35},  // Shore (Sea Level)
-    {-0.2f, 20}, // Shallow Ocean
-    {-0.5f, 10}, // Deep Ocean
-    {-1.0f, 5}}; // Abyss floor
+constexpr HeightsDif ContinentelnessHeight[] = {
+    {0.8f, 130},                          // Peaks
+    {0.8f, 180},                          // Peaks
+    {0.8f, 160},                          // Peaks
+    {0.5f, 130},                          // High Land
+    {0.3f, 80},                           // Land
+    {0.2f, (float)ChunkPrefab::SeaLevel}, // Shore (Sea Level)
+    {0.1f, 70},                           // Land
+    {0.0f, (float)ChunkPrefab::SeaLevel}, // Shore (Sea Level)
+    {-0.2f, 40},                          // Shallow Ocean
+    {-0.5f, 20},                          // Deep Ocean
+    {-0.95f, 20},                         // Deep Ocean
+    {-1.0f, 190}};
 
 constexpr Biome Biomes[11] = {
-    {"Ice", BiomeType::Ice, 20, 20, 0, 0, 20, 6},
-    {"Tundra", BiomeType::Tundra, 40, 20, 20, 0, 20, 6},
-    {"Taiga", BiomeType::Taiga, 100, 20, 40, 0, 20, 7},
-    {"Big Taiga", BiomeType::BigTaiga, 100, 40, 60, 20, 20, 4},
-    {"Plains", BiomeType::Plains, 60, 60, 20, 20, 20, 3},
-    {"Forest", BiomeType::Forest, 80, 60, 20, 40, 20, 6},
-    {"Birch", BiomeType::Birch, 80, 60, 20, 60, 20, 5},
-    {"Dark Forest", BiomeType::DarkForest, 100, 60, 20, 80, 20, 5},
-    {"Jungle", BiomeType::Jungle, 100, 100, 60, 60, 20, 7},
-    {"Desert", BiomeType::Desert, 60, 100, 0, 80, 20, 4},
-    {"Savanna", BiomeType::Savanna, 40, 80, 20, 0, 20, 5},
+    {"Ice", BiomeType::Ice, 30, 20, 0, 0, 20, 6},
+    {"Tundra", BiomeType::Tundra, 50, 30, 15, 0, 20, 6},
+    {"Taiga", BiomeType::Taiga, 100, 40, 60, 0, 20, 7},
+    {"Big Taiga", BiomeType::BigTaiga, 100, 50, 70, 20, 20, 4},
+    {"Plains", BiomeType::Plains, 50, 60, 30, 40, 20, 3},
+    {"Forest", BiomeType::Forest, 80, 70, 50, 40, 20, 6},
+    {"Birch", BiomeType::Birch, 80, 60, 50, 30, 20, 5},
+    {"Dark Forest", BiomeType::DarkForest, 100, 60, 80, 30, 20, 5},
+    {"Jungle", BiomeType::Jungle, 100, 100, 80, 60, 20, 7},
+    {"Desert", BiomeType::Desert, 45, 100, 0, 70, 20, 4},
+    {"Savanna", BiomeType::Savanna, 70, 95, 30, 60, 20, 5},
 };
 
 constexpr HeightsDif ErrotionHeight[10] = {
-    {1.0f, ySize * 0.05f}, {0.8f, ySize * 0.1f},  {0.7f, ySize * 0.35f},
-    {0.4f, ySize * 0.35f}, {0.3f, ySize * 0.11f}, {-0.2f, ySize * 0.2f},
-    {-0.4f, ySize * 0.6f}, {-0.5f, ySize * 0.5f}, {-0.8f, ySize * 0.9f},
-    {-1.0f, ySize},
+    {1.0f, (float)ChunkPrefab::ySize * 0.05f},
+    {0.8f, (float)ChunkPrefab::ySize * 0.1f},
+    {0.7f, (float)ChunkPrefab::ySize * 0.35f},
+    {0.4f, (float)ChunkPrefab::ySize * 0.35f},
+    {0.3f, (float)ChunkPrefab::ySize * 0.11f},
+    {-0.2f, (float)ChunkPrefab::ySize * 0.2f},
+    {-0.4f, (float)ChunkPrefab::ySize * 0.6f},
+    {-0.5f, (float)ChunkPrefab::ySize * 0.5f},
+    {-0.8f, (float)ChunkPrefab::ySize * 0.9f},
+    {-1.0f, (float)ChunkPrefab::ySize},
 };
 constexpr HeightsDif PeaksAndValiesHeight[6] = {
-    {1.0f, ySize},          {0.8f, ySize * 0.9f},  {0.5f, ySize * 0.95f},
-    {0.05f, ySize * 0.35f}, {-0.4f, ySize * 0.3f}, {-0.9f, ySize * 0.1f},
+    {1.0f, (float)ChunkPrefab::ySize},
+    {0.8f, (float)ChunkPrefab::ySize * 0.9f},
+    {0.5f, (float)ChunkPrefab::ySize * 0.95f},
+    {0.05f, (float)ChunkPrefab::ySize * 0.35f},
+    {-0.4f, (float)ChunkPrefab::ySize * 0.3f},
+    {-0.9f, (float)ChunkPrefab::ySize * 0.1f},
 };
 
-constexpr HeightsDif CaveThickness[5] = {{128.0f, 0.005f},
-                                         {64.0f, 0.015f},
-                                         {30.0f, 0.025f},
-                                         {10.0f, 0.015f},
-                                         {0.0f, 0.005f}};
+constexpr HeightsDif CaveThickness[5] = {
+    {(float)ChunkPrefab::ySize * 0.66f, 0.005f},
+    {(float)ChunkPrefab::ySize * 0.33f, 0.015f},
+    {(float)ChunkPrefab::SeaLevel * 0.5f, 0.025f},
+    {10.0f, 0.015f},
+    {0.0f, 0.005f}};
 
-constexpr HeightsDif CoalChance[5] = {{128.0f, 0.02f},
-                                      {60.0f, 0.01f},
-                                      {40.0f, 0.015f},
-                                      {20.0f, 0.005f},
-                                      {0.0f, 0.0f}};
+constexpr HeightsDif CoalChance[5] = {
+    {(float)ChunkPrefab::ySize * 0.66f, 0.02f},
+    {60.0f, 0.01f},
+    {40.0f, 0.015f},
+    {20.0f, 0.005f},
+    {0.0f, 0.0f}};
 
-constexpr HeightsDif IronChance[5] = {{128.0f, 0.2f},
+constexpr HeightsDif IronChance[5] = {{(float)ChunkPrefab::ySize * 0.66f, 0.2f},
                                       {60.0f, 0.005f},
                                       {40.0f, 0.01f},
                                       {20.0f, 0.012f},
                                       {0.0f, 0.015f}};
 
-constexpr HeightsDif DiamondChance[5] = {{128.0f, 0.0f},
-                                         {60.0f, 0.0f},
-                                         {30.0f, 0.0f},
-                                         {15.0f, 0.005f},
-                                         {0.0f, 0.01f}};
+constexpr HeightsDif DiamondChance[5] = {
+    {(float)ChunkPrefab::ySize * 0.66f, 0.0f},
+    {60.0f, 0.0f},
+    {30.0f, 0.0f},
+    {15.0f, 0.005f},
+    {0.0f, 0.01f}};
 
 float SampleSpline(float value, const HeightsDif *spline, int length) {
   if (value >= spline[0].x)
@@ -76,7 +92,7 @@ float SampleSpline(float value, const HeightsDif *spline, int length) {
 }
 
 int GetBaseHeight(float Continentalness, float Erosion, float Peaks) {
-  float base = SampleSpline(Continentalness, ContinentelnessHeight, 7);
+  float base = SampleSpline(Continentalness, ContinentelnessHeight, 12);
   float erosionFactor = SampleSpline(Erosion, ErrotionHeight, 10);
   float peakFactor = SampleSpline(Peaks, PeaksAndValiesHeight, 6);
 
@@ -85,8 +101,8 @@ int GetBaseHeight(float Continentalness, float Erosion, float Peaks) {
   // For now, let's keep it simple: Continentalness is the base,
   // Erosion and Peaks modify it.
 
-  float erosionMultiplier = (erosionFactor / ySize);
-  float peakMultiplier = (peakFactor / ySize);
+  float erosionMultiplier = (erosionFactor / (float)ChunkPrefab::ySize);
+  float peakMultiplier = (peakFactor / (float)ChunkPrefab::ySize);
 
   return (int)(base + (erosionMultiplier * peakMultiplier * 20.0f));
 }
@@ -147,19 +163,26 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   return it->second;
 }
 
-Biome ChunkManager::GetBiome(float Humudity, float Temperature) {
-  for (int i = 0; i < 11; i++) {
-    bool allowed_humidity = (Humudity <= Biomes[i].MaxHumidity &&
-                             Humudity >= Biomes[i].MinHumidity);
-    bool allowed_temperature = (Temperature <= Biomes[i].MaxTemperature &&
-                                Temperature >= Biomes[i].MinTemperature);
+Biome ChunkManager::GetBiome(float Humidity, float Temperature) {
+  float minDistance = 1e9f;
+  int bestBiome = 4; // Default to Plains
 
-    if (allowed_humidity && allowed_temperature) {
-      return Biomes[i];
+  for (int i = 0; i < 11; i++) {
+    float centerH = (Biomes[i].MinHumidity + Biomes[i].MaxHumidity) * 0.5f;
+    float centerT =
+        (Biomes[i].MinTemperature + Biomes[i].MaxTemperature) * 0.5f;
+
+    float dH = (Humidity - centerH);
+    float dT = (Temperature - centerT);
+    float distSq = dH * dH + dT * dT;
+
+    if (distSq < minDistance) {
+      minDistance = distSq;
+      bestBiome = i;
     }
   }
 
-  return Biomes[4]; // Default to Plains
+  return Biomes[bestBiome];
 }
 
 int ChunkManager::GetHeight(float Continentalness, float Erosion, float Peaks) {
@@ -173,7 +196,7 @@ RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
   // Calculate number of steps based on MaxDistance
   int numSteps = (int)(MaxDistance * 10); // More checks for better precision
 
-  Vector3 RelChunkPos = (Origin / 16).Truncate();
+  Vector3 RelChunkPos = (Origin / (float)ChunkPrefab::xSize).Truncate();
   ChunkPrefab *CurrentChunk = &get_chunk(RelChunkPos);
 
   Vector3 LastPos = Origin.Truncate();
@@ -183,7 +206,7 @@ RaycastResult ChunkManager::RayCast(Vector3 Origin, Vector3 NormalDir,
     Vector3 NewPos = (Origin + Dir * t).Truncate();
 
     if (i > 0 && NewPos != LastPos) {
-      Vector3 NewRelChunkPos = (NewPos / 16).Truncate();
+      Vector3 NewRelChunkPos = (NewPos / (float)ChunkPrefab::xSize).Truncate();
       if (NewRelChunkPos != RelChunkPos) {
         RelChunkPos = NewRelChunkPos;
         CurrentChunk = &get_chunk(NewRelChunkPos);
@@ -335,8 +358,8 @@ void ChunkManager::TickWater() {
     SetBlock(tp.first, tp.second,
              false); // Don't update neighbors during simulation to be faster
 
-    Vector3 cKey = {(float)floor(tp.first.x / 16.0f), 0,
-                    (float)floor(tp.first.z / 16.0f)};
+    Vector3 cKey = {(float)floor(tp.first.x / (float)ChunkPrefab::xSize), 0,
+                    (float)floor(tp.first.z / (float)ChunkPrefab::zSize)};
     chunksToUpdate.insert(cKey);
   }
 
@@ -349,8 +372,8 @@ void ChunkManager::TickWater() {
 }
 
 void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
-  Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
-                      (float)floor(Pos.z / ChunkPrefab::xSize)};
+  Vector3 chunkKey = {(float)floor(Pos.x / (float)ChunkPrefab::xSize), 0,
+                      (float)floor(Pos.z / (float)ChunkPrefab::zSize)};
   chunkKey.y = 0;
 
   if (Pos.y < 0 || Pos.y >= ChunkPrefab::ySize)
@@ -398,13 +421,13 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
 }
 
 Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
-  Vector3 chunkKey = {(float)floor(Pos.x / 16.0f), 0,
-                      (float)floor(Pos.z / 16.0f)};
+  Vector3 chunkKey = {(float)floor(Pos.x / (float)ChunkPrefab::xSize), 0,
+                      (float)floor(Pos.z / (float)ChunkPrefab::zSize)};
   auto it = Chunks.find(chunkKey);
 
   // Safety check: Chunk must exist and have data
   if (it == Chunks.end() || it->second.blocks.empty()) {
-    return (Pos.y < 35) ? 5 : 0;
+    return (Pos.y < ChunkPrefab::SeaLevel) ? 5 : 0;
   }
 
   int lx = (int)floor(Pos.x) - it->second.xPos;
@@ -412,11 +435,13 @@ Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
   int lz = (int)floor(Pos.z) - it->second.zPos;
 
   // Strict bounds check
-  if (lx < 0 || lx >= 16 || ly < 0 || ly >= 128 || lz < 0 || lz >= 16) {
+  if (lx < 0 || lx >= ChunkPrefab::xSize || ly < 0 ||
+      ly >= ChunkPrefab::ySize || lz < 0 || lz >= ChunkPrefab::zSize) {
     return 0; // Out of chunk bounds
   }
 
-  int idx = lx + ly * 16 + lz * 16 * 128;
+  int idx = lx + ly * ChunkPrefab::xSize +
+            lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
 
   // Double safety check on vector size
   if (idx < 0 || idx >= (int)it->second.blocks.size()) {
