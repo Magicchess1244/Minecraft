@@ -4,7 +4,10 @@
 #include <algorithm>
 #include <chrono>
 #include <ostream>
+#include <sstream>
 #include <string>
+
+// ─── Constants ──────────────────────────────────────────────────────────────
 
 constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 5.0f;
@@ -16,10 +19,149 @@ float bodyHeight = 1.6f;
 Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
 
+// ─── Seed / Color commands ──────────────────────────────────────────────────
+
 void GameClient::set_seed() {
   // Seed is now received in the constructor.
 }
 void GameClient::set_color() { this->sendCommand("getColor"); }
+
+// ─── Helper: parse "x/y/z" into a Vector3 ──────────────────────────────────
+
+static Vector3 parseVec3(const std::string &s) {
+  auto parts = split(s, '/');
+  if (parts.size() != 3)
+    return {0, 0, 0};
+  return {std::stof(parts[0]), std::stof(parts[1]), std::stof(parts[2])};
+}
+
+// ─── Message Handlers ───────────────────────────────────────────────────────
+
+void GameClient::handlePlayersBroadcast(const std::string &msg) {
+  // Format: p:<id>:<x/y/z>|<id>:<x/y/z>|...
+  std::string data = msg.substr(2);
+  auto entries = split(data, '|');
+
+  std::lock_guard<std::mutex> lock(players_mutex);
+  std::vector<int> current_ids;
+
+  for (const auto &entry : entries) {
+    if (entry.empty())
+      continue;
+
+    auto parts = split(entry, ':');
+    if (parts.size() < 2)
+      continue;
+
+    int id = std::stoi(parts[0]);
+    if (id == my_id)
+      continue;
+
+    current_ids.push_back(id);
+    Vector3 pos = parseVec3(parts[1]);
+
+    // Update existing player or add new one
+    bool found = false;
+    for (auto &p : players) {
+      if (p.id == id) {
+        p.Position = pos;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      Player new_player;
+      new_player.id = id;
+      new_player.Position = pos;
+      new_player.color = Color::GetColor(
+          static_cast<PlayerColor>(id % static_cast<int>(PlayerColor::COUNT)));
+      players.push_back(new_player);
+    }
+  }
+
+  // Remove players who left
+  players.erase(std::remove_if(players.begin(), players.end(),
+                               [&](const Player &p) {
+                                 if (p.id == my_id)
+                                   return false;
+                                 return std::find(current_ids.begin(),
+                                                  current_ids.end(),
+                                                  p.id) == current_ids.end();
+                               }),
+                players.end());
+}
+
+void GameClient::handleSeedMsg(const std::string &msg) {
+  // Format: s:<seed>
+  unsigned int s = static_cast<unsigned int>(std::stoul(msg.substr(2)));
+  SetSeed(s);
+}
+
+void GameClient::handleColorMsg(const std::string &msg) {
+  // Format: c:r,g,b
+  auto rgb = split(msg.substr(2), ',');
+  if (rgb.size() < 3)
+    return;
+
+  unsigned int r = std::stoul(rgb[0]);
+  unsigned int g = std::stoul(rgb[1]);
+  unsigned int b = std::stoul(rgb[2]);
+
+  std::lock_guard<std::mutex> lock(players_mutex);
+  if (!players.empty())
+    players[0].color = Color{static_cast<Uint8>(r), static_cast<Uint8>(g),
+                             static_cast<Uint8>(b)};
+}
+
+void GameClient::handleBlockModification(const std::string &msg) {
+  // Format: bm:x/y/z:type
+  auto parts = split(msg, ':');
+  if (parts.size() < 3)
+    return;
+
+  try {
+    Vector3 pos = parseVec3(parts[1]);
+    Uint8 type = static_cast<Uint8>(std::stoi(parts[2]));
+    pending_mods.push_back({pos, type});
+  } catch (...) {
+  }
+}
+
+void GameClient::handlePlayerData(const std::string &msg) {
+  // Format: pData:x/y/z|rx/ry/rz|type,amount,isEntity|type,amount,isEntity|...
+  std::string data = msg.substr(6);
+  auto sections = split(data, '|');
+  if (sections.size() < 2)
+    return;
+
+  std::lock_guard<std::mutex> lock(players_mutex);
+  if (players.empty())
+    return;
+
+  // Section 0: position, Section 1: rotation, Section 2+: inventory slots
+  players[0].Position = parseVec3(sections[0]);
+  players[0].Rotation = parseVec3(sections[1]);
+
+  // Parse inventory slots (sections[2] onward)
+  int slotIdx = 0;
+  for (size_t i = 2;
+       i < sections.size() && slotIdx < (int)players[0].inventory.size(); ++i) {
+    if (sections[i].empty())
+      continue;
+
+    auto fields = split(sections[i], ',');
+    if (fields.size() >= 3) {
+      players[0].inventory[slotIdx].Type =
+          static_cast<short>(std::stoi(fields[0]));
+      players[0].inventory[slotIdx].Amount =
+          static_cast<short>(std::stoi(fields[1]));
+      players[0].inventory[slotIdx].isEntity = (fields[2] == "1");
+    }
+    slotIdx++;
+  }
+}
+
+// ─── Network Listener ───────────────────────────────────────────────────────
 
 void GameClient::listen() {
   while (running && socket.is_open()) {
@@ -32,165 +174,23 @@ void GameClient::listen() {
       break;
     }
 
+    // Dispatch to the appropriate handler
     if (msg.find("p:") == 0) {
-      std::lock_guard<std::mutex> lock(players_mutex);
-      std::string data = msg.substr(2);
-      size_t start = 0;
-      size_t end = data.find('|');
-
-      std::vector<int> current_ids;
-
-      while (end != std::string::npos) {
-        std::string player_info = data.substr(start, end - start);
-        size_t id_end = player_info.find(':');
-        if (id_end != std::string::npos) {
-          int id = std::stoi(player_info.substr(0, id_end));
-          std::string pos_str = player_info.substr(id_end + 1);
-
-          if (id != my_id) {
-            current_ids.push_back(id);
-            size_t first = pos_str.find('/');
-            size_t last = pos_str.find_last_of('/');
-            if (first != std::string::npos && last != std::string::npos &&
-                first != last) {
-              float x = std::stof(pos_str.substr(0, first));
-              float y = std::stof(pos_str.substr(first + 1, last - first - 1));
-              float z = std::stof(pos_str.substr(last + 1));
-
-              bool found = false;
-              for (auto &p : players) {
-                if (p.id == id) {
-                  p.Position = {x, y, z};
-                  found = true;
-                  break;
-                }
-              }
-              if (!found) {
-                Player new_player;
-                new_player.id = id;
-                new_player.Position = {x, y, z};
-                // Assign color based on ID
-                new_player.color = Color::GetColor(static_cast<PlayerColor>(
-                    id % static_cast<int>(PlayerColor::COUNT)));
-                players.push_back(new_player);
-              }
-            }
-          }
-        }
-        start = end + 1;
-        end = data.find('|', start);
-      }
-
-      // Remove players who left
-      players.erase(std::remove_if(players.begin(), players.end(),
-                                   [&](const Player &p) {
-                                     if (p.id == my_id)
-                                       return false;
-                                     return std::find(current_ids.begin(),
-                                                      current_ids.end(),
-                                                      p.id) ==
-                                            current_ids.end();
-                                   }),
-                    players.end());
+      handlePlayersBroadcast(msg);
     } else if (msg.find("s:") == 0) {
-      unsigned int s = static_cast<unsigned int>(std::stoul(msg.substr(2)));
-      SetSeed(s);
+      handleSeedMsg(msg);
     } else if (msg.find("c:") == 0) {
-      std::string buf = msg.substr(2);
-      size_t f = buf.find(','), l = buf.find_last_of(',');
-      if (f != std::string::npos && l != std::string::npos && f != l) {
-        unsigned int r = std::stoul(buf.substr(0, f));
-        unsigned int g = std::stoul(buf.substr(f + 1, l - f - 1));
-        unsigned int b = std::stoul(buf.substr(l + 1));
-        std::lock_guard<std::mutex> lock(players_mutex);
-        if (!players.empty())
-          players[0].color = Color{static_cast<Uint8>(r), static_cast<Uint8>(g),
-                                   static_cast<Uint8>(b)};
-      }
+      handleColorMsg(msg);
     } else if (msg.find("bm:") == 0) {
-      // Format: bm:x/y/z:type
-      size_t first_colon = msg.find(':');
-      size_t second_colon = msg.find(':', first_colon + 1);
-      if (first_colon != std::string::npos &&
-          second_colon != std::string::npos) {
-        try {
-          std::string pos_str =
-              msg.substr(first_colon + 1, second_colon - first_colon - 1);
-          Uint8 type =
-              static_cast<Uint8>(std::stoi(msg.substr(second_colon + 1)));
-
-          size_t first_slash = pos_str.find('/');
-          size_t last_slash = pos_str.find_last_of('/');
-          if (first_slash != std::string::npos &&
-              last_slash != std::string::npos && first_slash != last_slash) {
-            float x = std::stof(pos_str.substr(0, first_slash));
-            float y = std::stof(
-                pos_str.substr(first_slash + 1, last_slash - first_slash - 1));
-            float z = std::stof(pos_str.substr(last_slash + 1));
-            // Apply modification to local chunk manager
-            // We need access to chunkManager here, but GameClient doesn't have
-            // it easily. Let's assume there's a callback or we add a pointer to
-            // it. For now, let's keep a list of pending mods in GameClient.
-            pending_mods.push_back({{x, y, z}, type});
-          }
-        } catch (...) {
-        }
-      }
+      handleBlockModification(msg);
     } else if (msg.find("pData:") == 0) {
-      // Format: pData:x/y/z|rx/ry/rz|type,amount|type,amount|...
-      std::string data = msg.substr(6);
-      size_t first_pipe = data.find('|');
-      size_t second_pipe = data.find('|', first_pipe + 1);
-
-      if (first_pipe != std::string::npos && second_pipe != std::string::npos) {
-        std::string pos_str = data.substr(0, first_pipe);
-        std::string rot_str =
-            data.substr(first_pipe + 1, second_pipe - first_pipe - 1);
-        std::string inv_str = data.substr(second_pipe + 1);
-
-        std::lock_guard<std::mutex> lock(players_mutex);
-        if (!players.empty()) {
-          // Update local player (my_id)
-          size_t f = pos_str.find('/'), l = pos_str.find_last_of('/');
-          players[0].Position = {std::stof(pos_str.substr(0, f)),
-                                 std::stof(pos_str.substr(f + 1, l - f - 1)),
-                                 std::stof(pos_str.substr(l + 1))};
-
-          f = rot_str.find('/');
-          l = rot_str.find_last_of('/');
-          players[0].Rotation = {std::stof(rot_str.substr(0, f)),
-                                 std::stof(rot_str.substr(f + 1, l - f - 1)),
-                                 std::stof(rot_str.substr(l + 1))};
-
-          // Parse inventory
-          size_t start = 0;
-          size_t end = inv_str.find('|');
-          int slotIdx = 0;
-          while (end != std::string::npos &&
-                 slotIdx < (int)players[0].inventory.size()) {
-            std::string slot_info = inv_str.substr(start, end - start);
-            size_t comma = slot_info.find(',');
-            if (comma != std::string::npos) {
-              size_t second_comma = slot_info.find(',', comma + 1);
-              if (second_comma != std::string::npos) {
-                players[0].inventory[slotIdx].Type =
-                    static_cast<short>(std::stoi(slot_info.substr(0, comma)));
-                players[0].inventory[slotIdx].Amount =
-                    static_cast<short>(std::stoi(
-                        slot_info.substr(comma + 1, second_comma - comma - 1)));
-                players[0].inventory[slotIdx].isEntity =
-                    (slot_info.substr(second_comma + 1) == "1");
-              }
-            }
-            start = end + 1;
-            end = inv_str.find('|', start);
-            slotIdx++;
-          }
-        }
-      }
+      handlePlayerData(msg);
     }
   }
 }
+
+// ─── Outgoing Messages ─────────────────────────────────────────────────────
+
 void GameClient::update_pos() {
   auto Player = get_players()[0];
   std::string Pos = "up:" + std::to_string(my_id) + ":" +
@@ -213,8 +213,10 @@ void GameClient::sync_inventory() {
   this->sendCommand(msg);
 }
 
-// UI function
+// ─── Game Logic (BitMiner namespace) ────────────────────────────────────────
+
 namespace BitMiner {
+
 int FindSlot(std::vector<Slot> &Inventory, short Type, bool isEntity) {
   int index = 0;
   if (Type == 0)
@@ -222,15 +224,15 @@ int FindSlot(std::vector<Slot> &Inventory, short Type, bool isEntity) {
   for (Slot slot : Inventory) {
     if ((slot.Type == Type && slot.isEntity == isEntity || slot.Type == 0) &&
         slot.Amount < 64) {
-      // std::cout << "Found slot" << index << std::endl;
       return index;
     }
     index++;
   }
-  // std::cout << "Inventory full, cannot add item of type: " << Type <<
-  // std::endl;
   return -1;
 }
+
+// ─── Input ──────────────────────────────────────────────────────────────────
+
 void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
                  int &InventorySlots, Vector3 &PlayerRot, bool &LeftClick,
                  bool &RightClick) {
@@ -248,6 +250,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
 
   PlayerDirection.x = 0;
   PlayerDirection.z = 0;
+
   // Get mouse movement and button states
   float mouseX, mouseY;
   Uint32 mouseState = SDL_GetRelativeMouseState(&mouseX, &mouseY);
@@ -284,6 +287,7 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
       }
     }
   }
+
   if (move_backward || move_foward) {
     PlayerDirection.z = move_backward ? -1 : 1;
   }
@@ -295,6 +299,9 @@ void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater,
     }
   }
 }
+
+// ─── Rotation ───────────────────────────────────────────────────────────────
+
 void PlayerRotation(Player &player, Vector3 RotationDir) {
   if (RotationDir.x != 0 || RotationDir.y != 0) {
     player.Rotation.y += RotationDir.y * mouseSensitivity;
@@ -306,19 +313,16 @@ void PlayerRotation(Player &player, Vector3 RotationDir) {
       player.Rotation.y += 360.0f;
   }
 }
+
+// ─── Movement & Collision ───────────────────────────────────────────────────
+
 void PlayerMove(Player &player, Vector3 playerDirection,
                 ChunkManager &manager) {
-  // Define player collision box
-  // Collision points relative to camera (player.Position)
-  // Assuming camera is at eye level, roughly 1.6 units above feet
   auto isColliding = [&](Vector3 pos) {
     if (!PLayerColistion)
       return false;
-    float r = 0.4f; // player radius
-    float eyeHeight = 1.6f;
+    float r = 0.4f;
 
-    // Points to check: corners of the box at foot level, waist level, and head
-    // level
     float yChecks[] = {-1.4f, -0.8f, 0.1f};
     float xzChecks[] = {-r, r};
 
@@ -333,10 +337,10 @@ void PlayerMove(Player &player, Vector3 playerDirection,
     }
     return false;
   };
-  // Handle movement
+
   if (playerDirection.x != 0 || playerDirection.y != 0 ||
       playerDirection.z != 0) {
-    // 1. Vertical Movement
+    // Vertical movement
     if (playerDirection.y != 0) {
       Vector3 nextY = player.Position;
       float verticalSpeed =
@@ -347,7 +351,7 @@ void PlayerMove(Player &player, Vector3 playerDirection,
       }
     }
 
-    // 2. Horizontal Movement
+    // Horizontal movement
     Vector3 Rot = player.Rotation;
     Rot.x = 0;
     Vector3 Dir = Rot.Forward() * playerDirection.z +
@@ -356,14 +360,14 @@ void PlayerMove(Player &player, Vector3 playerDirection,
     if (Dir.LengthSquared() > 0.0001f) {
       Dir = Dir.Normalized() * playerSpeed * deltaTime;
 
-      // Try Move X
+      // Try X axis
       Vector3 nextX = player.Position;
       nextX.x += Dir.x;
       if (!isColliding(nextX)) {
         player.Position.x = nextX.x;
       }
 
-      // Try Move Z
+      // Try Z axis
       Vector3 nextZ = player.Position;
       nextZ.z += Dir.z;
       if (!isColliding(nextZ)) {
@@ -372,6 +376,9 @@ void PlayerMove(Player &player, Vector3 playerDirection,
     }
   }
 }
+
+// ─── Block Break / Place ────────────────────────────────────────────────────
+
 void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
                        Player &player, int inventorySlot,
                        std::vector<Slot> &inventory, GameClient &game,
@@ -442,6 +449,8 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
   }
 }
 
+// ─── Player Action (per-frame) ──────────────────────────────────────────────
+
 void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
                   std::vector<Slot> &inventory, GameClient &game,
                   Renderer *renderer) {
@@ -469,7 +478,7 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
                    bodyHeight + 0.15f)
           .hit;
 
-  // Check if player is in water (around their middle/feet)
+  // Check if player is in water
   player.Inwater = false;
   try {
     player.Inwater =
@@ -488,6 +497,9 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
   PlayerBreackPlace(LeftClick, RightClick, manager, player, inventorySlot,
                     inventory, game, renderer);
 }
+
+// ─── Main Game Loop ─────────────────────────────────────────────────────────
+
 void GameLoop(GameClient &game) {
   int myId = game.get_my_id();
   Player localPlayer;
@@ -509,7 +521,6 @@ void GameLoop(GameClient &game) {
 
   int inventorySlot = 0;
 
-  // ChunckManager::Size(width, height, Range.y, Range.x);
   ChunkManager chunkManager;
   Renderer RendererObject(game, chunkManager);
 

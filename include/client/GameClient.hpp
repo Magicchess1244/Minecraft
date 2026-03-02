@@ -82,6 +82,13 @@ public:
 
   void listen(); // Declaration for listener thread
 
+  // Message handlers (called from listen)
+  void handlePlayersBroadcast(const std::string &msg);
+  void handleSeedMsg(const std::string &msg);
+  void handleColorMsg(const std::string &msg);
+  void handleBlockModification(const std::string &msg);
+  void handlePlayerData(const std::string &msg);
+
   void sendCommand(const std::string &command) {
     asio::error_code error;
     std::string cmd = command + "\n";
