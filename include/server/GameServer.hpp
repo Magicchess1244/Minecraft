@@ -30,10 +30,21 @@ public:
   void set_seed(unsigned int new_seed);
   unsigned int get_seed() const;
   void AcceptClients();
+  void handlePlayers(std::shared_ptr<tcp::socket> socket, int id);
+
+  // Message handlers (called from handlePlayers)
+  void handleLogin(const std::string &message,
+                   std::shared_ptr<tcp::socket> socket, int id);
+  void handleSeed(std::shared_ptr<tcp::socket> socket);
+  void handleGetColor(std::shared_ptr<tcp::socket> socket);
+  void handleUpdate(const std::string &message, int id);
+  void handleInventory(const std::string &message, int id);
+  void handleModification(const std::string &message);
+
+  // Broadcasting
   void broadcastPlayers();
   void broadcastModification(Vector3 pos, Uint8 type);
   void sendAllModifications(std::shared_ptr<tcp::socket> socket);
-  void handlePlayers(std::shared_ptr<tcp::socket> socket, int id);
   void saveModifications();
   void loadModifications();
   void savePlayers();

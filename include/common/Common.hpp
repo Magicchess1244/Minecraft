@@ -359,6 +359,16 @@ template <> struct hash<Vector3> {
   }
 };
 } // namespace std
+// Utility function - add to a header or top of GameServer.cpp
+static std::vector<std::string> split(const std::string& s, char delim) {
+    std::vector<std::string> tokens;
+    std::stringstream ss(s);
+    std::string token;
+    while (std::getline(ss, token, delim)) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
 
 // Debug logging macros - only enabled in debug builds
 #ifdef DEBUG_CHUNKS
