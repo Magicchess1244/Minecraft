@@ -12,7 +12,7 @@ layout (set = 2, binding = 0) uniform sampler2D u_texture;
 layout(set = 3, binding = 0, std140) uniform Water { uint water; } inWater;
 
 
-float NearFog = 50.0;
+float NearFog = 100.0;
 float FarFog = 150.0;
 float NearFogInWater = 5.0;
 float FarFogInWater = 50.0;
@@ -51,8 +51,9 @@ void main()
   finalColor *= lightLevel;
   
   float dist = v_pos.z;
-  float fogFactor = clamp((dist - NearFog) / (FarFog - NearFog), 0.0, 1.0);
-  vec3 skyColor = vec3(0.45, 0.75, 1.0);
+  float fogFactor = clamp((dist - NearFog) / (FarFog - NearFog), 0.0, 0.8);
+  //vec3 skyColor = vec3(0.45, 0.75, 1.0);
+  vec3 skyColor = vec3(0.9, 0.9, 0.9);
   finalColor = mix(finalColor, skyColor, fogFactor);
 
   // Underwater tint

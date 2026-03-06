@@ -196,7 +196,7 @@ void GameClient::update_pos() {
   std::string Pos = "up:" + std::to_string(my_id) + ":" +
                     std::to_string(Player.Position.x) + "/" +
                     std::to_string(Player.Position.y) + "/" +
-                    std::to_string(Player.Position.z) + "|" +
+                    std::to_string(Player.Position.z) + ":" +
                     std::to_string(Player.Rotation.x) + "/" +
                     std::to_string(Player.Rotation.y) + "/" +
                     std::to_string(Player.Rotation.z);
@@ -415,7 +415,7 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
         }
         game.sendCommand(mod);
         game.sync_inventory();
-      } else if (!BlockDef[Ray.BlockID].hasUI) {
+      } else if (!BlockDef[Ray.BlockID].hasUI()) {
         Vector3 placePos = Ray.prevPos;
         bool collides = false;
 

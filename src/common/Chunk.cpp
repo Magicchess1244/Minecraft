@@ -560,12 +560,12 @@ void ChunkPrefab::GenerateMesh() {
                   {(float)worldX, (float)worldY, (float)worldZ});
             }
 
-            if (BlockDef[bid].isTransparent) {
+            if (BlockDef[bid].isTransparent()) {
               // Transparent blocks like water only show faces against air
               visible = (nBid == 0);
             } else {
               // Opaque blocks show faces against air or transparent blocks
-              visible = (nBid == 0 || BlockDef[nBid].isTransparent);
+              visible = (nBid == 0 || BlockDef[nBid].isTransparent());
             }
 
             if (visible) {
@@ -630,7 +630,7 @@ void ChunkPrefab::GenerateMesh() {
 
             this->allFaces.push_back(DrawnFace{Pos, (Uint8)side, bid, (Uint8)w,
                                                (Uint8)h, light,
-                                               BlockDef[bid].isWater});
+                                               BlockDef[bid].isWater()});
 
             for (int j2 = j; j2 < j + h; j2++) {
               for (int i2 = i; i2 < i + w; i2++) {
@@ -732,7 +732,7 @@ void ChunkPrefab::PropagateLighting() {
             Uint8 nSun = manager->GetSunlightLevel(worldPos);
             if (nSun > 1) {
               Uint8 newSun = nSun - 1;
-              if (BlockDef[blocks[idx]].isWater)
+              if (BlockDef[blocks[idx]].isWater())
                 newSun = (newSun > 2) ? newSun - 1 : 0;
 
               if (newSun > lightData[idx].sunlight) {
@@ -745,7 +745,7 @@ void ChunkPrefab::PropagateLighting() {
             Uint8 nBlock = manager->GetBlockLightLevel(worldPos);
             if (nBlock > 1) {
               Uint8 newBlock = nBlock - 1;
-              if (BlockDef[blocks[idx]].isWater)
+              if (BlockDef[blocks[idx]].isWater())
                 newBlock = (newBlock > 2) ? newBlock - 1 : 0;
 
               if (newBlock > lightData[idx].blockLight) {
@@ -784,12 +784,12 @@ void ChunkPrefab::PropagateLighting() {
           Uint8 neighborBlock = blocks[nIdx];
 
           // Light only passes through non-solid/transparent blocks or emitters
-          if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent &&
+          if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent() &&
               BlockDef[neighborBlock].Luminance == 0)
             continue;
 
           Uint8 newLight = currentLight - 1;
-          if (BlockDef[neighborBlock].isWater)
+          if (BlockDef[neighborBlock].isWater())
             newLight = (newLight > 2) ? newLight - 1 : 0;
 
           if (isSunlight) {

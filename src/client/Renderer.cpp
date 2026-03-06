@@ -25,7 +25,7 @@ int g_initialClickSlot = -1;
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 10;
+constexpr int RenderDistance = 6;
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
@@ -467,13 +467,16 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
 }
 static void UpdateCraftingSelection(Player &player) {
   auto &inv = player.inventory;
+
   const int resultSlot = 49;
   const int gridStart = 40;
+
   inv[resultSlot] = {0, 0, false};
 
   // 1. Identify valid bounding box of the input items
   int minX = 3, minY = 3, maxX = -1, maxY = -1;
   bool inputEmpty = true;
+
   for (int y = 0; y < 3; y++) {
     for (int x = 0; x < 3; x++) {
       if (inv[gridStart + y * 3 + x].Type != 0) {
@@ -499,6 +502,7 @@ static void UpdateCraftingSelection(Player &player) {
     // 3. Identify valid bounding box of the recipe
     int rMinX = 3, rMinY = 3, rMaxX = -1, rMaxY = -1;
     bool recipeEmpty = true;
+
     for (int ry = 0; ry < 3; ry++) {
       for (int rx = 0; rx < 3; rx++) {
         if (recipe.input[ry * 3 + rx].Type != 0) {
@@ -517,30 +521,25 @@ static void UpdateCraftingSelection(Player &player) {
     int recipeW = rMaxX - rMinX + 1;
     int recipeH = rMaxY - rMinY + 1;
 
-    // 3. Compare bounding boxes
-    if (inputW == recipeW && inputH == recipeH) {
-      bool match = true;
-      for (int y = 0; y < inputH; y++) {
-        for (int x = 0; x < inputW; x++) {
-          int inputType = inv[gridStart + (minY + y) * 3 + (minX + x)].Type;
-          bool inputIsEntity =
-              inv[gridStart + (minY + y) * 3 + (minX + x)].isEntity;
-          int recipeType = recipe.input[(rMinY + y) * 3 + (rMinX + x)].Type;
-          bool recipeIsEntity =
-              recipe.input[(rMinY + y) * 3 + (rMinX + x)].isEntity;
-          if (inputType != recipeType || inputIsEntity != recipeIsEntity) {
-            match = false;
-            break;
-          }
-        }
-        if (!match)
-          break;
-      }
+    // 4. Compare bounding boxes
+    if (inputW != recipeW || inputH != recipeH)
+      continue;
 
-      if (match) {
-        inv[resultSlot] = recipe.output;
-        return;
+    bool match = true;
+    for (int y = 0; y < inputH && match; y++) {
+      for (int x = 0; x < inputW && match; x++) {
+        const auto &invSlot = inv[gridStart + (minY + y) * 3 + (minX + x)];
+        const auto &recipeSlot = recipe.input[(rMinY + y) * 3 + (rMinX + x)];
+
+        if (invSlot.Type != recipeSlot.Type ||
+            invSlot.isEntity != recipeSlot.isEntity)
+          match = false;
       }
+    }
+
+    if (match) {
+      inv[resultSlot] = recipe.output;
+      return;
     }
   }
 }
