@@ -213,6 +213,14 @@ struct Frustum {
     transformPlane(bottomFace);
   }
 };
+struct DVertex {
+  Vector3 Position;
+  SDL_FPoint UV;
+  float Side;
+  float BlockID;
+  float TileID;
+  float LightLevel = 15;
+};
 struct Vertex {
   Vector3 Position;
   Vector3 Color;
@@ -256,7 +264,9 @@ struct PipileInitVars {
   SDL_GPUGraphicsPipeline *uiPipeline = nullptr;
   SDL_GPUGraphicsPipeline *textPipeline = nullptr;
   SDL_GPUVertexBufferDescription vertex_buffer_desc;
+  SDL_GPUVertexBufferDescription UIvertex_buffer_desc;
   SDL_GPUVertexAttribute vertex_attributes[5];
+  SDL_GPUVertexAttribute UIvertex_attributes[4];
   SDL_GPUGraphicsPipelineCreateInfo pipeline_desc;
   SDL_GPUShader *vertex_shader;
   SDL_GPUShader *fragment_shader;
@@ -273,7 +283,7 @@ struct RunTimeRenderVars {
 class GameClient;
 
 struct CachedChunkMesh {
-  std::vector<Vertex> vertices;
+  std::vector<DVertex> vertices;
   std::vector<Uint32> indices;
 };
 struct UIVars {
@@ -342,10 +352,11 @@ private:
   void AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
                    SDL_FPoint uvMax, Vector3 color);
   void DrawText(const std::string &text, float x, float y, float scale,
-                Vector3 color);
+                        Vector3 color, float maxWidth, float wrapWidth);
   void UICrossHair();
   std::vector<InventoryBox> BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX, float &outPanelY, float &outPanelW, float &outPanelH);
   void CraftingTable(CraftingVars& Crafting);
+  void SmeltingTable(CraftingVars &Crafting);
   void UIBigInventory(const std::vector<Slot> &inventory, int inventorySlot);
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
   std::vector<ChunkDistance> SortChunks(Player &player);
@@ -359,6 +370,25 @@ private:
   void ColorTargetDes();
   void LoadTexture();
   void EventManager(Player &player, int &inventorySlot);
+  void HandleQuit();
+  void HandleMouseWheel(int &inventorySlot);
+  Vector2 ScreenToNDC(float mx, float my) const;
+  int GetHoveredBoxIndex(Vector2 ndc, const std::vector<InventoryBox> &boxes) const;
+  void HandleMouseButtonDown(Player &player);
+  void HandleLeftClickDown(Player &player, int slotIndex);
+  void HandleRightClickDown(Player &player, int slotIndex);
+  void PickUpHalfStack(Player &player, int slotIndex);
+  void PlaceOneItem(Player &player, int slotIndex);
+  void ConsumeIngredients(Player &player);
+  void HandleMouseMotion(Player &player);  
+  void HandleMouseButtonUp(Player &player);
+  void FinalizeLeftClickDrag(Player &player);
+  void DistributeAcrossSlots(Player &player);
+  void HandleKeyDown(Player &player, int &inventorySlot);
+  void HandleEscapeKey();
+  void HandleF11Key();
+  void HandleEKey();
+  void UIVertexGPUInit();
 
 public:
   Renderer(GameClient &gameClient, ChunkManager &manager);

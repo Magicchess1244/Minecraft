@@ -26,6 +26,10 @@ const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
 constexpr int RenderDistance = 6;
+static constexpr int CRAFTING_RESULT_SLOT = 49;
+static constexpr int CRAFTING_INPUT_FIRST = 40;
+static constexpr int CRAFTING_INPUT_LAST  = 48;
+
 const Vector3 Verts[6][4] = {
     {// Front (+Z) - looking at face from outside (positive Z direction)
      // Counter-clockwise: bottom-right, bottom-left, top-right, top-left
@@ -73,14 +77,6 @@ const Vector3 Direction[6] = {
     {-1, 0, 0}, // Left
     {0, 1, 0},  // Top
     {0, -1, 0}  // Bottom
-};
-const Color Colors[6] = {
-    {20, 20, 20}, // Front (+Z)
-    {20, 20, 20}, // Back (-Z)
-    {40, 40, 40}, // Right (+X)
-    {40, 40, 40}, // Left (-X)
-    {0, 0, 0},    // Top (+Y)
-    {70, 70, 70}, // Bottom (-Y)
 };
 
 Matrix Perspective(float Fov, float Aspect, float Near, float Far) {
@@ -219,35 +215,48 @@ void Renderer::AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
   uiVars.textVertices.push_back(v4);
 }
 void Renderer::DrawText(const std::string &text, float x, float y, float scale,
-                        Vector3 color) {
-  if (text.empty())
-    return;
+                        Vector3 color, float maxWidth = 0, float wrapWidth = 0) {
+    if (text.empty()) return;
 
-  static const char *fontChars =
-      " 0123456789:.XYZ/-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  static const int numChars = (int)strlen(fontChars);
+    static const char *fontChars =
+        " 0123456789:.XYZ/-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    static const int numChars = (int)strlen(fontChars);
 
-  float currentX = x;
-  float fontAspectRatio = 0.5f; // Adjusted for variable width font in atlas
-  float baseCharSize = 0.08f * scale;
-  float charW =
-      (baseCharSize * fontAspectRatio) / this->runTimeRenderVars.aspect;
-  float charH = baseCharSize;
+    float fontAspectRatio = 0.5f;
+    float baseCharSize    = 0.08f * scale;
+    float charW           = (baseCharSize * fontAspectRatio) / this->runTimeRenderVars.aspect;
+    float charH           = baseCharSize;
+    float charAdvance     = charW * 1.2f;
 
-  for (char c : text) {
-    const char *ptr = strchr(fontChars, c);
-    if (!ptr)
-      continue;
+    float currentX = x;
+    float currentY = y;
 
-    int idx = (int)(ptr - fontChars);
-    float uvX1 = (float)idx / (float)numChars;
-    float uvX2 = (float)(idx + 1) / (float)numChars;
+    for (char c : text) {
+        // Word wrap: start a new line if we exceed wrapWidth
+        if (wrapWidth > 0.0f && (currentX - x) + charAdvance > wrapWidth) {
+            currentX  = x;
+            currentY -= charH * 1.4f; // move down one line
+        }
 
-    float padding = 0.0008f;
-    AddTextRect(currentX, y, charW, charH, {uvX1 + padding, 0.0f},
-                {uvX2 - padding, 1.0f}, color);
-    currentX += charW * 1.2f;
-  }
+        // Hard clip: stop rendering entirely if we exceed maxWidth
+        if (maxWidth > 0.0f && (currentX - x) + charW > maxWidth)
+            break;
+
+        const char *ptr = strchr(fontChars, c);
+        if (!ptr) continue;
+
+        int   idx     = (int)(ptr - fontChars);
+        float uvX1    = (float)idx       / (float)numChars;
+        float uvX2    = (float)(idx + 1) / (float)numChars;
+        float padding = 0.0005f;
+
+        AddTextRect(currentX, currentY, charW, charH,
+                    {uvX1 + padding, 0.0f},
+                    {uvX2 - padding, 1.0f},
+                    color);
+
+        currentX += charAdvance;
+    }
 }
 void Renderer::UICrossHair() {
   // Crosshair size
@@ -322,7 +331,11 @@ Renderer::BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
     }
   }
   if (this->uiRuntimeVars.isFurnace) {
-
+        CraftingVars Crafting = {
+        is3x3,      gridSize,   storageBaseY, storageH,      craftToStorageGap,
+        craftW,     panelX,     panelW,       craftSlotSize, craftGap,
+        craftGridH, craftGridW, boxes};
+    SmeltingTable(Crafting);
   } else {
     CraftingVars Crafting = {
         is3x3,      gridSize,   storageBaseY, storageH,      craftToStorageGap,
@@ -361,6 +374,40 @@ void Renderer::CraftingTable(CraftingVars &Crafting) {
 
   // Output slot
   float outX = craftBaseX + 0.05f + Crafting.craftGridW / aspect;
+  float outY =
+      craftBaseY + (Crafting.craftGridH - Crafting.craftSlotSize) / 2.0f;
+  Crafting.boxes.push_back({49, outX, outY, Crafting.craftSlotSize / aspect,
+                            Crafting.craftSlotSize, false});
+}
+void Renderer::SmeltingTable(CraftingVars &Crafting) {
+  float craftingOffset = !Crafting.is3x3 ? 0.3 : 1;
+  float aspect = this->runTimeRenderVars.aspect;
+  float craftBaseY = Crafting.storageBaseY + Crafting.storageH +
+                     (Crafting.craftToStorageGap / 2.0f);
+  float craftAreaW = Crafting.craftW / aspect;
+  float craftBaseX =
+      Crafting.panelX * craftingOffset + (Crafting.panelW - craftAreaW) / 2.0f;
+
+  for (int y = 0; y < 2; y++) {
+    for (int x = 0; x < 1; x++) {
+      int slotIdx =
+          40 + (Crafting.gridSize - 1 - y) * 3 + x; // Map to 3x3 logical grid
+      if (!Crafting.is3x3) {
+        // If 2x2, we use 40,41 and 43,44
+        slotIdx = 40 + (1 - y) * 3 + x;
+      }
+      float xNDC = craftBaseX +
+                   (x * (Crafting.craftSlotSize + Crafting.craftGap)) / aspect;
+      float yNDC =
+          craftBaseY + (y * (Crafting.craftSlotSize + Crafting.craftGap));
+      Crafting.boxes.push_back({slotIdx, xNDC, yNDC,
+                                Crafting.craftSlotSize / aspect,
+                                Crafting.craftSlotSize, false});
+    }
+  }
+
+  // Output slot
+  float outX = craftBaseX + Crafting.craftGridW / aspect;
   float outY =
       craftBaseY + (Crafting.craftGridH - Crafting.craftSlotSize) / 2.0f;
   Crafting.boxes.push_back({49, outX, outY, Crafting.craftSlotSize / aspect,
@@ -421,7 +468,8 @@ void Renderer::UIBigInventory(const std::vector<Slot> &inventory,
 
     // Item icon
     if (i < (int)inventory.size() && inventory[i].Type != 0) {
-      float iconPadding = 0.02f;
+      float iconPadding = 0.01f;
+      if (BlockDef[inventory[i].Type].CanPlace()) iconPadding = 0.02f;
       float pX = iconPadding / this->runTimeRenderVars.aspect;
       float pY = iconPadding;
       AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
@@ -496,8 +544,8 @@ static void UpdateCraftingSelection(Player &player) {
   int inputH = maxY - minY + 1;
 
   // 2. Iterate through recipes
-  for (int rIdx = 0; rIdx < (int)RecipeAmount; rIdx++) {
-    const auto &recipe = RecipeList[rIdx];
+  for (int rIdx = 0; rIdx < (int)CraftingListAmount; rIdx++) {
+    const auto &recipe = CraftingList[rIdx];
 
     // 3. Identify valid bounding box of the recipe
     int rMinX = 3, rMinY = 3, rMaxX = -1, rMaxY = -1;
@@ -543,6 +591,22 @@ static void UpdateCraftingSelection(Player &player) {
     }
   }
 }
+static void UpdateSmeltingSelection(Player &player) {
+  auto &inv = player.inventory;
+
+  const int resultSlot = 49;
+  const int gridStart = 40;
+
+  inv[resultSlot] = {0, 0, false};
+
+  for (auto& recepie : SmeltingList){
+    if (recepie.input[0].Type == inv[gridStart].Type && BlockDef[inv[gridStart + 3].Type].Type == ItemType::FUEL){
+      inv[resultSlot] = recepie.output;
+      //if (inv[gridStart].Amount-- < 1) inv[gridStart].Type = 0;
+      //if (inv[gridStart + 3].Amount-- < 1) inv[gridStart + 3].Type = 0;
+    }
+  }
+}
 void Renderer::UIInventory(const std::vector<Slot> &inventory,
                            int inventorySlot) {
   float hotbarHeight = 0.12f;
@@ -582,7 +646,8 @@ void Renderer::UIInventory(const std::vector<Slot> &inventory,
     }
 
     if (i < inventory.size() && inventory[i].Type != 0) {
-      float iconPadding = 0.015f;
+      float iconPadding = 0.0075f;
+      if (BlockDef[inventory[i].Type].CanPlace()) iconPadding = 0.015f;
       float pX = iconPadding / this->runTimeRenderVars.aspect;
       float pY = iconPadding;
       AddRect(xNDC + pX, yNDC + pY, wNDC - 2 * pX, hNDC - 2 * pY, {1, 1, 1},
@@ -813,7 +878,7 @@ void Renderer::DrawTerrain(Player &player) {
       continue;
     }
 
-    Vertex *Vertexdata = (Vertex *)SDL_MapGPUTransferBuffer(
+    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(
         this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
     Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(
         this->basicInitVars.GPU, mesh->IndextransferBuffer, true);
@@ -845,8 +910,6 @@ void Renderer::DrawTerrain(Player &player) {
             continue;
 
           Vector3 worldPos = face.blockPos + chunkWorldPos;
-          Vector3 faceColor =
-              Vector3(1.0f, 1.0f, 1.0f) - Colors[(int)(face.side)].ToFloat();
 
           Uint32 baseV = (Uint32)cache.vertices.size();
           float fw = (float)face.w;
@@ -870,9 +933,9 @@ void Renderer::DrawTerrain(Player &player) {
               v.z *= fh;
               uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
             }
-            Vertex vert;
+            DVertex vert;
             vert.Position = worldPos + v;
-            vert.Color = faceColor;
+            vert.Side = (float)face.side;
             vert.UV = uv;
             vert.BlockID =
                 (float)BlockDef[face.blockID]
@@ -902,7 +965,7 @@ void Renderer::DrawTerrain(Player &player) {
         continue;
 
       memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
-             cache.vertices.size() * sizeof(Vertex));
+             cache.vertices.size() * sizeof(DVertex));
 
       Uint32 vertexBase = (Uint32)currentVertexOffset;
       for (size_t i = 0; i < cache.indices.size(); i++) {
@@ -924,7 +987,7 @@ void Renderer::DrawTerrain(Player &player) {
 
     SDL_GPUTransferBufferLocation vLoc{mesh->VertextransferBuffer, 0};
     SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
-                             (Uint32)(currentVertexOffset * sizeof(Vertex))};
+                             (Uint32)(currentVertexOffset * sizeof(DVertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
 
     SDL_GPUTransferBufferLocation iLoc{mesh->IndextransferBuffer, 0};
@@ -988,7 +1051,7 @@ void Renderer::DrawTerrain(Player &player) {
                (b.blockPos - player.Position).LengthSquared();
       });
 
-  Vertex *vData = (Vertex *)SDL_MapGPUTransferBuffer(
+  DVertex *vData = (DVertex *)SDL_MapGPUTransferBuffer(
       this->basicInitVars.GPU, tMesh->VertextransferBuffer, true);
   Uint32 *iData = (Uint32 *)SDL_MapGPUTransferBuffer(
       this->basicInitVars.GPU, tMesh->IndextransferBuffer, true);
@@ -1002,9 +1065,6 @@ void Renderer::DrawTerrain(Player &player) {
     for (auto &face : transparentFaces) {
       if (vOffset + 4 > maxV || iOffset + 12 > maxI)
         continue;
-
-      Vector3 faceColor =
-          Vector3(1.0f, 1.0f, 1.0f) - Colors[(int)(face.side)].ToFloat();
 
       for (int j = 0; j < 4; j++) {
         Vector3 v = Verts[face.side][j];
@@ -1026,9 +1086,9 @@ void Renderer::DrawTerrain(Player &player) {
           v.z *= fh;
           uv = {Verts[face.side][j].x * fw, Verts[face.side][j].z * fh};
         }
-        Vertex vert;
+        DVertex vert;
         vert.Position = v + face.blockPos;
-        vert.Color = faceColor;
+        vert.Side = face.side;
         vert.UV = uv;
         vert.BlockID =
             (float)BlockDef[face.blockID].Textures[face.side]; // Location 3
@@ -1073,7 +1133,7 @@ void Renderer::DrawTerrain(Player &player) {
 
     SDL_GPUTransferBufferLocation vLoc{tMesh->VertextransferBuffer, 0};
     SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
-                             (Uint32)(vOffset * sizeof(Vertex))};
+                             (Uint32)(vOffset * sizeof(DVertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
 
     SDL_GPUTransferBufferLocation iLoc{tMesh->IndextransferBuffer, 0};
@@ -1200,7 +1260,7 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
   if (players.size() <= 1)
     return;
 
-  std::vector<Vertex> verts;
+  std::vector<DVertex> verts;
   std::vector<Uint32> indices;
 
   int myId = gameClient.get_my_id();
@@ -1212,15 +1272,14 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
         continue;
 
       Vector3 pos = p.Position;
-      Vector3 color = p.color.ToFloat();
 
       for (int side = 0; side < 6; side++) {
         Uint32 base = verts.size();
         for (int i = 0; i < 4; i++) {
           verts.push_back(
               {EntityDef[(int)EntityType::PLAYER].Model[side][i] + pos,
-               color,
                {0, 0},
+               0,
                1.0f});
         }
         indices.push_back(base + 0);
@@ -1239,7 +1298,7 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
   // Upload to GPU
   void *vData =
       SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
-  SDL_memcpy(vData, verts.data(), verts.size() * sizeof(Vertex));
+  SDL_memcpy(vData, verts.data(), verts.size() * sizeof(DVertex));
   SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer);
 
   void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU,
@@ -1251,7 +1310,7 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
   SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
   SDL_GPUTransferBufferLocation vSrc = {EntityTransferBuffer, 0};
   SDL_GPUBufferRegion vDst = {EntityBuffer, 0,
-                              (Uint32)(verts.size() * sizeof(Vertex))};
+                              (Uint32)(verts.size() * sizeof(DVertex))};
   SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, true);
   SDL_GPUTransferBufferLocation iSrc = {EntityIndexTransferBuffer, 0};
   SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0,
@@ -1305,241 +1364,284 @@ void Renderer::OpenInventory(bool craftingTable) {
     this->uiRuntimeVars.isCraftingTable = false;
 }
 void Renderer::EventManager(Player &player, int &inventorySlot) {
-  while (SDL_PollEvent(&this->basicInitVars.event)) {
-    switch (this->basicInitVars.event.type) {
-    case SDL_EVENT_QUIT:
-      // Handle quitting the game
-      this->gameClient.Quit();
-      break;
-
-    case SDL_EVENT_WINDOW_RESIZED: {
-      UpdateViewportAndProjection();
-      break;
-    }
-    case SDL_EVENT_MOUSE_WHEEL: {
-      if (this->basicInitVars.event.wheel.y > 0) {
-        inventorySlot = (inventorySlot + 7) % 9; // Previous
-      } else if (this->basicInitVars.event.wheel.y < 0) {
-        inventorySlot = (inventorySlot + 1) % 9; // Next
-      }
-      break;
-    }
-    case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      if (this->uiRuntimeVars.bigInventory) {
-        float mx = this->basicInitVars.event.button.x;
-        float my = this->basicInitVars.event.button.y;
-        float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-        float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
-
-        float panelX, panelY, panelW, panelH;
-        std::vector<InventoryBox> boxes = BuildInventoryBoxes(
-            this->runTimeRenderVars.aspect, this->uiRuntimeVars.isCraftingTable,
-            panelX, panelY, panelW, panelH);
-
-        for (const auto &box : boxes) {
-          int i = box.index;
-          if (ndc_mx >= box.xNDC && ndc_mx <= box.xNDC + box.wNDC &&
-              ndc_my >= box.yNDC && ndc_my <= box.yNDC + box.hNDC) {
-
-            g_initialClickSlot = i;
-            g_draggedSlots.clear();
-            if (g_heldItem.Type == 0 || player.inventory[i].Type == 0 ||
-                player.inventory[i].Type == g_heldItem.Type) {
-              g_draggedSlots.push_back(i);
-            }
-            g_justPickedUp = false;
-
-            if (this->basicInitVars.event.button.button == SDL_BUTTON_LEFT) {
-              g_isLeftClickDragging = true;
-              g_isRightClickDragging = false;
-              if (g_heldItem.Type == 0) { // Pick up whole stack
-                g_heldItem = player.inventory[i];
-                player.inventory[i] = {0, 0};
-                g_justPickedUp = true;
-                if (i == 49 && g_heldItem.Type != 0) {
-                  for (int s = 40; s <= 48; s++) {
-                    if (player.inventory[s].Amount > 0) {
-                      player.inventory[s].Amount--;
-                      if (player.inventory[s].Amount == 0)
-                        player.inventory[s].Type = 0;
-                    }
-                  }
-                }
-                UpdateCraftingSelection(player);
-              }
-            } else if (this->basicInitVars.event.button.button ==
-                       SDL_BUTTON_RIGHT) {
-              g_isRightClickDragging = true;
-              g_isLeftClickDragging = false;
-              if (g_heldItem.Type == 0) { // Pick up half stack
-                if (i != 49 && player.inventory[i].Type != 0) {
-                  int take = (player.inventory[i].Amount + 1) / 2;
-                  g_heldItem = {(short)take, player.inventory[i].Type};
-                  player.inventory[i].Amount -= take;
-                  if (player.inventory[i].Amount <= 0)
-                    player.inventory[i].Type = 0;
-                  g_justPickedUp = true;
-                  UpdateCraftingSelection(player);
-                } else if (i == 49 &&
-                           player.inventory[i].Type != 0) { // Craft one
-                  g_heldItem = player.inventory[i];
-                  player.inventory[i] = {0, 0};
-                  for (int s = 40; s <= 48; s++) {
-                    if (player.inventory[s].Amount > 0) {
-                      player.inventory[s].Amount--;
-                      if (player.inventory[s].Amount == 0)
-                        player.inventory[s].Type = 0;
-                    }
-                  }
-                  g_justPickedUp = true;
-                  UpdateCraftingSelection(player);
-                }
-              } else { // Place one immediately
-                if (i != 49 && (player.inventory[i].Type == 0 ||
-                                player.inventory[i].Type == g_heldItem.Type)) {
-                  player.inventory[i].Type = g_heldItem.Type;
-                  player.inventory[i].Amount++;
-                  g_heldItem.Amount--;
-                  if (g_heldItem.Amount <= 0)
-                    g_heldItem = {0, 0};
-                  UpdateCraftingSelection(player);
-                }
-              }
-            }
-            break;
-          }
+    while (SDL_PollEvent(&this->basicInitVars.event)) {
+        switch (this->basicInitVars.event.type) {
+            case SDL_EVENT_QUIT:               HandleQuit();                                    break;
+            case SDL_EVENT_WINDOW_RESIZED:     UpdateViewportAndProjection();                   break;
+            case SDL_EVENT_MOUSE_WHEEL:        HandleMouseWheel(inventorySlot);                 break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:  HandleMouseButtonDown(player);                   break;
+            case SDL_EVENT_MOUSE_MOTION:       HandleMouseMotion(player);                       break;
+            case SDL_EVENT_MOUSE_BUTTON_UP:    HandleMouseButtonUp(player);                     break;
+            case SDL_EVENT_KEY_DOWN:           HandleKeyDown(player, inventorySlot);            break;
         }
-      }
-      break;
     }
-    case SDL_EVENT_MOUSE_MOTION: {
-      if (this->uiRuntimeVars.bigInventory &&
-          (g_isLeftClickDragging || g_isRightClickDragging)) {
-        float mx = this->basicInitVars.event.motion.x;
-        float my = this->basicInitVars.event.motion.y;
-        float ndc_mx = (mx / (float)this->basicInitVars.Width) * 2.0f - 1.0f;
-        float ndc_my = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
+}
 
-        float panelX, panelY, panelW, panelH;
-        std::vector<InventoryBox> boxes = BuildInventoryBoxes(
-            this->runTimeRenderVars.aspect, this->uiRuntimeVars.isCraftingTable,
-            panelX, panelY, panelW, panelH);
+void Renderer::HandleQuit() {
+    this->gameClient.Quit();
+}
 
-        for (const auto &box : boxes) {
-          int i = box.index;
-          if (ndc_mx >= box.xNDC && ndc_mx <= box.xNDC + box.wNDC &&
-              ndc_my >= box.yNDC && ndc_my <= box.yNDC + box.hNDC) {
+void Renderer::HandleMouseWheel(int &inventorySlot) {
+    int delta = this->basicInitVars.event.wheel.y;
+    if      (delta > 0) inventorySlot = (inventorySlot + 7) % 9; // scroll up   = previous
+    else if (delta < 0) inventorySlot = (inventorySlot + 1) % 9; // scroll down = next
+}
 
-            if (std::find(g_draggedSlots.begin(), g_draggedSlots.end(), i) ==
-                g_draggedSlots.end()) {
+Vector2 Renderer::ScreenToNDC(float mx, float my) const {
+    float ndc_x =  (mx / (float)this->basicInitVars.Width)  * 2.0f - 1.0f;
+    float ndc_y = 1.0f - (my / (float)this->basicInitVars.Height) * 2.0f;
+    return { ndc_x, ndc_y };
+}
 
-              bool isCompatible = (i != 49) && (g_heldItem.Type != 0) &&
-                                  (player.inventory[i].Type == 0 ||
-                                   player.inventory[i].Type == g_heldItem.Type);
+int Renderer::GetHoveredBoxIndex(Vector2 ndc, const std::vector<InventoryBox> &boxes) const {
+    for (const auto &box : boxes) {
+        bool inX = ndc.x >= box.xNDC && ndc.x <= box.xNDC + box.wNDC;
+        bool inY = ndc.y >= box.yNDC && ndc.y <= box.yNDC + box.hNDC;
+        if (inX && inY) return box.index;
+    }
+    return -1;
+}
 
-              if (isCompatible) {
-                if (g_isLeftClickDragging) {
-                  g_draggedSlots.push_back(i);
-                } else if (g_isRightClickDragging && g_heldItem.Amount > 0) {
-                  g_draggedSlots.push_back(i);
-                  player.inventory[i].Type = g_heldItem.Type;
-                  player.inventory[i].Amount++;
-                  g_heldItem.Amount--;
-                  if (g_heldItem.Amount <= 0)
-                    g_heldItem = {0, 0};
-                  UpdateCraftingSelection(player);
-                }
-              }
-            }
-            break;
-          }
+void Renderer::HandleMouseButtonDown(Player &player) {
+    if (!this->uiRuntimeVars.bigInventory) return;
+
+    auto ndc = ScreenToNDC(
+        this->basicInitVars.event.button.x,
+        this->basicInitVars.event.button.y
+    );
+
+    float panelX, panelY, panelW, panelH;
+    auto boxes = BuildInventoryBoxes(
+        this->runTimeRenderVars.aspect,
+        this->uiRuntimeVars.isCraftingTable,
+        panelX, panelY, panelW, panelH
+    );
+
+    int slotIndex = GetHoveredBoxIndex(ndc, boxes);
+    if (slotIndex == -1) return;
+
+    // Init drag state
+    g_initialClickSlot = slotIndex;
+    g_draggedSlots.clear();
+    g_justPickedUp = false;
+
+    bool slotCompatible = g_heldItem.Type == 0
+        || player.inventory[slotIndex].Type == 0
+        || player.inventory[slotIndex].Type == g_heldItem.Type;
+
+    if (slotCompatible)
+        g_draggedSlots.push_back(slotIndex);
+
+    uint8_t btn = this->basicInitVars.event.button.button;
+    if      (btn == SDL_BUTTON_LEFT)  HandleLeftClickDown(player, slotIndex);
+    else if (btn == SDL_BUTTON_RIGHT) HandleRightClickDown(player, slotIndex);
+}
+
+void Renderer::HandleLeftClickDown(Player &player, int slotIndex) {
+    g_isLeftClickDragging  = true;
+    g_isRightClickDragging = false;
+
+    if (g_heldItem.Type != 0) return; // already holding something
+
+    // Pick up entire stack
+    g_heldItem                   = player.inventory[slotIndex];
+    player.inventory[slotIndex]  = {0, 0};
+    g_justPickedUp               = true;
+
+    // Crafting result slot: consume one of each ingredient
+    if (slotIndex == CRAFTING_RESULT_SLOT && g_heldItem.Type != 0){
+        ConsumeIngredients(player);
+    }
+
+    if(this->uiRuntimeVars.isFurnace) UpdateSmeltingSelection(player);
+    else UpdateCraftingSelection(player);
+}
+
+void Renderer::HandleRightClickDown(Player &player, int slotIndex) {
+    g_isRightClickDragging = true;
+    g_isLeftClickDragging  = false;
+
+    if (g_heldItem.Type == 0) {
+        PickUpHalfStack(player, slotIndex);
+    } else {
+        PlaceOneItem(player, slotIndex);
+    }
+}
+
+void Renderer::PickUpHalfStack(Player &player, int slotIndex) {
+    auto &slot = player.inventory[slotIndex];
+    if (slot.Type == 0) return;
+
+    if (slotIndex == CRAFTING_RESULT_SLOT) {
+        // Craft exactly one
+        g_heldItem = slot;
+        slot       = {0, 0};
+        ConsumeIngredients(player);
+    } else {
+        // Pick up the top half
+        int take    = (slot.Amount + 1) / 2;
+        g_heldItem  = { (short)take, slot.Type };
+        slot.Amount -= take;
+        if (slot.Amount <= 0) slot.Type = 0;
+    }
+
+    g_justPickedUp = true;
+    if(this->uiRuntimeVars.isFurnace) UpdateSmeltingSelection(player);
+    else UpdateCraftingSelection(player);
+}
+
+void Renderer::PlaceOneItem(Player &player, int slotIndex) {
+    if (slotIndex == CRAFTING_RESULT_SLOT) return;
+
+    auto &slot = player.inventory[slotIndex];
+    bool  compatible = slot.Type == 0 || slot.Type == g_heldItem.Type;
+    if (!compatible) return;
+
+    slot.Type = g_heldItem.Type;
+    slot.Amount++;
+    g_heldItem.Amount--;
+    if (g_heldItem.Amount <= 0) g_heldItem = {0, 0};
+
+    if(this->uiRuntimeVars.isFurnace) UpdateSmeltingSelection(player);
+    else UpdateCraftingSelection(player);
+}
+
+void Renderer::ConsumeIngredients(Player &player) {
+    for (int s = CRAFTING_INPUT_FIRST; s <= CRAFTING_INPUT_LAST; s++) {
+        if (player.inventory[s].Amount <= 0) continue;
+        player.inventory[s].Amount--;
+        if (player.inventory[s].Amount == 0){
+            player.inventory[s].Type = 0;}
+          //std::cout << "Finish" << std::endl;}
+    }
+}
+
+void Renderer::HandleMouseMotion(Player &player) {
+    if (!this->uiRuntimeVars.bigInventory)           return;
+    if (!g_isLeftClickDragging && !g_isRightClickDragging) return;
+
+    auto ndc = ScreenToNDC(
+        this->basicInitVars.event.motion.x,
+        this->basicInitVars.event.motion.y
+    );
+
+    float panelX, panelY, panelW, panelH;
+    auto boxes = BuildInventoryBoxes(
+        this->runTimeRenderVars.aspect,
+        this->uiRuntimeVars.isCraftingTable,
+        panelX, panelY, panelW, panelH
+    );
+
+    int slotIndex = GetHoveredBoxIndex(ndc, boxes);
+    if (slotIndex == -1) return;
+
+    // Skip already-visited slots and the result slot
+    bool alreadyVisited = std::find(
+        g_draggedSlots.begin(), g_draggedSlots.end(), slotIndex
+    ) != g_draggedSlots.end();
+
+    bool compatible = (slotIndex != CRAFTING_RESULT_SLOT)
+        && (g_heldItem.Type != 0)
+        && (player.inventory[slotIndex].Type == 0
+            || player.inventory[slotIndex].Type == g_heldItem.Type);
+
+    if (alreadyVisited || !compatible) return;
+
+    if (g_isLeftClickDragging) {
+        g_draggedSlots.push_back(slotIndex);
+    } else if (g_isRightClickDragging && g_heldItem.Amount > 0) {
+        g_draggedSlots.push_back(slotIndex);
+        PlaceOneItem(player, slotIndex);
+    }
+}
+
+void Renderer::HandleMouseButtonUp(Player &player) {
+    if (!this->uiRuntimeVars.bigInventory) return;
+
+    if (this->basicInitVars.event.button.button == SDL_BUTTON_LEFT && g_isLeftClickDragging)
+        FinalizeLeftClickDrag(player);
+
+    // Reset all drag state
+    g_isLeftClickDragging  = false;
+    g_isRightClickDragging = false;
+    g_draggedSlots.clear();
+    g_initialClickSlot = -1;
+    g_justPickedUp     = false;
+}
+
+void Renderer::FinalizeLeftClickDrag(Player &player) {
+    if (g_justPickedUp || g_heldItem.Type == 0) return;
+
+    if (g_draggedSlots.size() > 1) {
+        DistributeAcrossSlots(player);
+    } else {
+        // Simple click: swap or merge into single slot
+        int i = g_draggedSlots.empty() ? g_initialClickSlot : g_draggedSlots[0];
+        if (i == -1 || i == CRAFTING_RESULT_SLOT) return;
+
+        if (player.inventory[i].Type == g_heldItem.Type) {
+            player.inventory[i].Amount += g_heldItem.Amount;
+            g_heldItem = {0, 0};
+        } else {
+            std::swap(g_heldItem, player.inventory[i]);
         }
-      }
-      break;
-    }
-    case SDL_EVENT_MOUSE_BUTTON_UP: {
-      if (this->uiRuntimeVars.bigInventory) {
-        int btn = this->basicInitVars.event.button.button;
-        if (btn == SDL_BUTTON_LEFT && g_isLeftClickDragging) {
-          if (!g_justPickedUp && g_heldItem.Type != 0) {
-            if (g_draggedSlots.size() > 1) {
-              // Divide equally among unique slots that are not the result
-              // slot
-              std::vector<int> targetSlots;
-              for (int sIdx : g_draggedSlots)
-                if (sIdx != 49)
-                  targetSlots.push_back(sIdx);
-              if (!targetSlots.empty()) {
-                int amountPer = g_heldItem.Amount / targetSlots.size();
-                int remainder = g_heldItem.Amount % targetSlots.size();
-                for (size_t j = 0; j < targetSlots.size(); j++) {
-                  int sIdx = targetSlots[j];
-                  int toAdd = amountPer + (j < (size_t)remainder ? 1 : 0);
-                  if (toAdd > 0) {
-                    player.inventory[sIdx].Type = g_heldItem.Type;
-                    player.inventory[sIdx].Amount += toAdd;
-                  }
-                }
-                g_heldItem = {0, 0};
-                UpdateCraftingSelection(player);
-              }
-            } else if (g_draggedSlots.size() <= 1) {
-              // Simple click release - swap or merge
-              int i = g_draggedSlots.empty() ? g_initialClickSlot
-                                             : g_draggedSlots[0];
-              if (i != -1 && i != 49) {
-                if (player.inventory[i].Type == g_heldItem.Type) {
-                  player.inventory[i].Amount += g_heldItem.Amount;
-                  g_heldItem = {0, 0};
-                } else {
-                  std::swap(g_heldItem, player.inventory[i]);
-                }
-                UpdateCraftingSelection(player);
-              }
-            }
-          }
-        }
-        g_isLeftClickDragging = false;
-        g_isRightClickDragging = false;
-        g_draggedSlots.clear();
-        g_initialClickSlot = -1;
-        g_justPickedUp = false;
-      }
-      break;
-    }
-    case SDL_EVENT_KEY_DOWN: {
-      SDL_Keycode key = this->basicInitVars.event.key.scancode;
 
-      if (key == SDL_SCANCODE_ESCAPE && this->uiRuntimeVars.usingUI) {
-        this->uiRuntimeVars.bigInventory = false;
-        this->uiRuntimeVars.isCraftingTable = false;
-        this->uiRuntimeVars.isFurnace = false;
-        this->uiRuntimeVars.usingUI = false;
-        SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
-                                       !this->uiRuntimeVars.bigInventory);
-        break;
-      } else if (key == SDL_SCANCODE_F11) {
-
-        this->uiRuntimeVars.fullScreen = !this->uiRuntimeVars.fullScreen;
-        std::cout << "Toggling fullscreen: "
-                  << (this->uiRuntimeVars.fullScreen ? "ON" : "OFF")
-                  << std::endl;
-
-        SDL_SetWindowFullscreen(this->basicInitVars.window,
-                                this->uiRuntimeVars.fullScreen);
-
-        // Update screen size immediately
-        UpdateViewportAndProjection();
-      } else if (key == SDL_SCANCODE_F3) {
-        this->uiRuntimeVars.showDebug = !this->uiRuntimeVars.showDebug;
-      } else if (key == SDL_SCANCODE_E) {
-        this->OpenInventory(false);
-        this->uiRuntimeVars.usingUI = this->uiRuntimeVars.bigInventory;
-      }
-      break;
+    if(this->uiRuntimeVars.isFurnace) UpdateSmeltingSelection(player);
+    else UpdateCraftingSelection(player);
     }
+}
+
+void Renderer::DistributeAcrossSlots(Player &player) {
+    std::vector<int> targets;
+    for (int s : g_draggedSlots)
+        if (s != CRAFTING_RESULT_SLOT) targets.push_back(s);
+
+    if (targets.empty()) return;
+
+    int amountPer = g_heldItem.Amount / (int)targets.size();
+    int remainder = g_heldItem.Amount % (int)targets.size();
+
+    for (size_t j = 0; j < targets.size(); j++) {
+        int toAdd = amountPer + (j < (size_t)remainder ? 1 : 0);
+        if (toAdd <= 0) continue;
+        player.inventory[targets[j]].Type    = g_heldItem.Type;
+        player.inventory[targets[j]].Amount += toAdd;
     }
-  }
+
+    g_heldItem = {0, 0};
+    if(this->uiRuntimeVars.isFurnace) UpdateSmeltingSelection(player);
+    else UpdateCraftingSelection(player);
+}
+
+void Renderer::HandleKeyDown(Player &player, int &inventorySlot) {
+    SDL_Keycode key = this->basicInitVars.event.key.scancode;
+
+    switch (key) {
+        case SDL_SCANCODE_ESCAPE: HandleEscapeKey(); break;
+        case SDL_SCANCODE_F11:    HandleF11Key();    break;
+        case SDL_SCANCODE_F3:     this->uiRuntimeVars.showDebug = !this->uiRuntimeVars.showDebug; break;
+        case SDL_SCANCODE_E:      HandleEKey();      break;
+    }
+}
+
+void Renderer::HandleEscapeKey() {
+    if (!this->uiRuntimeVars.usingUI) return;
+    this->uiRuntimeVars.bigInventory    = false;
+    this->uiRuntimeVars.isCraftingTable = false;
+    this->uiRuntimeVars.isFurnace       = false;
+    this->uiRuntimeVars.usingUI         = false;
+    SDL_SetWindowRelativeMouseMode(this->basicInitVars.window, true);
+}
+
+void Renderer::HandleF11Key() {
+    this->uiRuntimeVars.fullScreen = !this->uiRuntimeVars.fullScreen;
+    SDL_SetWindowFullscreen(this->basicInitVars.window, this->uiRuntimeVars.fullScreen);
+    UpdateViewportAndProjection();
+}
+
+void Renderer::HandleEKey() {
+    this->OpenInventory(false);
+    this->uiRuntimeVars.usingUI = this->uiRuntimeVars.bigInventory;
 }
 void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
                               std::vector<Player> &players) {
@@ -1763,42 +1865,53 @@ void Renderer::GenerateBuffer() {
   }
 }
 void Renderer::VertexGPUInit() {
-  this->pipelineInitVars.vertex_buffer_desc.slot = 0;
-  this->pipelineInitVars.vertex_buffer_desc.input_rate =
-      SDL_GPU_VERTEXINPUTRATE_VERTEX;
-  this->pipelineInitVars.vertex_buffer_desc.instance_step_rate = 0;
-  this->pipelineInitVars.vertex_buffer_desc.pitch = sizeof(Vertex);
+    auto &desc  = this->pipelineInitVars.vertex_buffer_desc;
+    auto &attrs = this->pipelineInitVars.vertex_attributes;
 
-  this->pipelineInitVars.vertex_attributes[0].buffer_slot = 0;
-  this->pipelineInitVars.vertex_attributes[0].location = 0;
-  this->pipelineInitVars.vertex_attributes[0].format =
-      SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  this->pipelineInitVars.vertex_attributes[0].offset = 0;
+    // Buffer descriptor
+    desc.slot                = 0;
+    desc.input_rate          = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    desc.instance_step_rate  = 0;
+    desc.pitch               = sizeof(DVertex);
 
-  this->pipelineInitVars.vertex_attributes[1].buffer_slot = 0;
-  this->pipelineInitVars.vertex_attributes[1].location = 1;
-  this->pipelineInitVars.vertex_attributes[1].format =
-      SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  this->pipelineInitVars.vertex_attributes[1].offset = sizeof(float) * 3;
+    // Helper to reduce repetition
+    auto setAttr = [&](int loc, SDL_GPUVertexElementFormat fmt, Uint32 offset) {
+        attrs[loc].buffer_slot = 0;
+        attrs[loc].location    = loc;
+        attrs[loc].format      = fmt;
+        attrs[loc].offset      = offset;
+    };
 
-  this->pipelineInitVars.vertex_attributes[2].buffer_slot = 0;
-  this->pipelineInitVars.vertex_attributes[2].location = 2;
-  this->pipelineInitVars.vertex_attributes[2].format =
-      SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-  this->pipelineInitVars.vertex_attributes[2].offset = sizeof(float) * 6;
+    //                loc  format                                offset
+    setAttr(0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0);
+    setAttr(1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, sizeof(float) * 3);
+    setAttr(2, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT,    sizeof(float) * 5);
+    setAttr(3, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT,  sizeof(float) * 6);
+    setAttr(4, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT,  sizeof(float) * 7);
+}
+void Renderer::UIVertexGPUInit() {
+    auto &desc  = this->pipelineInitVars.UIvertex_buffer_desc;
+    auto &attrs = this->pipelineInitVars.UIvertex_attributes;
 
-  this->pipelineInitVars.vertex_attributes[3].buffer_slot = 0;
-  this->pipelineInitVars.vertex_attributes[3].location = 3;
-  this->pipelineInitVars.vertex_attributes[3].format =
-      SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
-  this->pipelineInitVars.vertex_attributes[3].offset = sizeof(float) * 8;
+    // Buffer descriptor
+    desc.slot                = 0;
+    desc.input_rate          = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+    desc.instance_step_rate  = 0;
+    desc.pitch               = sizeof(Vertex);
 
-  // ADD THIS - Attribute 4 for light
-  this->pipelineInitVars.vertex_attributes[4].buffer_slot = 0;
-  this->pipelineInitVars.vertex_attributes[4].location = 4;
-  this->pipelineInitVars.vertex_attributes[4].format =
-      SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
-  this->pipelineInitVars.vertex_attributes[4].offset = sizeof(float) * 9;
+    // Helper to reduce repetition
+    auto setAttr = [&](int loc, SDL_GPUVertexElementFormat fmt, Uint32 offset) {
+        attrs[loc].buffer_slot = 0;
+        attrs[loc].location    = loc;
+        attrs[loc].format      = fmt;
+        attrs[loc].offset      = offset;
+    };
+
+    //                loc  format                                offset
+    setAttr(0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0);
+    setAttr(1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, sizeof(float) * 3);
+    setAttr(2, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, sizeof(float) * 6);
+    setAttr(3, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT,  sizeof(float) * 8);
 }
 void Renderer::LoadTexture() {
   if (!this->basicInitVars.GPU) {
@@ -2090,6 +2203,7 @@ void Renderer::PipelineInit() {
   this->pipelineInitVars.pipeline_desc.rasterizer_state.front_face =
       SDL_GPU_FRONTFACE_CLOCKWISE;
   VertexGPUInit();
+  UIVertexGPUInit();
 
   pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_buffers =
       1; // We only bind one buffer at a time
@@ -2138,10 +2252,10 @@ void Renderer::PipelineInit() {
 
   ui_desc.vertex_input_state.num_vertex_buffers = 1;
   ui_desc.vertex_input_state.vertex_buffer_descriptions =
-      &this->pipelineInitVars.vertex_buffer_desc;
+      &this->pipelineInitVars.UIvertex_buffer_desc;
   ui_desc.vertex_input_state.num_vertex_attributes = 4;
   ui_desc.vertex_input_state.vertex_attributes =
-      this->pipelineInitVars.vertex_attributes;
+      this->pipelineInitVars.UIvertex_attributes;
 
   if (!ui_vert || !ui_frag) {
     SDL_Log("UI Shaders failed to load! vert: %p, frag: %p", (void *)ui_vert,

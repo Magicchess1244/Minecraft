@@ -1,6 +1,6 @@
 #version 460
 
-layout (location = 0) in vec4 v_color;
+layout (location = 0) in float v_color;
 layout (location = 1) in vec2 v_uv;
 layout (location = 2) flat in float v_blockID;
 layout (location = 3) in vec3 v_pos;
@@ -17,6 +17,15 @@ float FarFog = 150.0;
 float NearFogInWater = 5.0;
 float FarFogInWater = 50.0;
 int BlockInAtlasRow = 32;
+
+const vec3 FaceLight[6] = vec3[6](
+    vec3(0.80, 0.80, 0.80),  // Front  (+Z)
+    vec3(0.80, 0.80, 0.80),  // Back   (-Z)
+    vec3(0.70, 0.70, 0.70),  // Right  (+X)
+    vec3(0.70, 0.70, 0.70),  // Left   (-X)
+    vec3(1.00, 1.00, 1.00),  // Top    (+Y) — brightest
+    vec3(0.60, 0.60, 0.60)   // Bottom (-Y) — darkest
+);
 
 void main()
 {
@@ -39,7 +48,7 @@ void main()
       texColor = vec4(1.0, 0.0, 1.0, 1.0); // Magenta fallback
   }
 
-  vec3 finalColor = v_color.rgb * texColor.rgb;
+  vec3 finalColor = FaceLight[int(v_color)] * texColor.rgb;
 
   if (v_blockID == 5) {
     // Water

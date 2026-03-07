@@ -234,10 +234,10 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
     return false;
 
   const Block &def = BlockDef[blockID];
-  if (!def.isSolid)
+  if (!def.IsSolid())
     return false;
 
-  if (def.collisionBoxes == nullptr) {
+  if (!def.collisionBoxes.has_value()) {
     // If collisionBoxes is nullptr, check as a full block
     return true;
   } else {
@@ -245,8 +245,8 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
     // block)
     Vector3 relPos = worldPos - floorPos;
     // Assuming a max of 2 boxes for now as defined in the header previously
-    for (int i = 0; i < 2; i++) {
-      const BoundingBox &box = def.collisionBoxes[i];
+    for (int i = 0; i < def.collisionBoxes->size(); i++) {
+      const BoundingBox &box = def.collisionBoxes.value()[i];
       if (relPos.x >= box.min.x && relPos.x <= box.max.x &&
           relPos.y >= box.min.y && relPos.y <= box.max.y &&
           relPos.z >= box.min.z && relPos.z <= box.max.z) {

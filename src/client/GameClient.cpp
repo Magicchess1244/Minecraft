@@ -429,7 +429,7 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
 
         if (!collides && inventory[inventorySlot].Amount > 0 &&
             !inventory[inventorySlot].isEntity &&
-            BlockDef[inventory[inventorySlot].Type].canPlace) {
+            BlockDef[inventory[inventorySlot].Type].CanPlace()) {
           Uint8 type = inventory[inventorySlot].Type;
           inventory[inventorySlot].Amount--;
           if (inventory[inventorySlot].Amount == 0)

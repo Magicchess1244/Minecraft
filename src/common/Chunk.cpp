@@ -37,7 +37,7 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
       return false;
     Uint8 blockID = blocks[localX + localY * ChunkPrefab::xSize +
                            localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
-    return blockID != 0 && BlockDef[blockID].isSolid;
+    return blockID != 0 && !BlockDef[blockID].collisionBoxes.has_value();
   }
 
   // If outside this chunk, use manager's global check
