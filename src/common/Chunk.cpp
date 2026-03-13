@@ -496,147 +496,48 @@ void ChunkPrefab::GenerateMesh() {
   int estimatedFaces = xSize * zSize * 6;
   this->allFaces.reserve(estimatedFaces);
 
-  std::vector<Uint8> mask(xSize * ySize, 0); // Max possible size
-  std::vector<Uint8> lightMask(xSize * ySize, 0);
-  std::vector<bool> visited(xSize * ySize, false);
+  for (int y = 0; y < (int)ChunkPrefab::ySize; y++) {
+    for (int z = 0; z < (int)ChunkPrefab::zSize; z++) {
+      for (int x = 0; x < (int)ChunkPrefab::xSize; x++) {
+        int idx = x + y * ChunkPrefab::xSize +
+                  z * ChunkPrefab::xSize * ChunkPrefab::ySize;
+        Uint8 bid = blocks[idx];
+        if (bid == 0)
+          continue;
 
-  for (int side = 0; side < 6; side++) {
-    int d = (side < 2) ? 2 : (side < 4 ? 0 : 1); // normal axis
-    int u = (d == 0) ? 2 : 0;                    // u axis
-    int v = (d == 1) ? 2 : 1;                    // v axis
-    if (d == 2) {
-      u = 0;
-      v = 1;
-    }
+        for (int side = 0; side < 6; side++) {
+          int nx = x + (int)Direction[side].x;
+          int ny = y + (int)Direction[side].y;
+          int nz = z + (int)Direction[side].z;
 
-    int dims[3] = {ChunkPrefab::xSize, ChunkPrefab::ySize, ChunkPrefab::zSize};
+          Uint8 nBid = 0;
 
-    for (int slice = 0; slice < dims[d]; slice++) {
-      std::fill(mask.begin(), mask.begin() + (dims[u] * dims[v]), 0);
-      std::fill(lightMask.begin(), lightMask.begin() + (dims[u] * dims[v]), 0);
-
-      for (int i = 0; i < dims[u]; i++) {
-        for (int j = 0; j < dims[v]; j++) {
-          int x[3];
-          x[d] = slice;
-          x[u] = i;
-          x[v] = j;
-
-          int idx = x[0] + x[1] * ChunkPrefab::xSize +
-                    x[2] * ChunkPrefab::xSize * ChunkPrefab::ySize;
-          Uint8 bid = this->blocks[idx];
-
-          if (bid != 0) {
-            bool visible = false;
-            int nx[3] = {x[0], x[1], x[2]};
-
-            if (side == 0)
-              nx[2]++;
-            else if (side == 1)
-              nx[2]--;
-            else if (side == 2)
-              nx[0]++;
-            else if (side == 3)
-              nx[0]--;
-            else if (side == 4)
-              nx[1]++;
-            else if (side == 5)
-              nx[1]--;
-
-            int worldX = nx[0] + xPos;
-            int worldY = nx[1];
-            int worldZ = nx[2] + zPos;
-
-            Uint8 nBid = 0;
-
-            if (nx[0] >= 0 && nx[0] < ChunkPrefab::xSize && nx[1] >= 0 &&
-                nx[1] < ChunkPrefab::ySize && nx[2] >= 0 &&
-                nx[2] < ChunkPrefab::zSize) {
-              int nIdx = nx[0] + nx[1] * ChunkPrefab::xSize +
-                         nx[2] * ChunkPrefab::xSize * ChunkPrefab::ySize;
-              nBid = this->blocks[nIdx];
-            } else {
-              nBid = manager->GetBlockID(
-                  {(float)worldX, (float)worldY, (float)worldZ});
-            }
-
-            if (BlockDef[bid].isTransparent()) {
-              // Transparent blocks like water only show faces against air
-              visible = (nBid == 0);
-            } else {
-              // Opaque blocks show faces against air or transparent blocks
-              visible = (nBid == 0 || BlockDef[nBid].isTransparent());
-            }
-
-            if (visible) {
-              mask[i + j * dims[u]] = bid;
-
-              // FIXED: Get light level from neighbor, works for chunk
-              // boundaries now
-              Uint8 light = GetCombinedLight(nx[0], nx[1], nx[2]);
-
-              lightMask[i + j * dims[u]] = light;
-            }
+          if (nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 &&
+              ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize) {
+            int nIdx = nx + ny * ChunkPrefab::xSize +
+                       nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
+            nBid = this->blocks[nIdx];
+          } else {
+            nBid = manager->GetBlockID(
+                {(float)(nx + xPos), (float)ny, (float)(nz + zPos)});
           }
-        }
-      }
 
-      // Greedy Meshing
-      std::fill(visited.begin(), visited.begin() + (dims[u] * dims[v]), false);
-      for (int j = 0; j < dims[v]; j++) {
-        for (int i = 0; i < dims[u]; i++) {
-          int mIdx = i + j * dims[u];
-          if (mask[mIdx] != 0 && !visited[mIdx]) {
-            Uint8 bid = mask[mIdx];
-            Uint8 light = lightMask[mIdx];
-            int w = 1, h = 1;
+          bool visible = false;
+          if (BlockDef[bid].isTransparent()) {
+            // Transparent blocks like water only show faces against air
+            visible = (nBid == 0);
+          } else {
+            // Opaque blocks show faces against air or transparent blocks
+            visible = (nBid == 0 || BlockDef[nBid].isTransparent());
+          }
 
-            // Expand width
-            for (int i2 = i + 1; i2 < dims[u]; i2++) {
-              int idx2 = i2 + j * dims[u];
-              if (mask[idx2] == bid && !visited[idx2] &&
-                  lightMask[idx2] == light) {
-                w++;
-              } else {
-                break;
-              }
-            }
-
-            // Expand height
-            for (int j2 = j + 1; j2 < dims[v]; j2++) {
-              bool rowMatch = true;
-              for (int i2 = i; i2 < i + w; i2++) {
-                int idx2 = i2 + j2 * dims[u];
-                if (mask[idx2] != bid || visited[idx2] ||
-                    lightMask[idx2] != light) {
-                  rowMatch = false;
-                  break;
-                }
-              }
-              if (rowMatch) {
-                h++;
-              } else {
-                break;
-              }
-            }
-
-            int xOrigin[3];
-            xOrigin[d] = slice;
-            xOrigin[u] = i;
-            xOrigin[v] = j;
-
-            Vector3 Pos = Vector3((float)xOrigin[0], (float)xOrigin[1],
-                                  (float)xOrigin[2]);
-
-            this->allFaces.push_back(DrawnFace{Pos, (Uint8)side, bid, (Uint8)w,
-                                               (Uint8)h, light,
+          if (visible) {
+            Uint8 light = GetCombinedLight(nx, ny, nz);
+            this->allFaces.push_back(DrawnFace{{(float)x, (float)y, (float)z},
+                                               (Uint8)side,
+                                               bid,
+                                               light,
                                                BlockDef[bid].isWater()});
-
-            for (int j2 = j; j2 < j + h; j2++) {
-              for (int i2 = i; i2 < i + w; i2++) {
-                visited[i2 + j2 * dims[u]] = true;
-              }
-            }
           }
         }
       }

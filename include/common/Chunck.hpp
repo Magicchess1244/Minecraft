@@ -10,8 +10,6 @@ struct DrawnFace {
   Vector3 blockPos;
   Uint8 side;
   Uint8 blockID;
-  Uint8 w;
-  Uint8 h;
   Uint8 LightLevel;
   bool Transparent;
 };
@@ -19,8 +17,6 @@ struct TransparentDrawnFace {
   Vector3 blockPos;
   int side;
   int blockID;
-  int w;
-  int h;
   Uint8 light;
 };
 struct LightData {

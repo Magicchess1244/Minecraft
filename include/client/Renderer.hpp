@@ -218,7 +218,6 @@ struct DVertex {
   SDL_FPoint UV;
   float Side;
   float BlockID;
-  float TileID;
   float LightLevel = 15;
 };
 struct Vertex {
@@ -305,21 +304,16 @@ struct InventoryBox {
   float xNDC, yNDC, wNDC, hNDC;
   bool isHotbar;
 };
-struct CraftingVars{
+struct CraftingVars {
   bool is3x3;
   int gridSize;
-  float storageBaseY, storageH, craftToStorageGap, 
-  craftW, panelX, panelW, craftSlotSize, 
-  craftGap, craftGridH, craftGridW;
-  std::vector<InventoryBox>& boxes;
+  float storageBaseY, storageH, craftToStorageGap, craftW, panelX, panelW,
+      craftSlotSize, craftGap, craftGridH, craftGridW;
+  std::vector<InventoryBox> &boxes;
 };
-struct UIRuntimeVars{
-  bool fullScreen = false, 
-  bigInventory = false,
-  isCraftingTable = false,
-  showDebug = false,
-  usingUI = false,
-  isFurnace = false; 
+struct UIRuntimeVars {
+  bool fullScreen = false, bigInventory = false, isCraftingTable = false,
+       showDebug = false, usingUI = false, isFurnace = false;
 };
 class Renderer {
 private:
@@ -352,10 +346,12 @@ private:
   void AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
                    SDL_FPoint uvMax, Vector3 color);
   void DrawText(const std::string &text, float x, float y, float scale,
-                        Vector3 color, float maxWidth, float wrapWidth);
+                Vector3 color, float maxWidth, float wrapWidth);
   void UICrossHair();
-  std::vector<InventoryBox> BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX, float &outPanelY, float &outPanelW, float &outPanelH);
-  void CraftingTable(CraftingVars& Crafting);
+  std::vector<InventoryBox>
+  BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
+                      float &outPanelY, float &outPanelW, float &outPanelH);
+  void CraftingTable(CraftingVars &Crafting);
   void SmeltingTable(CraftingVars &Crafting);
   void UIBigInventory(const std::vector<Slot> &inventory, int inventorySlot);
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
@@ -373,14 +369,15 @@ private:
   void HandleQuit();
   void HandleMouseWheel(int &inventorySlot);
   Vector2 ScreenToNDC(float mx, float my) const;
-  int GetHoveredBoxIndex(Vector2 ndc, const std::vector<InventoryBox> &boxes) const;
+  int GetHoveredBoxIndex(Vector2 ndc,
+                         const std::vector<InventoryBox> &boxes) const;
   void HandleMouseButtonDown(Player &player);
   void HandleLeftClickDown(Player &player, int slotIndex);
   void HandleRightClickDown(Player &player, int slotIndex);
   void PickUpHalfStack(Player &player, int slotIndex);
   void PlaceOneItem(Player &player, int slotIndex);
   void ConsumeIngredients(Player &player);
-  void HandleMouseMotion(Player &player);  
+  void HandleMouseMotion(Player &player);
   void HandleMouseButtonUp(Player &player);
   void FinalizeLeftClickDrag(Player &player);
   void DistributeAcrossSlots(Player &player);
@@ -499,16 +496,15 @@ public:
     runTimeRenderVars.cmdRender = nullptr;
   };
 
-  void SetUi(int i){ 
-    if(i == 24){
+  void SetUi(int i) {
+    if (i == 24) {
       OpenInventory(true);
-    }
-    else if (i == 25){
-      this->uiRuntimeVars.isFurnace = true; 
+    } else if (i == 25) {
+      this->uiRuntimeVars.isFurnace = true;
       OpenInventory(false);
     }
   };
-  bool UsingUI(){return this->uiRuntimeVars.usingUI;};
+  bool UsingUI() { return this->uiRuntimeVars.usingUI; };
   void Stats(Player &player);
   void UIDebug(Player &player);
   void DrawBg(std::vector<Player> &players);
