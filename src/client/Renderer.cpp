@@ -187,32 +187,51 @@ SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
 }
 auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
                        float blockID) {
+  Uint32 c = (Uint32)(color.x * 255.0f) << 0 | (Uint32)(color.y * 255.0f) << 8 |
+             (Uint32)(color.z * 255.0f) << 16 | (Uint32)(255) << 24;
+
+  auto packUV = [](float u, float v) -> float {
+    uint32_t uu = (uint32_t)(u * 65535.0f) & 0xFFFF;
+    uint32_t vv = (uint32_t)(v * 65535.0f) & 0xFFFF;
+    uint32_t packed = (uu << 16) | vv;
+    return *(float *)&packed;
+  };
+
+  this->uiVars.uiVertices.push_back({{x, y, packUV(0.0f, 1.0f)}, c, blockID});
   this->uiVars.uiVertices.push_back(
-      {{x, y, 0.0f}, color, {0.0f, 1.0f}, blockID});
+      {{x + w, y, packUV(1.0f, 1.0f)}, c, blockID});
   this->uiVars.uiVertices.push_back(
-      {{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+      {{x, y + h, packUV(0.0f, 0.0f)}, c, blockID});
   this->uiVars.uiVertices.push_back(
-      {{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+      {{x + w, y, packUV(1.0f, 1.0f)}, c, blockID});
   this->uiVars.uiVertices.push_back(
-      {{x + w, y, 0.0f}, color, {1.0f, 1.0f}, blockID});
+      {{x + w, y + h, packUV(1.0f, 0.0f)}, c, blockID});
   this->uiVars.uiVertices.push_back(
-      {{x + w, y + h, 0.0f}, color, {1.0f, 0.0f}, blockID});
-  this->uiVars.uiVertices.push_back(
-      {{x, y + h, 0.0f}, color, {0.0f, 0.0f}, blockID});
+      {{x, y + h, packUV(0.0f, 0.0f)}, c, blockID});
 }
 void Renderer::AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
                            SDL_FPoint uvMax, Vector3 color) {
-  Vertex v1 = {{x, y, 0.0f}, color, {uvMin.x, uvMax.y}, 0.0f};
-  Vertex v2 = {{x + w, y, 0.0f}, color, {uvMax.x, uvMax.y}, 0.0f};
-  Vertex v3 = {{x, y + h, 0.0f}, color, {uvMin.x, uvMin.y}, 0.0f};
-  Vertex v4 = {{x + w, y + h, 0.0f}, color, {uvMax.x, uvMin.y}, 0.0f};
+  Uint32 c = (Uint32)(color.x * 255.0f) << 0 | (Uint32)(color.y * 255.0f) << 8 |
+             (Uint32)(color.z * 255.0f) << 16 | (Uint32)(255) << 24;
 
-  uiVars.textVertices.push_back(v1);
-  uiVars.textVertices.push_back(v3);
-  uiVars.textVertices.push_back(v2);
-  uiVars.textVertices.push_back(v2);
-  uiVars.textVertices.push_back(v3);
-  uiVars.textVertices.push_back(v4);
+  auto packUV = [](float u, float v) -> float {
+    uint32_t uu = (uint32_t)(u * 65535.0f) & 0xFFFF;
+    uint32_t vv = (uint32_t)(v * 65535.0f) & 0xFFFF;
+    uint32_t packed = (uu << 16) | vv;
+    return *(float *)&packed;
+  };
+
+  uiVars.textVertices.push_back({{x, y, packUV(uvMin.x, uvMax.y)}, c, 0.0f});
+  uiVars.textVertices.push_back(
+      {{x, y + h, packUV(uvMin.x, uvMin.y)}, c, 0.0f});
+  uiVars.textVertices.push_back(
+      {{x + w, y, packUV(uvMax.x, uvMax.y)}, c, 0.0f});
+  uiVars.textVertices.push_back(
+      {{x + w, y, packUV(uvMax.x, uvMax.y)}, c, 0.0f});
+  uiVars.textVertices.push_back(
+      {{x, y + h, packUV(uvMin.x, uvMin.y)}, c, 0.0f});
+  uiVars.textVertices.push_back(
+      {{x + w, y + h, packUV(uvMax.x, uvMin.y)}, c, 0.0f});
 }
 void Renderer::DrawText(const std::string &text, float x, float y, float scale,
                         Vector3 color, float maxWidth = 0,
@@ -1965,9 +1984,8 @@ void Renderer::UIVertexGPUInit() {
 
   //                loc  format                                offset
   setAttr(0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0);
-  setAttr(1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, sizeof(float) * 3);
-  setAttr(2, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, sizeof(float) * 6);
-  setAttr(3, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, sizeof(float) * 8);
+  setAttr(1, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, sizeof(float) * 3);
+  setAttr(2, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, sizeof(float) * 3 + 4);
 }
 void Renderer::LoadTexture() {
   if (!this->basicInitVars.GPU) {
@@ -2309,7 +2327,7 @@ void Renderer::PipelineInit() {
   ui_desc.vertex_input_state.num_vertex_buffers = 1;
   ui_desc.vertex_input_state.vertex_buffer_descriptions =
       &this->pipelineInitVars.UIvertex_buffer_desc;
-  ui_desc.vertex_input_state.num_vertex_attributes = 4;
+  ui_desc.vertex_input_state.num_vertex_attributes = 3;
   ui_desc.vertex_input_state.vertex_attributes =
       this->pipelineInitVars.UIvertex_attributes;
 

@@ -218,12 +218,9 @@ struct DVertex {
   float Data;       // Packed bits: side(3), blockID(16), light(4)
 };
 struct Vertex {
-  Vector3 Position;
-  Vector3 Color;
-  SDL_FPoint UV;
+  Vector3 Position; // x, y (NDC), z (packed UV)
+  Uint32 Color;     // Packed RGBA8
   float BlockID;
-  float TileID;
-  float LightLevel = 15;
 };
 struct Mesh {
   SDL_GPUTransferBuffer *VertextransferBuffer = nullptr;
