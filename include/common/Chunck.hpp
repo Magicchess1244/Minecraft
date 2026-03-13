@@ -75,6 +75,17 @@ private:
                        std::vector<bool> &solidCache);
 
   Uint8 GetCombinedLight(int x, int y, int z);
+
+  // Generation Helpers
+  static void PrecomputeInterpolation(std::vector<float> &caveTr,
+                                      std::vector<float> &coalCh,
+                                      std::vector<float> &ironCh,
+                                      std::vector<float> &diamCh);
+  void GenerateHeightAndBiomes(std::vector<int> &heightCache,
+                               std::vector<Biome> &biomeCache);
+  void PopulateBlocks(const std::vector<int> &heightCache,
+                      const std::vector<Biome> &biomeCache,
+                      std::vector<bool> &solidCache);
 };
 
 #endif

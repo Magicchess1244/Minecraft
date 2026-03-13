@@ -919,25 +919,31 @@ void Renderer::DrawTerrain(Player &player) {
           Uint32 baseV = (Uint32)cache.vertices.size();
           for (int j = 0; j < 4; j++) {
             Vector3 v = Verts[face.side][j];
-            SDL_FPoint uv;
+            float u, v_uv;
             if (face.side < 2) {
-              uv = {(1.0f - Verts[face.side][j].x),
-                    (1.0f - Verts[face.side][j].y)};
+              u = (1.0f - Verts[face.side][j].x);
+              v_uv = (1.0f - Verts[face.side][j].y);
             } else if (face.side < 4) {
-              uv = {(1.0f - Verts[face.side][j].z),
-                    (1.0f - Verts[face.side][j].y)};
+              u = (1.0f - Verts[face.side][j].z);
+              v_uv = (1.0f - Verts[face.side][j].y);
             } else {
-              uv = {Verts[face.side][j].x, Verts[face.side][j].z};
+              u = Verts[face.side][j].x;
+              v_uv = Verts[face.side][j].z;
             }
+
             DVertex vert;
-            vert.Position = worldPos + v;
-            vert.Side = (float)face.side;
-            vert.UV = uv;
-            vert.BlockID =
-                (float)BlockDef[face.blockID]
-                    .Textures[face.side]; // shader location 3 maps to offset 8
-            vert.LightLevel =
-                (float)face.LightLevel; // consistent with the above for safety
+            Vector3 worldV = worldPos + v;
+            // Pack UV: U in X fraction, V in Y fraction
+            vert.Position =
+                Vector3(worldV.x + u * 0.1f, worldV.y + v_uv * 0.1f, worldV.z);
+
+            // Pack Data: side(3), tileIndex(16), light(4)
+            Uint32 tileIndex =
+                (Uint32)BlockDef[face.blockID].Textures[face.side];
+            Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
+                            ((face.LightLevel & 0xF) << 19);
+            vert.Data = *(float *)&packed;
+
             cache.vertices.push_back(vert);
           }
           cache.indices.push_back(baseV + 0);
@@ -1063,21 +1069,27 @@ void Renderer::DrawTerrain(Player &player) {
 
       for (int j = 0; j < 4; j++) {
         Vector3 v = Verts[face.side][j];
-        SDL_FPoint uv;
+        float u, v_uv;
         if (face.side < 2) {
-          uv = {(1.0f - Verts[face.side][j].x), (1.0f - Verts[face.side][j].y)};
+          u = (1.0f - Verts[face.side][j].x);
+          v_uv = (1.0f - Verts[face.side][j].y);
         } else if (face.side < 4) {
-          uv = {(1.0f - Verts[face.side][j].z), (1.0f - Verts[face.side][j].y)};
+          u = (1.0f - Verts[face.side][j].z);
+          v_uv = (1.0f - Verts[face.side][j].y);
         } else {
-          uv = {Verts[face.side][j].x, Verts[face.side][j].z};
+          u = Verts[face.side][j].x;
+          v_uv = Verts[face.side][j].z;
         }
+
         DVertex vert;
-        vert.Position = v + face.blockPos;
-        vert.Side = face.side;
-        vert.UV = uv;
-        vert.BlockID =
-            (float)BlockDef[face.blockID].Textures[face.side]; // Location 3
-        vert.LightLevel = (float)face.light;
+        Vector3 worldV = v + face.blockPos;
+        vert.Position =
+            Vector3(worldV.x + u * 0.1f, worldV.y + v_uv * 0.1f, worldV.z);
+
+        Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
+        Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
+                        ((face.light & 0xF) << 19);
+        vert.Data = *(float *)&packed;
         vData[vOffset + j] = vert;
       }
 
@@ -1260,11 +1272,13 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
       for (int side = 0; side < 6; side++) {
         Uint32 base = verts.size();
         for (int i = 0; i < 4; i++) {
-          verts.push_back(
-              {EntityDef[(int)EntityType::PLAYER].Model[side][i] + pos,
-               {0, 0},
-               0,
-               1.0f});
+          Vector3 p = EntityDef[(int)EntityType::PLAYER].Model[side][i] + pos;
+          // Dummy UVs since players don't use them yet
+          Uint32 packedData = (side & 0x7) | (0 << 3) | (15 << 19);
+          DVertex vert;
+          vert.Position = Vector3(p.x, p.y, p.z);
+          vert.Data = *(float *)&packedData;
+          verts.push_back(vert);
         }
         indices.push_back(base + 0);
         indices.push_back(base + 2);
@@ -1929,10 +1943,7 @@ void Renderer::VertexGPUInit() {
 
   //                loc  format                                offset
   setAttr(0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0);
-  setAttr(1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, sizeof(float) * 3);
-  setAttr(2, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, sizeof(float) * 5);
-  setAttr(3, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, sizeof(float) * 6);
-  setAttr(4, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, sizeof(float) * 7);
+  setAttr(1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, sizeof(float) * 3);
 }
 void Renderer::UIVertexGPUInit() {
   auto &desc = this->pipelineInitVars.UIvertex_buffer_desc;
@@ -2254,7 +2265,7 @@ void Renderer::PipelineInit() {
       1; // We only bind one buffer at a time
   pipelineInitVars.pipeline_desc.vertex_input_state.vertex_buffer_descriptions =
       &this->pipelineInitVars.vertex_buffer_desc;
-  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_attributes = 5;
+  pipelineInitVars.pipeline_desc.vertex_input_state.num_vertex_attributes = 2;
   pipelineInitVars.pipeline_desc.vertex_input_state.vertex_attributes =
       this->pipelineInitVars.vertex_attributes;
 

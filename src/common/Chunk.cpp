@@ -61,164 +61,174 @@ Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
   return manager->GetBlockID({(float)worldX, (float)worldY, (float)worldZ});
 }
 
-void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
-  this->manager = &manager;
-  this->allFaces.clear();
-
-  if (this->blocks.size() !=
-      (size_t)ChunkPrefab::xSize * ChunkPrefab::ySize * ChunkPrefab::zSize) {
-    this->blocks.assign(
-        ChunkPrefab::xSize * ChunkPrefab::ySize * ChunkPrefab::zSize, 0);
-  }
-
-  std::vector<int> heightCache((xSize + 2) * (zSize + 2));
-  std::vector<Biome> biomeCache(xSize * zSize);
-  std::vector<bool> solidCache(xSize * ySize * zSize, false);
-
-  std::vector<float> caveTrCache(ySize);
-  std::vector<float> coalChCache(ySize);
-  std::vector<float> ironChCache(ySize);
-  std::vector<float> diamChCache(ySize);
+void ChunkPrefab::PrecomputeInterpolation(std::vector<float> &caveTr,
+                                          std::vector<float> &coalCh,
+                                          std::vector<float> &ironCh,
+                                          std::vector<float> &diamCh) {
   for (int y = 0; y < (int)ySize; y++) {
-    caveTrCache[y] = GetCaveThreshold((float)y);
-    coalChCache[y] = GetCoalChance((float)y);
-    ironChCache[y] = GetIronChance((float)y);
-    diamChCache[y] = GetDiamondChance((float)y);
+    float fy = (float)y;
+    caveTr[y] = GetCaveThreshold(fy);
+    coalCh[y] = GetCoalChance(fy);
+    ironCh[y] = GetIronChance(fy);
+    diamCh[y] = GetDiamondChance(fy);
   }
+}
 
-  // Unified generation loop: iterates over all columns including padding for
-  // heightmap
+void ChunkPrefab::GenerateHeightAndBiomes(std::vector<int> &heightCache,
+                                          std::vector<Biome> &biomeCache) {
   for (int x = -1; x <= (int)xSize; x++) {
     for (int z = -1; z <= (int)zSize; z++) {
       int worldX = xPos + x;
       int worldZ = zPos + z;
+      Vector2 worldPos = {(float)worldX, (float)worldZ};
 
-      // 1. Calculate Terrain Shape (Height)
-      float cont = PerlinNoise2D({(float)worldX, (float)worldZ}, 3, 0.005f);
-      float eros = PerlinNoise2D({(float)worldX, (float)worldZ}, 3, 0.015f);
-      float peak = PerlinNoise2D({(float)worldX, (float)worldZ}, 4, 0.02f);
+      float cont = PerlinNoise2D(worldPos, 3, 0.005f);
+      float eros = PerlinNoise2D(worldPos, 3, 0.015f);
+      float peak = PerlinNoise2D(worldPos, 4, 0.02f);
       int terrainHeight = GetBaseHeight(cont, eros, peak);
 
       heightCache[(x + 1) + (z + 1) * (xSize + 2)] = terrainHeight;
 
-      // Only perform full block population for actual chunk columns
-      if (isValidPos(x, 0, z)) {
-        // 2. Determine Biome
-        float hum = PerlinNoise2D(
-            {(float)worldX * 0.02f, (float)worldZ * 0.02f}, 2, 0.5f);
+      if (x >= 0 && x < (int)xSize && z >= 0 && z < (int)zSize) {
+        float hum =
+            PerlinNoise2D({worldPos.x * 0.02f, worldPos.y * 0.02f}, 2, 0.5f);
         float temp = PerlinNoise2D(
-            {(float)worldX * 0.02f + 500.0f, (float)worldZ * 0.02f + 500.0f}, 2,
+            {worldPos.x * 0.02f + 500.0f, worldPos.y * 0.02f + 500.0f}, 2,
             0.5f);
 
-        // Height-based temperature (lapse rate)
-        float seaLevel = (float)ChunkPrefab::SeaLevel;
-        float heightFactor = (float)(terrainHeight - seaLevel) /
-                             (float)(ChunkPrefab::ySize - seaLevel);
+        float heightFactor =
+            (float)(terrainHeight - SeaLevel) / (float)(ySize - SeaLevel);
         if (heightFactor > 0.0f) {
-          temp -= heightFactor * 1.0f;
-          temp = SDL_clamp(temp, -1.0f, 1.0f);
+          temp = SDL_clamp(temp - heightFactor, -1.0f, 1.0f);
         }
 
-        // Apply contrast for more variety
         hum = (hum > 0) ? pow(hum, 0.7f) : -pow(-hum, 0.7f);
         temp = (temp > 0) ? pow(temp, 0.7f) : -pow(-temp, 0.7f);
 
-        Biome biome =
-            manager.GetBiome((hum + 1.0f) * 50.0f, (temp + 1.0f) * 50.0f);
-        biomeCache[x + z * xSize] = biome;
-
-        Uint8 surfaceBlockID = 1; // Grass
-        if (biome.Type == BiomeType::Desert)
-          surfaceBlockID = 8; // Sand
-        else if (biome.Type == BiomeType::Savanna)
-          surfaceBlockID = 2; // Dirt
-        else if (biome.Type == BiomeType::Ice)
-          surfaceBlockID = 21;
-        else if (biome.Type == BiomeType::Tundra ||
-                 biome.Type == BiomeType::BigTaiga ||
-                 biome.Type == BiomeType::Taiga)
-          surfaceBlockID = 22;
-
-        // 3. Populate Vertical Blocks
-        for (int y = 0; y < (int)ChunkPrefab::ySize; y++) {
-          int idx = x + y * ChunkPrefab::xSize +
-                    z * ChunkPrefab::xSize * ChunkPrefab::ySize;
-          Uint8 blockID = 0;
-          bool isSolid = false;
-
-          // Priority 1: User modifications
-          Uint8 mod = manager.GetMod({(float)worldX, (float)y, (float)worldZ});
-          if (mod != 255) {
-            blockID = mod;
-            isSolid = (mod != 0 && mod != 5);
-          } else {
-            if (y == 0) {
-              blockID = 4; // Bedrock
-              isSolid = true;
-            } else if (y <= terrainHeight) {
-              const int seaLevelInt = ChunkPrefab::SeaLevel;
-              bool isCave = false;
-
-              // Priority 2: Caves
-              if (y >= CaveMinY && y <= CaveMaxY) {
-                float n1 = PerlinNoise({(float)worldX * 0.08f, (float)y * 0.08f,
-                                        (float)worldZ * 0.08f},
-                                       1, 0.5f);
-                float n2 = PerlinNoise({(float)worldX * 0.1f + 100.0f,
-                                        (float)y * 0.1f, (float)worldZ * 0.1f},
-                                       1, 0.5f);
-                if ((n1 * n1 + n2 * n2) < caveTrCache[y])
-                  isCave = true;
-              }
-
-              if (isCave) {
-                blockID = 0; // Air
-                isSolid = false;
-              } else {
-                isSolid = true;
-                const int beachLevel = ChunkPrefab::SeaLevel + 2;
-                bool isBeach = (terrainHeight <= beachLevel &&
-                                terrainHeight >= beachLevel - 3 && cont < 0.1f);
-                bool isUnderwaterFloor = (terrainHeight < seaLevelInt);
-
-                if (terrainHeight - y > 3) {
-                  blockID = 3; // Stone
-                  float Ore = std::abs(PerlinNoise(
-                      {(float)worldX, (float)y, (float)worldZ}, 1, 0.05f));
-                  float coalChance = coalChCache[y];
-                  float ironChance = ironChCache[y];
-                  float diamondChance = diamChCache[y];
-                  if (Ore > 0.25f && Ore < 0.25f + coalChance)
-                    blockID = 11;
-                  else if (Ore > 0.4f && Ore < 0.4f + ironChance)
-                    blockID = 13;
-                  else if (Ore > 0.5f && Ore < 0.5f + diamondChance)
-                    blockID = 10;
-                } else if (isUnderwaterFloor || isBeach)
-                  blockID = 8; // Sand
-                else if (terrainHeight - y > 0)
-                  if (surfaceBlockID == 22 || surfaceBlockID == 8)
-                    blockID = 3;
-                  else
-                    blockID = 2; // Dirt
-                else
-                  blockID = surfaceBlockID;
-              }
-            } else if (y == ChunkPrefab::SeaLevel - 1 &&
-                       biome.Type == BiomeType::Ice) {
-              blockID = 21;
-            } else if (y < ChunkPrefab::SeaLevel) { // Below sea level but above
-                                                    // terrain
-              blockID = 5;                          // Water
-              isSolid = false;
-            }
-          }
-          this->blocks[idx] = blockID;
-          solidCache[idx] = isSolid;
-        }
+        biomeCache[x + z * xSize] =
+            manager->GetBiome((hum + 1.0f) * 50.0f, (temp + 1.0f) * 50.0f);
       }
     }
   }
+}
+
+void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
+                                 const std::vector<Biome> &biomeCache,
+                                 std::vector<bool> &solidCache) {
+  std::vector<float> caveTrCache(ySize), coalChCache(ySize), ironChCache(ySize),
+      diamChCache(ySize);
+  PrecomputeInterpolation(caveTrCache, coalChCache, ironChCache, diamChCache);
+
+  std::unordered_map<int, Uint8> localMods;
+  manager->GetModificationsForChunk(xPos, zPos, localMods);
+
+  const int beachLevel = SeaLevel + 2;
+
+  for (int x = 0; x < (int)xSize; x++) {
+    int worldX = xPos + x;
+    for (int z = 0; z < (int)zSize; z++) {
+      int worldZ = zPos + z;
+      int terrainHeight = heightCache[(x + 1) + (z + 1) * (xSize + 2)];
+      const Biome &biome = biomeCache[x + z * xSize];
+
+      Uint8 surfaceBlockID = 1; // Grass
+      switch (biome.Type) {
+      case BiomeType::Desert:
+        surfaceBlockID = 8;
+        break;
+      case BiomeType::Savanna:
+        surfaceBlockID = 2;
+        break;
+      case BiomeType::Ice:
+        surfaceBlockID = 21;
+        break;
+      case BiomeType::Tundra:
+      case BiomeType::BigTaiga:
+      case BiomeType::Taiga:
+        surfaceBlockID = 22;
+        break;
+      default:
+        break;
+      }
+
+      for (int y = 0; y < (int)ySize; y++) {
+        int idx = x + y * xSize + z * xSize * ySize;
+        Uint8 blockID = 0;
+        bool isSolid = false;
+
+        auto mit = localMods.find(idx);
+        if (mit != localMods.end()) {
+          blockID = mit->second;
+          isSolid = (blockID != 0 && blockID != 5);
+        } else if (y == 0) {
+          blockID = 4; // Bedrock
+          isSolid = true;
+        } else if (y <= terrainHeight) {
+          bool isCave = false;
+          if (y >= CaveMinY && y <= CaveMaxY) {
+            float fy = (float)y;
+            float n1 = PerlinNoise(
+                {(float)worldX * 0.08f, fy * 0.08f, (float)worldZ * 0.08f}, 1,
+                0.5f);
+            float n2 = PerlinNoise({(float)worldX * 0.1f + 100.0f, fy * 0.1f,
+                                    (float)worldZ * 0.1f},
+                                   1, 0.5f);
+            if ((n1 * n1 + n2 * n2) < caveTrCache[y])
+              isCave = true;
+          }
+
+          if (isCave) {
+            blockID = 0;
+          } else {
+            isSolid = true;
+            if (terrainHeight - y > 3) {
+              blockID = 3; // Stone
+              float Ore = std::abs(PerlinNoise(
+                  {(float)worldX, (float)y, (float)worldZ}, 1, 0.05f));
+              if (Ore > 0.25f && Ore < 0.25f + coalChCache[y])
+                blockID = 11;
+              else if (Ore > 0.4f && Ore < 0.4f + ironChCache[y])
+                blockID = 13;
+              else if (Ore > 0.5f && Ore < 0.5f + diamChCache[y])
+                blockID = 10;
+            } else if (terrainHeight < SeaLevel ||
+                       (terrainHeight <= beachLevel &&
+                        terrainHeight >= beachLevel - 3)) {
+              blockID = 8; // Sand
+            } else if (terrainHeight - y > 0) {
+              blockID = (surfaceBlockID == 22 || surfaceBlockID == 8) ? 3 : 2;
+            } else {
+              blockID = surfaceBlockID;
+            }
+          }
+        } else if (y == SeaLevel - 1 && biome.Type == BiomeType::Ice) {
+          blockID = 21;
+        } else if (y < SeaLevel) {
+          blockID = 5; // Water
+        }
+
+        blocks[idx] = blockID;
+        solidCache[idx] = isSolid;
+      }
+    }
+  }
+}
+
+void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
+  this->manager = &manager;
+  this->allFaces.clear();
+
+  size_t totalBlocksSize = (size_t)xSize * ySize * zSize;
+  if (this->blocks.size() != totalBlocksSize) {
+    this->blocks.assign(totalBlocksSize, 0);
+  }
+
+  std::vector<int> heightCache((xSize + 2) * (zSize + 2));
+  std::vector<Biome> biomeCache(xSize * zSize);
+  std::vector<bool> solidCache(totalBlocksSize, false);
+
+  GenerateHeightAndBiomes(heightCache, biomeCache);
+  PopulateBlocks(heightCache, biomeCache, solidCache);
 
   GenerateVegetation(heightCache, biomeCache, solidCache);
   isDirty = false;

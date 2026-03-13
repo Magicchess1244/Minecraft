@@ -10,8 +10,10 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
+
 constexpr unsigned int MAX_PLAYERS = 8;
 constexpr float PI = 3.1415926535f;
 struct Vector2 {
@@ -360,14 +362,14 @@ template <> struct hash<Vector3> {
 };
 } // namespace std
 // Utility function - add to a header or top of GameServer.cpp
-static std::vector<std::string> split(const std::string& s, char delim) {
-    std::vector<std::string> tokens;
-    std::stringstream ss(s);
-    std::string token;
-    while (std::getline(ss, token, delim)) {
-        tokens.push_back(token);
-    }
-    return tokens;
+static std::vector<std::string> split(const std::string &s, char delim) {
+  std::vector<std::string> tokens;
+  std::stringstream ss(s);
+  std::string token;
+  while (std::getline(ss, token, delim)) {
+    tokens.push_back(token);
+  }
+  return tokens;
 }
 
 // Debug logging macros - only enabled in debug builds

@@ -214,11 +214,8 @@ struct Frustum {
   }
 };
 struct DVertex {
-  Vector3 Position;
-  SDL_FPoint UV;
-  float Side;
-  float BlockID;
-  float LightLevel = 15;
+  Vector3 Position; // x.u, y.v, z
+  float Data;       // Packed bits: side(3), blockID(16), light(4)
 };
 struct Vertex {
   Vector3 Position;

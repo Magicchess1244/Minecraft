@@ -81,10 +81,22 @@ public:
     return BlockDefinitions[BlockId];
   }
   Uint8 GetMod(Vector3 Pos) {
-    if (Modifications.find(Pos) != Modifications.end())
-      return Modifications.find(Pos)->second;
-    return 255; // I am sending 255 to indicate its not found might have to
-                // change if I add more blocks
+    auto it = Modifications.find(Pos);
+    if (it != Modifications.end())
+      return it->second;
+    return 255;
+  }
+  void GetModificationsForChunk(int xStart, int zStart,
+                                std::unordered_map<int, Uint8> &localMods) {
+    for (auto const &[pos, blockID] : Modifications) {
+      if (pos.x >= xStart && pos.x < xStart + 16 && pos.z >= zStart &&
+          pos.z < zStart + 16 && pos.y >= 0 && pos.y < 192) {
+        int lx = (int)pos.x - xStart;
+        int ly = (int)pos.y;
+        int lz = (int)pos.z - zStart;
+        localMods[lx + ly * 16 + lz * 16 * 192] = blockID;
+      }
+    }
   }
   RaycastResult RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
   bool IsSolid(Vector3 worldPos);

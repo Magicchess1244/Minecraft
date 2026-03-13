@@ -1,10 +1,7 @@
 #version 460
 
 layout (location = 0) in vec3 a_position;
-layout (location = 1) in vec2 a_uv;
-layout (location = 2) in float a_color;
-layout (location = 3) in float a_blockID;
-layout (location = 4) in float a_light;
+layout (location = 1) in float a_data_float;
 
 layout (location = 0) out float v_color;
 layout (location = 1) out vec2 v_uv;
@@ -16,10 +13,21 @@ layout(set = 1, binding = 0, std140) uniform ProjectionBlock { mat4 projection; 
 layout(set = 1, binding = 1, std140) uniform ViewBlock { mat4 view; } viewBlock;
 
 void main() {
-    gl_Position = projBlock.projection * viewBlock.view * vec4(a_position, 1.0);
-    v_color = a_color;
-    v_uv = a_uv;
-    v_blockID = a_blockID;
+    // Reconstruct position by removing fractional bits (U and V)
+    // Adding 0.05 to ensure correct floor even with floating point errors
+    vec3 realPos = floor(a_position + 0.05);
+    gl_Position = projBlock.projection * viewBlock.view * vec4(realPos, 1.0);
+    
+    // Unpack Data: side(3), blockID(16), light(4)
+    uint a_data = floatBitsToUint(a_data_float);
+    v_color = float(a_data & 0x7u);
+    v_blockID = float((a_data >> 3u) & 0xFFFFu);
+    v_light = float((a_data >> 19u) & 0xFu);
+    
+    // Unpack UV: fracture of X and Y
+    // Use step to find if the fraction is significant (0.1)
+    v_uv.x = step(0.05, fract(a_position.x));
+    v_uv.y = step(0.05, fract(a_position.y));
+    
     v_pos = gl_Position.xyz;
-    v_light = a_light;
 }
