@@ -236,7 +236,7 @@ bool ChunkManager::IsSolid(Vector3 worldPos) {
   Vector3 floorPos = worldPos.Truncate();
   Uint8 blockID = GetBlockID(floorPos);
 
-  if (blockID == 0 || blockID == 255)
+  if (blockID == 0 || blockID == 5)
     return false;
 
   const Block &def = BlockDef[blockID];

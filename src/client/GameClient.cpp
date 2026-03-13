@@ -185,6 +185,8 @@ void GameClient::listen() {
       handleBlockModification(msg);
     } else if (msg.find("pData:") == 0) {
       handlePlayerData(msg);
+    } else if (msg.find("new:") == 0) {
+      this->is_new_player = true;
     }
   }
 }
@@ -454,6 +456,28 @@ void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager,
 void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
                   std::vector<Slot> &inventory, GameClient &game,
                   Renderer *renderer) {
+
+  static bool hasInitialChunkLoaded = false;
+  if (!hasInitialChunkLoaded) {
+    Vector3 chunkKey;
+    chunkKey.x = std::floor(player.Position.x / ChunkPrefab::xSize);
+    chunkKey.y = 0;
+    chunkKey.z = std::floor(player.Position.z / ChunkPrefab::zSize);
+
+    if (!manager.get_chunk(chunkKey).isGenerated) {
+      return;
+    }
+    hasInitialChunkLoaded = true;
+
+    if (game.get_is_new_player()) {
+      int height = manager.get_chunk(chunkKey).GetHeight(
+          {player.Position.x, player.Position.z});
+      player.Position.x = std::floor(player.Position.x) + 0.5f;
+      player.Position.z = std::floor(player.Position.z) + 0.5f;
+      player.Position.y = height + 2.5f;
+      game.set_is_new_player(false);
+    }
+  }
 
   JumpTimer += deltaTime;
   Vector3 RotationDir = {0, 0, 0};

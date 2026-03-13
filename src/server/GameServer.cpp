@@ -94,6 +94,7 @@ void GameServer::handleLogin(const std::string &message,
   std::lock_guard<std::recursive_mutex> lock(players_mutex);
 
   Player p;
+  bool isNewPlayer = false;
   if (persistentPlayers.count(name)) {
     p = persistentPlayers[name];
     p.id = id;
@@ -104,6 +105,7 @@ void GameServer::handleLogin(const std::string &message,
     p.Rotation = {0, 0, 0};
     p.color =
         Color::GetColor(static_cast<PlayerColor>(id % (int)PlayerColor::COUNT));
+    isNewPlayer = true;
   }
   players[id] = p;
 
@@ -123,6 +125,9 @@ void GameServer::handleLogin(const std::string &message,
            (slot.isEntity ? "1" : "0") + "|";
   }
   msg += "\n";
+  if (isNewPlayer) {
+    msg += "new:\n";
+  }
 
   asio::error_code ec;
   asio::write(*socket, asio::buffer(msg), ec);
@@ -246,6 +251,7 @@ void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
                     << std::endl;
         } else {
           std::cout << "Player " << id << " disconnected." << std::endl;
+          // id--;
         }
         break;
       }

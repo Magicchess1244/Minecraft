@@ -24,6 +24,7 @@ private:
   std::vector<Player> players;
   std::mutex players_mutex;
   bool running = true;
+  bool is_new_player = false;
   int my_id = -1;
   asio::streambuf read_buffer;
   std::vector<BlockMod> pending_mods;
@@ -141,6 +142,8 @@ public:
 
   int get_my_id() const { return my_id; }
   std::string get_my_name() const { return my_name; }
+  bool get_is_new_player() const { return is_new_player; }
+  void set_is_new_player(bool v) { is_new_player = v; }
   void update_pos();
   void sync_inventory();
 
