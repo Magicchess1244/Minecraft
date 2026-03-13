@@ -25,7 +25,7 @@ int g_initialClickSlot = -1;
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 6;
+constexpr int RenderDistance = 8;
 static constexpr int CRAFTING_RESULT_SLOT = 49;
 static constexpr int CRAFTING_INPUT_FIRST = 40;
 static constexpr int CRAFTING_INPUT_LAST = 48;
@@ -916,6 +916,7 @@ void Renderer::DrawTerrain(Player &player) {
     const size_t maxIndices = chunksPerBuffer * 6 * FacesPerChunk;
 
     for (auto *chunk : newChunks) {
+      if (!chunk->isGenerated) continue;
       Vector3 chunkPosKey = {(float)chunk->xPos / (float)ChunkPrefab::xSize, 0,
                              (float)chunk->zPos / (float)ChunkPrefab::zSize};
 
@@ -995,6 +996,7 @@ void Renderer::DrawTerrain(Player &player) {
       currentIndexOffset += cache.indices.size();
     }
 
+    if(currentIndexOffset == 0) continue;
     mesh->OpaqueIndexCount = (int)currentIndexOffset;
     mesh->BaseVertex = (int)currentVertexOffset;
     mesh->BaseIndex = (int)currentIndexOffset;
@@ -1026,7 +1028,7 @@ void Renderer::DrawTerrain(Player &player) {
   bool anyTransparentDirty = false;
   for (auto &cd : visibleChunks) {
     ChunkPrefab *chunk = cd.chunk;
-    if (chunk->needsMeshUpdate)
+    if (chunk->needsMeshUpdate && chunk->isGenerated)
       anyTransparentDirty = true;
     Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
     for (auto &face : chunk->allFaces) {

@@ -214,9 +214,9 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
   }
 }
 
-void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
-  this->manager = &manager;
+void ChunkPrefab::GenerateChunk() {
   this->allFaces.clear();
+  this->allFaces.reserve(21000);
 
   size_t totalBlocksSize = (size_t)xSize * ySize * zSize;
   if (this->blocks.size() != totalBlocksSize) {
@@ -237,7 +237,9 @@ void ChunkPrefab::GenerateChunk(ChunkManager &manager) {
   GenerateMesh();
 
   needsMeshUpdate = true;
+  isGenerated = true;
   allFaces.shrink_to_fit();
+  isDirty = true;
 }
 
 void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,

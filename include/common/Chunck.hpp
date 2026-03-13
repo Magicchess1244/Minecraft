@@ -42,12 +42,13 @@ public:
   std::vector<Uint8> blocks; // Persistent block data for collision/raycasting
   std::vector<LightData> lightData; // Same size as blocks
 
-  bool isDirty = false; // Track if chunk needs saving
+  bool isGenerated = false;
+  bool isDirty = false;
   bool needsMeshUpdate = true;
   inline bool isValidPos(int x, int y, int z) const {
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
-  void GenerateChunk(ChunkManager &manager);
+  void GenerateChunk();
   bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight);
   Uint8 GetBlockID(int worldX, int worldY, int worldZ, int terrainHeight);
   int GetHeight(Vector2 Pos);
@@ -56,7 +57,7 @@ public:
   void PropagateLighting();
 
   ChunkManager *manager = nullptr;
-
+  
 private:
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Biome> &biomeMap,

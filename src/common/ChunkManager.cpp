@@ -2,6 +2,7 @@
 #include "../../include/common/Chunck.hpp"
 
 #include <set>
+#include <thread>
 
 constexpr HeightsDif ContinentelnessHeight[] = {
     {0.8f, 130},                          // Peaks
@@ -136,28 +137,33 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
     ChunkPrefab newChunk;
     newChunk.xPos = (int)key.x * ChunkPrefab::xSize;
     newChunk.zPos = (int)key.z * ChunkPrefab::zSize;
-    newChunk.isDirty =
-        true; // Mark as dirty so it generates on first access or below
+    newChunk.isDirty = true;
+    newChunk.isGenerated = false;
     it = Chunks.emplace(key, std::move(newChunk)).first;
     it->second.manager = this;
+
+    std::thread(&ChunkPrefab::GenerateChunk, &it->second).detach();
+    // returns immediately — chunk generates in background
   }
 
-  if (it->second.isDirty) {
-    it->second.GenerateChunk(*this);
+  if (it->second.isGenerated && it->second.isDirty) {
+    Vector3 neighbors[] = {{key.x, 0, key.z},
+                           {key.x + 1, 0, key.z},
+                           {key.x - 1, 0, key.z},
+                           {key.x, 0, key.z + 1},
+                           {key.x, 0, key.z - 1}};
 
-    // Notify neighbors to update their mesh/lighting culling
-    Vector3 neighbors[4] = {{key.x + 1, 0, key.z},
-                            {key.x - 1, 0, key.z},
-                            {key.x, 0, key.z + 1},
-                            {key.x, 0, key.z - 1}};
     for (auto &nKey : neighbors) {
       auto nit = Chunks.find(nKey);
-      if (nit != Chunks.end() && !nit->second.isDirty) {
+      if (nit != Chunks.end() && !nit->second.isDirty &&
+          nit->second.isGenerated) {
         nit->second.PropagateLighting();
         nit->second.GenerateMesh();
         nit->second.needsMeshUpdate = true;
       }
     }
+
+    it->second.isDirty = false;
   }
 
   return it->second;
@@ -365,7 +371,7 @@ void ChunkManager::TickWater() {
 
   // Now regenerate only the affected chunks once
   for (auto const &cKey : chunksToUpdate) {
-    get_chunk(cKey).GenerateChunk(*this);
+    get_chunk(cKey).GenerateChunk();
   }
 
   activeWater = nextActive;
@@ -426,7 +432,8 @@ Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
   auto it = Chunks.find(chunkKey);
 
   // Safety check: Chunk must exist and have data
-  if (it == Chunks.end() || it->second.blocks.empty()) {
+  if (it == Chunks.end() || !it->second.isGenerated ||
+      it->second.blocks.empty()) {
     return (Pos.y < ChunkPrefab::SeaLevel) ? 5 : 0;
   }
 
@@ -455,7 +462,8 @@ Uint8 ChunkManager::GetLightLevel(Vector3 Pos) {
                       (float)floor(Pos.z / ChunkPrefab::zSize)};
 
   auto it = Chunks.find(chunkKey);
-  if (it == Chunks.end() || it->second.lightData.empty())
+  if (it == Chunks.end() || !it->second.isGenerated ||
+      it->second.lightData.empty())
     return 0; // Prevent light leaking from unloaded chunks
 
   const ChunkPrefab &chunk = it->second;
@@ -480,7 +488,8 @@ Uint8 ChunkManager::GetSunlightLevel(Vector3 Pos) {
                       (float)floor(Pos.z / ChunkPrefab::zSize)};
 
   auto it = Chunks.find(chunkKey);
-  if (it == Chunks.end() || it->second.lightData.empty())
+  if (it == Chunks.end() || !it->second.isGenerated ||
+      it->second.lightData.empty())
     return 0;
 
   const ChunkPrefab &chunk = it->second;
@@ -503,7 +512,8 @@ Uint8 ChunkManager::GetBlockLightLevel(Vector3 Pos) {
                       (float)floor(Pos.z / ChunkPrefab::zSize)};
 
   auto it = Chunks.find(chunkKey);
-  if (it == Chunks.end() || it->second.lightData.empty())
+  if (it == Chunks.end() || !it->second.isGenerated ||
+      it->second.lightData.empty())
     return 0;
 
   const ChunkPrefab &chunk = it->second;
