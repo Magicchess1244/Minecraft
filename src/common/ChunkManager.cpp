@@ -132,41 +132,47 @@ delete cache;*/
 ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   key.y = 0;
 
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
   auto it = Chunks.find(key);
   if (it == Chunks.end()) {
-    ChunkPrefab newChunk;
-    newChunk.xPos = (int)key.x * ChunkPrefab::xSize;
-    newChunk.zPos = (int)key.z * ChunkPrefab::zSize;
-    newChunk.isDirty = true;
-    newChunk.isGenerated = false;
-    it = Chunks.emplace(key, std::move(newChunk)).first;
-    it->second.manager = this;
+    auto newChunk = std::make_unique<ChunkPrefab>();
+    newChunk->xPos = (int)key.x * ChunkPrefab::xSize;
+    newChunk->zPos = (int)key.z * ChunkPrefab::zSize;
+    newChunk->isDirty = true;
+    newChunk->isGenerated = false;
+    newChunk->manager = this;
 
-    std::thread(&ChunkPrefab::GenerateChunk, &it->second).detach();
-    // returns immediately — chunk generates in background
+    ChunkPrefab *ptr = newChunk.get();
+    Chunks[key] = std::move(newChunk);
+
+    std::thread(&ChunkPrefab::GenerateChunk, ptr).detach();
+    return *ptr;
   }
 
-  if (it->second.isGenerated && it->second.isDirty) {
-    Vector3 neighbors[] = {{key.x, 0, key.z},
-                           {key.x + 1, 0, key.z},
-                           {key.x - 1, 0, key.z},
-                           {key.x, 0, key.z + 1},
-                           {key.x, 0, key.z - 1}};
+  if (it->second->isGenerated && it->second->isDirty) {
+    Vector3 currentKey = key;
+    std::thread([this, currentKey]() {
+      std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+      Vector3 neighbors[] = {{currentKey.x + 1, 0, currentKey.z},
+                             {currentKey.x - 1, 0, currentKey.z},
+                             {currentKey.x, 0, currentKey.z + 1},
+                             {currentKey.x, 0, currentKey.z - 1}};
 
-    for (auto &nKey : neighbors) {
-      auto nit = Chunks.find(nKey);
-      if (nit != Chunks.end() && !nit->second.isDirty &&
-          nit->second.isGenerated) {
-        nit->second.PropagateLighting();
-        nit->second.GenerateMesh();
-        nit->second.needsMeshUpdate = true;
+      for (auto &nKey : neighbors) {
+        auto nit = Chunks.find(nKey);
+        if (nit != Chunks.end() && !nit->second->isDirty &&
+            nit->second->isGenerated) {
+          nit->second->PropagateLighting();
+          nit->second->GenerateMesh();
+          nit->second->needsMeshUpdate = true;
+        }
       }
-    }
+    }).detach();
 
-    it->second.isDirty = false;
+    it->second->isDirty = false;
   }
 
-  return it->second;
+  return *it->second;
 }
 
 Biome ChunkManager::GetBiome(float Humidity, float Temperature) {
@@ -369,15 +375,19 @@ void ChunkManager::TickWater() {
     chunksToUpdate.insert(cKey);
   }
 
-  // Now regenerate only the affected chunks once
+  // Now regenerate only the affected chunks once in background
   for (auto const &cKey : chunksToUpdate) {
-    get_chunk(cKey).GenerateChunk();
+    std::thread([this, cKey]() {
+      std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+      get_chunk(cKey).GenerateChunk();
+    }).detach();
   }
 
   activeWater = nextActive;
 }
 
 void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
   Vector3 chunkKey = {(float)floor(Pos.x / (float)ChunkPrefab::xSize), 0,
                       (float)floor(Pos.z / (float)ChunkPrefab::zSize)};
   chunkKey.y = 0;
@@ -392,20 +402,21 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
     return;
 
   // Update the block in the chunk immediately if it exists
-  if (!it->second.blocks.empty()) {
-    int lx = (int)floor(Pos.x) - it->second.xPos;
+  if (!it->second->blocks.empty()) {
+    int lx = (int)floor(Pos.x) - it->second->xPos;
     int ly = (int)floor(Pos.y);
-    int lz = (int)floor(Pos.z) - it->second.zPos;
+    int lz = (int)floor(Pos.z) - it->second->zPos;
     if (lx >= 0 && lx < ChunkPrefab::xSize && ly >= 0 &&
         ly < ChunkPrefab::ySize && lz >= 0 && lz < ChunkPrefab::zSize) {
-      it->second.blocks[lx + ly * ChunkPrefab::xSize +
-                        lz * ChunkPrefab::xSize * ChunkPrefab::ySize] = BlockID;
+      it->second->blocks[lx + ly * ChunkPrefab::xSize +
+                         lz * ChunkPrefab::xSize * ChunkPrefab::ySize] =
+          BlockID;
 
       // Re-calculate everything for current chunk
-      it->second.GenerateLighting();
-      it->second.PropagateLighting();
-      it->second.GenerateMesh();
-      it->second.needsMeshUpdate = true;
+      it->second->GenerateLighting();
+      it->second->PropagateLighting();
+      it->second->GenerateMesh();
+      it->second->needsMeshUpdate = true;
     }
   }
 
@@ -416,30 +427,31 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
                             {chunkKey.x, 0, chunkKey.z - 1}};
     for (auto &nKey : neighbors) {
       auto nit = Chunks.find(nKey);
-      if (nit != Chunks.end() && !nit->second.blocks.empty()) {
-        nit->second.GenerateLighting();
-        nit->second.PropagateLighting();
-        nit->second.GenerateMesh();
-        nit->second.needsMeshUpdate = true;
+      if (nit != Chunks.end() && !nit->second->blocks.empty()) {
+        nit->second->GenerateLighting();
+        nit->second->PropagateLighting();
+        nit->second->GenerateMesh();
+        nit->second->needsMeshUpdate = true;
       }
     }
   }
 }
 
 Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
   Vector3 chunkKey = {(float)floor(Pos.x / (float)ChunkPrefab::xSize), 0,
                       (float)floor(Pos.z / (float)ChunkPrefab::zSize)};
   auto it = Chunks.find(chunkKey);
 
   // Safety check: Chunk must exist and have data
-  if (it == Chunks.end() || !it->second.isGenerated ||
-      it->second.blocks.empty()) {
+  if (it == Chunks.end() || !it->second->isGenerated ||
+      it->second->blocks.empty()) {
     return (Pos.y < ChunkPrefab::SeaLevel) ? 5 : 0;
   }
 
-  int lx = (int)floor(Pos.x) - it->second.xPos;
+  int lx = (int)floor(Pos.x) - it->second->xPos;
   int ly = (int)floor(Pos.y);
-  int lz = (int)floor(Pos.z) - it->second.zPos;
+  int lz = (int)floor(Pos.z) - it->second->zPos;
 
   // Strict bounds check
   if (lx < 0 || lx >= ChunkPrefab::xSize || ly < 0 ||
@@ -451,22 +463,23 @@ Uint8 ChunkManager::GetBlockID(Vector3 Pos) {
             lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
 
   // Double safety check on vector size
-  if (idx < 0 || idx >= (int)it->second.blocks.size()) {
+  if (idx < 0 || idx >= (int)it->second->blocks.size()) {
     return 0;
   }
 
-  return it->second.blocks[idx];
+  return it->second->blocks[idx];
 }
 Uint8 ChunkManager::GetLightLevel(Vector3 Pos) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
   Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
                       (float)floor(Pos.z / ChunkPrefab::zSize)};
 
   auto it = Chunks.find(chunkKey);
-  if (it == Chunks.end() || !it->second.isGenerated ||
-      it->second.lightData.empty())
+  if (it == Chunks.end() || !it->second->isGenerated ||
+      it->second->lightData.empty())
     return 0; // Prevent light leaking from unloaded chunks
 
-  const ChunkPrefab &chunk = it->second;
+  const ChunkPrefab &chunk = *it->second;
 
   int lx = (int)floor(Pos.x) - chunk.xPos;
   int ly = (int)floor(Pos.y);
@@ -484,15 +497,16 @@ Uint8 ChunkManager::GetLightLevel(Vector3 Pos) {
                   chunk.lightData[idx].blockLight);
 }
 Uint8 ChunkManager::GetSunlightLevel(Vector3 Pos) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
   Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
                       (float)floor(Pos.z / ChunkPrefab::zSize)};
 
   auto it = Chunks.find(chunkKey);
-  if (it == Chunks.end() || !it->second.isGenerated ||
-      it->second.lightData.empty())
+  if (it == Chunks.end() || !it->second->isGenerated ||
+      it->second->lightData.empty())
     return 0;
 
-  const ChunkPrefab &chunk = it->second;
+  const ChunkPrefab &chunk = *it->second;
   int lx = (int)floor(Pos.x) - chunk.xPos;
   int ly = (int)floor(Pos.y);
   int lz = (int)floor(Pos.z) - chunk.zPos;
@@ -508,15 +522,16 @@ Uint8 ChunkManager::GetSunlightLevel(Vector3 Pos) {
   return chunk.lightData[idx].sunlight;
 }
 Uint8 ChunkManager::GetBlockLightLevel(Vector3 Pos) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
   Vector3 chunkKey = {(float)floor(Pos.x / ChunkPrefab::xSize), 0,
                       (float)floor(Pos.z / ChunkPrefab::zSize)};
 
   auto it = Chunks.find(chunkKey);
-  if (it == Chunks.end() || !it->second.isGenerated ||
-      it->second.lightData.empty())
+  if (it == Chunks.end() || !it->second->isGenerated ||
+      it->second->lightData.empty())
     return 0;
 
-  const ChunkPrefab &chunk = it->second;
+  const ChunkPrefab &chunk = *it->second;
   int lx = (int)floor(Pos.x) - chunk.xPos;
   int ly = (int)floor(Pos.y);
   int lz = (int)floor(Pos.z) - chunk.zPos;
@@ -722,3 +737,24 @@ y));
         }
 }
 */
+Uint8 ChunkManager::GetMod(Vector3 Pos) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+  auto it = Modifications.find(Pos);
+  if (it != Modifications.end())
+    return it->second;
+  return 255;
+}
+
+void ChunkManager::GetModificationsForChunk(
+    int xStart, int zStart, std::unordered_map<int, Uint8> &localMods) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+  for (auto const &[pos, blockID] : Modifications) {
+    if (pos.x >= xStart && pos.x < xStart + 16 && pos.z >= zStart &&
+        pos.z < zStart + 16 && pos.y >= 0 && pos.y < 192) {
+      int lx = (int)pos.x - xStart;
+      int ly = (int)pos.y;
+      int lz = (int)pos.z - zStart;
+      localMods[lx + ly * 16 + lz * 16 * 192] = blockID;
+    }
+  }
+}

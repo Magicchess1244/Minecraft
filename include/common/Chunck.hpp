@@ -4,6 +4,7 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "Common.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <atomic>
 #include <sys/types.h>
 
 struct DrawnFace {
@@ -42,9 +43,9 @@ public:
   std::vector<Uint8> blocks; // Persistent block data for collision/raycasting
   std::vector<LightData> lightData; // Same size as blocks
 
-  bool isGenerated = false;
-  bool isDirty = false;
-  bool needsMeshUpdate = true;
+  std::atomic<bool> isGenerated{false};
+  std::atomic<bool> isDirty{false};
+  std::atomic<bool> needsMeshUpdate{true};
   inline bool isValidPos(int x, int y, int z) const {
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
@@ -57,7 +58,7 @@ public:
   void PropagateLighting();
 
   ChunkManager *manager = nullptr;
-  
+
 private:
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Biome> &biomeMap,

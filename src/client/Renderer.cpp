@@ -13,7 +13,7 @@
 #include <sys/types.h>
 #include <vector>
 
-constexpr Uint32 FacesPerChunk = 2200;
+constexpr Uint32 FacesPerChunk = 2500;
 
 Slot g_heldItem = {0, 0};
 std::vector<int> g_draggedSlots;
@@ -25,7 +25,7 @@ int g_initialClickSlot = -1;
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 10;
+constexpr int RenderDistance = 6;
 static constexpr int CRAFTING_RESULT_SLOT = 49;
 static constexpr int CRAFTING_INPUT_FIRST = 40;
 static constexpr int CRAFTING_INPUT_LAST = 48;
@@ -858,9 +858,7 @@ void Renderer::DrawTerrain(Player &player) {
   // 1. Collect visible chunks
   std::vector<ChunkDistance> visibleChunks = SortChunks(player);
 
-  static std::vector<ChunkPrefab *>
-      bucketChunks[22]; // Static to persist for "current" check
-  std::vector<ChunkPrefab *> newBuckets[22];
+  std::vector<std::vector<ChunkPrefab *>> newBuckets(this->totalBuffers - 1);
 
   // 2. Distribute visible chunks into stable buckets based on coordinates
   for (auto &cd : visibleChunks) {
@@ -916,7 +914,8 @@ void Renderer::DrawTerrain(Player &player) {
     const size_t maxIndices = chunksPerBuffer * 6 * FacesPerChunk;
 
     for (auto *chunk : newChunks) {
-      if (!chunk->isGenerated) continue;
+      if (!chunk->isGenerated)
+        continue;
       Vector3 chunkPosKey = {(float)chunk->xPos / (float)ChunkPrefab::xSize, 0,
                              (float)chunk->zPos / (float)ChunkPrefab::zSize};
 
@@ -996,7 +995,8 @@ void Renderer::DrawTerrain(Player &player) {
       currentIndexOffset += cache.indices.size();
     }
 
-    if(currentIndexOffset == 0) continue;
+    if (currentIndexOffset == 0)
+      continue;
     mesh->OpaqueIndexCount = (int)currentIndexOffset;
     mesh->BaseVertex = (int)currentVertexOffset;
     mesh->BaseIndex = (int)currentIndexOffset;

@@ -4,6 +4,8 @@
 #include "BlockDef.hpp"
 #include "Common.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <memory>
+#include <mutex>
 
 class ChunkPrefab;
 class ChunkCache;
@@ -55,11 +57,12 @@ int BaseHeight(float ValueNoise, int Length, const HeightsDif *Heights);
 
 class ChunkManager {
 private:
-  std::unordered_map<Vector3, ChunkPrefab> Chunks;
+  std::unordered_map<Vector3, std::unique_ptr<ChunkPrefab>> Chunks;
   ChunkCache *cache; // Chunk caching system
   std::unordered_map<Vector3, Uint8> Modifications;
   std::vector<std::pair<Vector3, int>> activeWater;
   float waterTickTimer = 0.0f;
+  std::recursive_mutex chunks_mutex;
 
 public:
   ChunkManager();
@@ -80,24 +83,9 @@ public:
     }
     return BlockDefinitions[BlockId];
   }
-  Uint8 GetMod(Vector3 Pos) {
-    auto it = Modifications.find(Pos);
-    if (it != Modifications.end())
-      return it->second;
-    return 255;
-  }
+  Uint8 GetMod(Vector3 Pos);
   void GetModificationsForChunk(int xStart, int zStart,
-                                std::unordered_map<int, Uint8> &localMods) {
-    for (auto const &[pos, blockID] : Modifications) {
-      if (pos.x >= xStart && pos.x < xStart + 16 && pos.z >= zStart &&
-          pos.z < zStart + 16 && pos.y >= 0 && pos.y < 192) {
-        int lx = (int)pos.x - xStart;
-        int ly = (int)pos.y;
-        int lz = (int)pos.z - zStart;
-        localMods[lx + ly * 16 + lz * 16 * 192] = blockID;
-      }
-    }
-  }
+                                std::unordered_map<int, Uint8> &localMods);
   RaycastResult RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
   bool IsSolid(Vector3 worldPos);
   void Place(Vector3 Pos, int BlockID);
