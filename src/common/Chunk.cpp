@@ -132,21 +132,18 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
       int terrainHeight = heightCache[(x + 1) + (z + 1) * (xSize + 2)];
       const Biome &biome = biomeCache[x + z * xSize];
 
-      Uint8 surfaceBlockID = 1; // Grass
+      Uint8 surfaceBlockID = (int)BlockIDDef::Grass;
       switch (biome.Type) {
       case BiomeType::Desert:
-        surfaceBlockID = 8;
-        break;
-      case BiomeType::Savanna:
-        surfaceBlockID = 2;
+        surfaceBlockID = (int)BlockIDDef::Sand;
         break;
       case BiomeType::Ice:
-        surfaceBlockID = 21;
+        surfaceBlockID = (int)BlockIDDef::Ice;
         break;
       case BiomeType::Tundra:
       case BiomeType::BigTaiga:
       case BiomeType::Taiga:
-        surfaceBlockID = 22;
+        surfaceBlockID = (int)BlockIDDef::Snow;
         break;
       default:
         break;
@@ -162,7 +159,7 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
           blockID = mit->second;
           isSolid = (blockID != 0 && blockID != 5);
         } else if (y == 0) {
-          blockID = 4; // Bedrock
+          blockID = (int)BlockIDDef::Bedrock; // Bedrock
           isSolid = true;
         } else if (y <= terrainHeight) {
           bool isCave = false;
@@ -183,29 +180,30 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
           } else {
             isSolid = true;
             if (terrainHeight - y > 3) {
-              blockID = 3; // Stone
+              blockID = (int)BlockIDDef::Stone;
               float Ore = std::abs(PerlinNoise(
                   {(float)worldX, (float)y, (float)worldZ}, 1, 0.05f));
               if (Ore > 0.25f && Ore < 0.25f + coalChCache[y])
-                blockID = 11;
+                blockID = (int)BlockIDDef::CoalOre;
               else if (Ore > 0.4f && Ore < 0.4f + ironChCache[y])
-                blockID = 13;
+                blockID = (int)BlockIDDef::IronOre;
               else if (Ore > 0.5f && Ore < 0.5f + diamChCache[y])
-                blockID = 10;
+                blockID = (int)BlockIDDef::DiamondOre;
             } else if (terrainHeight < SeaLevel ||
                        (terrainHeight <= beachLevel &&
                         terrainHeight >= beachLevel - 3)) {
-              blockID = 8; // Sand
+              blockID = (int)BlockIDDef::Sand; // Sand
             } else if (terrainHeight - y > 0) {
-              blockID = (surfaceBlockID == 22 || surfaceBlockID == 8) ? 3 : 2;
+              if (surfaceBlockID == (int)BlockIDDef::Snow) blockID = (int)BlockIDDef::Stone;
+              if (surfaceBlockID == (int)BlockIDDef::Sand) blockID = (int)BlockIDDef::SandStone;
             } else {
               blockID = surfaceBlockID;
             }
           }
         } else if (y == SeaLevel - 1 && biome.Type == BiomeType::Ice) {
-          blockID = 21;
+          blockID = (int)BlockIDDef::Ice;
         } else if (y < SeaLevel) {
-          blockID = 5; // Water
+          blockID = (int)BlockIDDef::Water;
         }
 
         blocks[idx] = blockID;
