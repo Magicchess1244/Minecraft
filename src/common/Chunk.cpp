@@ -3,7 +3,6 @@
 #include <SDL3/SDL_stdinc.h>
 #include <cstdlib>
 #include <cstring>
-#include <queue>
 
 constexpr float CaveThreshold = -0.18f;
 constexpr int CaveMinY = 5;
@@ -123,6 +122,25 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
   std::unordered_map<int, Uint8> localMods;
   manager->GetModificationsForChunk(xPos, zPos, localMods);
 
+  // Precompute cave noise for the whole chunk in one pass
+  // Stored as caveMap[x + y*xSize + z*xSize*ySize]
+  // Only computed for cave Y range to save time
+  std::vector<bool> caveMap(xSize * ySize * zSize, false);
+  for (int y = CaveMinY; y <= CaveMaxY; y++) {
+    for (int z = 0; z < (int)zSize; z++) {
+      for (int x = 0; x < (int)xSize; x++) {
+        float fy = (float)y;
+        float wx = (float)(xPos + x);
+        float wz = (float)(zPos + z);
+        float n1 = PerlinNoise({wx * 0.08f, fy * 0.08f, wz * 0.08f}, 1, 0.5f);
+        float n2 =
+            PerlinNoise({wx * 0.1f + 100.0f, fy * 0.1f, wz * 0.1f}, 1, 0.5f);
+        if ((n1 * n1 + n2 * n2) < caveTrCache[y])
+          caveMap[x + y * xSize + z * xSize * ySize] = true;
+      }
+    }
+  }
+
   const int beachLevel = SeaLevel + 2;
 
   for (int x = 0; x < (int)xSize; x++) {
@@ -159,21 +177,10 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
           blockID = mit->second;
           isSolid = (blockID != 0 && blockID != 5);
         } else if (y == 0) {
-          blockID = (int)BlockIDDef::Bedrock; // Bedrock
+          blockID = (int)BlockIDDef::Bedrock;
           isSolid = true;
         } else if (y <= terrainHeight) {
-          bool isCave = false;
-          if (y >= CaveMinY && y <= CaveMaxY) {
-            float fy = (float)y;
-            float n1 = PerlinNoise(
-                {(float)worldX * 0.08f, fy * 0.08f, (float)worldZ * 0.08f}, 1,
-                0.5f);
-            float n2 = PerlinNoise({(float)worldX * 0.1f + 100.0f, fy * 0.1f,
-                                    (float)worldZ * 0.1f},
-                                   1, 0.5f);
-            if ((n1 * n1 + n2 * n2) < caveTrCache[y])
-              isCave = true;
-          }
+          bool isCave = (y >= CaveMinY && y <= CaveMaxY) && caveMap[idx];
 
           if (isCave) {
             blockID = 0;
@@ -192,10 +199,14 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
             } else if (terrainHeight < SeaLevel ||
                        (terrainHeight <= beachLevel &&
                         terrainHeight >= beachLevel - 3)) {
-              blockID = (int)BlockIDDef::Sand; // Sand
+              blockID = (int)BlockIDDef::Sand;
             } else if (terrainHeight - y > 0) {
-              if (surfaceBlockID == (int)BlockIDDef::Snow) blockID = (int)BlockIDDef::Stone;
-              if (surfaceBlockID == (int)BlockIDDef::Sand) blockID = (int)BlockIDDef::SandStone;
+              if (surfaceBlockID == (int)BlockIDDef::Snow)
+                blockID = (int)BlockIDDef::Stone;
+              else if (surfaceBlockID == (int)BlockIDDef::Sand)
+                blockID = (int)BlockIDDef::SandStone;
+              else
+                blockID = (int)BlockIDDef::Dirt;
             } else {
               blockID = surfaceBlockID;
             }
@@ -214,8 +225,10 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
 }
 
 void ChunkPrefab::GenerateChunk() {
-  this->allFaces.clear();
-  this->allFaces.reserve(21000);
+  // Guard: skip if already being processed (shouldn't happen, but be safe)
+  bool expected = false;
+  if (!isProcessing.compare_exchange_strong(expected, true))
+    return;
 
   size_t totalBlocksSize = (size_t)xSize * ySize * zSize;
   if (this->blocks.size() != totalBlocksSize) {
@@ -230,7 +243,6 @@ void ChunkPrefab::GenerateChunk() {
   PopulateBlocks(heightCache, biomeCache, solidCache);
 
   GenerateVegetation(heightCache, biomeCache, solidCache);
-  isDirty = false;
   GenerateLighting();
   PropagateLighting();
   GenerateMesh();
@@ -239,6 +251,7 @@ void ChunkPrefab::GenerateChunk() {
   isGenerated = true;
   allFaces.shrink_to_fit();
   isDirty = true;
+  isProcessing = false;
 }
 
 void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
@@ -507,7 +520,26 @@ void ChunkPrefab::GenerateMesh() {
   int estimatedFaces = xSize * zSize * 6;
   this->allFaces.reserve(estimatedFaces);
 
-  for (int y = 0; y < (int)ChunkPrefab::ySize; y++) {
+  // Precompute per-column max solid Y to skip empty air above terrain
+  std::vector<int> colTopY(xSize * zSize, -1);
+  for (int z = 0; z < (int)zSize; z++) {
+    for (int x = 0; x < (int)xSize; x++) {
+      for (int y = (int)ySize - 1; y >= 0; y--) {
+        if (blocks[x + y * xSize + z * xSize * ySize] != 0) {
+          colTopY[x + z * xSize] = y;
+          break;
+        }
+      }
+    }
+  }
+
+  // Global max Y across all columns for the Y loop bound
+  int globalTopY = 0;
+  for (int v : colTopY)
+    if (v > globalTopY)
+      globalTopY = v;
+
+  for (int y = 0; y <= globalTopY; y++) {
     for (int z = 0; z < (int)ChunkPrefab::zSize; z++) {
       for (int x = 0; x < (int)ChunkPrefab::xSize; x++) {
         int idx = x + y * ChunkPrefab::xSize +
@@ -535,10 +567,8 @@ void ChunkPrefab::GenerateMesh() {
 
           bool visible = false;
           if (BlockDef[bid].isTransparent()) {
-            // Transparent blocks like water only show faces against air
             visible = (nBid == 0);
           } else {
-            // Opaque blocks show faces against air or transparent blocks
             visible = (nBid == 0 || BlockDef[nBid].isTransparent());
           }
 
@@ -602,23 +632,30 @@ void ChunkPrefab::GenerateLighting() {
   }
 }
 void ChunkPrefab::PropagateLighting() {
-  std::queue<Vector3> sunQueue;
-  std::queue<Vector3> blockQueue;
+  // Use flat int indices instead of Vector3 — 4 bytes vs 12 per queue item,
+  // dramatically improves cache behaviour on BFS over 49k cells.
+  const int C = xSize;
+  const int CS = xSize * ySize;
+  std::vector<int> sunQueue;
+  std::vector<int> blockQueue;
+
+  const int dirIdx[6] = {1,  -1,   // x+1, x-1
+                         C,  -C,   // y+1, y-1 (step of xSize)
+                         CS, -CS}; // z+1, z-1 (step of xSize*ySize)
+
+  sunQueue.reserve(4096);
+  blockQueue.reserve(512);
 
   // 1. Seed with existing light
-  for (int x = 0; x < xSize; x++) {
-    for (int y = 0; y < ySize; y++) {
-      for (int z = 0; z < zSize; z++) {
-        int idx = x + y * xSize + z * xSize * ySize;
-        if (lightData[idx].sunlight > 0)
-          sunQueue.push({(float)x, (float)y, (float)z});
-        if (lightData[idx].blockLight > 0)
-          blockQueue.push({(float)x, (float)y, (float)z});
-      }
-    }
+  int total = xSize * ySize * zSize;
+  for (int i = 0; i < total; i++) {
+    if (lightData[i].sunlight > 0)
+      sunQueue.push_back(i);
+    if (lightData[i].blockLight > 0)
+      blockQueue.push_back(i);
   }
 
-  // 2. Pull light from neighbors
+  // 2. Pull light from neighbors on chunk borders
   for (int x = 0; x < ChunkPrefab::xSize; x++) {
     for (int y = 0; y < ChunkPrefab::ySize; y++) {
       for (int z = 0; z < ChunkPrefab::zSize; z++) {
@@ -640,29 +677,25 @@ void ChunkPrefab::PropagateLighting() {
             if (blocks[idx] != 0 && blocks[idx] != 5 && blocks[idx] != 9)
               continue;
 
-            // Pull Sunlight
             Uint8 nSun = manager->GetSunlightLevel(worldPos);
             if (nSun > 1) {
               Uint8 newSun = nSun - 1;
               if (BlockDef[blocks[idx]].isWater())
                 newSun = (newSun > 2) ? newSun - 1 : 0;
-
               if (newSun > lightData[idx].sunlight) {
                 lightData[idx].sunlight = newSun;
-                sunQueue.push({(float)x, (float)y, (float)z});
+                sunQueue.push_back(idx);
               }
             }
 
-            // Pull Block Light
             Uint8 nBlock = manager->GetBlockLightLevel(worldPos);
             if (nBlock > 1) {
               Uint8 newBlock = nBlock - 1;
               if (BlockDef[blocks[idx]].isWater())
                 newBlock = (newBlock > 2) ? newBlock - 1 : 0;
-
               if (newBlock > lightData[idx].blockLight) {
                 lightData[idx].blockLight = newBlock;
-                blockQueue.push({(float)x, (float)y, (float)z});
+                blockQueue.push_back(idx);
               }
             }
           }
@@ -671,13 +704,16 @@ void ChunkPrefab::PropagateLighting() {
     }
   }
 
-  // Generalized BFS propagation function
-  auto propagate = [&](std::queue<Vector3> &q, bool isSunlight) {
-    while (!q.empty()) {
-      Vector3 pos = q.front();
-      q.pop();
+  // 3. BFS propagation using flat indices
+  auto propagate = [&](std::vector<int> &q, bool isSunlight) {
+    int head = 0;
+    while (head < (int)q.size()) {
+      int idx = q[head++];
 
-      int idx = (int)pos.x + (int)pos.y * xSize + (int)pos.z * xSize * ySize;
+      int x = idx % xSize;
+      int y = (idx / xSize) % ySize;
+      int z = idx / (xSize * ySize);
+
       Uint8 currentLight =
           isSunlight ? lightData[idx].sunlight : lightData[idx].blockLight;
 
@@ -685,9 +721,9 @@ void ChunkPrefab::PropagateLighting() {
         continue;
 
       for (int i = 0; i < 6; i++) {
-        int nx = (int)pos.x + (int)Direction[i].x;
-        int ny = (int)pos.y + (int)Direction[i].y;
-        int nz = (int)pos.z + (int)Direction[i].z;
+        int nx = x + (int)Direction[i].x;
+        int ny = y + (int)Direction[i].y;
+        int nz = z + (int)Direction[i].z;
 
         if (nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 &&
             ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize) {
@@ -695,7 +731,6 @@ void ChunkPrefab::PropagateLighting() {
                      nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
           Uint8 neighborBlock = blocks[nIdx];
 
-          // Light only passes through non-solid/transparent blocks or emitters
           if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent() &&
               BlockDef[neighborBlock].Luminance == 0)
             continue;
@@ -707,12 +742,12 @@ void ChunkPrefab::PropagateLighting() {
           if (isSunlight) {
             if (newLight > lightData[nIdx].sunlight) {
               lightData[nIdx].sunlight = newLight;
-              q.push({(float)nx, (float)ny, (float)nz});
+              q.push_back(nIdx);
             }
           } else {
             if (newLight > lightData[nIdx].blockLight) {
               lightData[nIdx].blockLight = newLight;
-              q.push({(float)nx, (float)ny, (float)nz});
+              q.push_back(nIdx);
             }
           }
         }

@@ -1,6 +1,9 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
 
+#include <condition_variable>
+#include <functional>
+#include <queue>
 #include <set>
 #include <thread>
 
@@ -129,50 +132,130 @@ cache->saveChunk(pair.second, (int)pair.first.x, (int)pair.first.z);
 delete cache;*/
 }
 
+// ──── Minimal thread pool for chunk work ────────────────────────────────────
+namespace {
+struct ChunkThreadPool {
+  static constexpr int NUM_WORKERS = 0; // 0 = auto-detect
+  std::vector<std::thread> workers;
+  std::queue<std::function<void()>> tasks;
+  std::mutex mtx;
+  std::condition_variable cv;
+  bool stop = false;
+
+  ChunkThreadPool() {
+    int n = (int)std::thread::hardware_concurrency();
+    if (n < 2)
+      n = 2;
+    if (n > 8)
+      n = 8; // Cap to avoid over-subscription
+    for (int i = 0; i < n; i++) {
+      workers.emplace_back([this] {
+        while (true) {
+          std::function<void()> task;
+          {
+            std::unique_lock<std::mutex> lock(mtx);
+            cv.wait(lock, [this] { return stop || !tasks.empty(); });
+            if (stop && tasks.empty())
+              return;
+            task = std::move(tasks.front());
+            tasks.pop();
+          }
+          task();
+        }
+      });
+    }
+  }
+  ~ChunkThreadPool() {
+    {
+      std::unique_lock<std::mutex> lock(mtx);
+      stop = true;
+    }
+    cv.notify_all();
+    for (auto &w : workers)
+      w.join();
+  }
+  void submit(std::function<void()> fn) {
+    {
+      std::unique_lock<std::mutex> lock(mtx);
+      tasks.push(std::move(fn));
+    }
+    cv.notify_one();
+  }
+};
+static ChunkThreadPool &pool() {
+  static ChunkThreadPool p;
+  return p;
+}
+} // namespace
+// ─────────────────────────────────────────────────────────────────────────────
+
 ChunkPrefab &ChunkManager::get_chunk(Vector3 key) {
   key.y = 0;
 
-  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
-  auto it = Chunks.find(key);
-  if (it == Chunks.end()) {
-    auto newChunk = std::make_unique<ChunkPrefab>();
-    newChunk->xPos = (int)key.x * ChunkPrefab::xSize;
-    newChunk->zPos = (int)key.z * ChunkPrefab::zSize;
-    newChunk->isDirty = true;
-    newChunk->isGenerated = false;
-    newChunk->manager = this;
+  // --- Lock only long enough to find/insert the chunk in the map ---
+  ChunkPrefab *ptr = nullptr;
+  bool needsGeneration = false;
+  {
+    std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+    auto it = Chunks.find(key);
+    if (it == Chunks.end()) {
+      auto newChunk = std::make_unique<ChunkPrefab>();
+      newChunk->xPos = (int)key.x * ChunkPrefab::xSize;
+      newChunk->zPos = (int)key.z * ChunkPrefab::zSize;
+      newChunk->isDirty = true;
+      newChunk->isGenerated = false;
+      newChunk->manager = this;
+      ptr = newChunk.get();
+      Chunks[key] = std::move(newChunk);
+      needsGeneration = true;
+    } else {
+      ptr = it->second.get();
+    }
+  }
 
-    ChunkPrefab *ptr = newChunk.get();
-    Chunks[key] = std::move(newChunk);
-
-    std::thread(&ChunkPrefab::GenerateChunk, ptr).detach();
+  if (needsGeneration) {
+    // Heavy work happens entirely outside the map lock on a stable pointer
+    pool().submit([ptr]() { ptr->GenerateChunk(); });
     return *ptr;
   }
 
-  if (it->second->isGenerated && it->second->isDirty) {
+  // If freshly generated, kick off neighbor refreshes (no lock held during
+  // work)
+  if (ptr->isGenerated && ptr->isDirty) {
+    ptr->isDirty = false;
     Vector3 currentKey = key;
-    std::thread([this, currentKey]() {
-      std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
-      Vector3 neighbors[] = {{currentKey.x + 1, 0, currentKey.z},
-                             {currentKey.x - 1, 0, currentKey.z},
-                             {currentKey.x, 0, currentKey.z + 1},
-                             {currentKey.x, 0, currentKey.z - 1}};
-
-      for (auto &nKey : neighbors) {
-        auto nit = Chunks.find(nKey);
-        if (nit != Chunks.end() && !nit->second->isDirty &&
-            nit->second->isGenerated) {
-          nit->second->PropagateLighting();
-          nit->second->GenerateMesh();
-          nit->second->needsMeshUpdate = true;
+    pool().submit([this, currentKey]() {
+      // Brief lock to collect neighbor pointers only
+      std::vector<ChunkPrefab *> neighbors;
+      {
+        std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+        Vector3 nKeys[] = {{currentKey.x + 1, 0, currentKey.z},
+                           {currentKey.x - 1, 0, currentKey.z},
+                           {currentKey.x, 0, currentKey.z + 1},
+                           {currentKey.x, 0, currentKey.z - 1}};
+        for (auto &nKey : nKeys) {
+          auto nit = Chunks.find(nKey);
+          if (nit != Chunks.end() && !nit->second->isDirty &&
+              nit->second->isGenerated) {
+            neighbors.push_back(nit->second.get());
+          }
         }
       }
-    }).detach();
-
-    it->second->isDirty = false;
+      // Heavy lighting + mesh work entirely outside the lock
+      for (auto *n : neighbors) {
+        // Try-lock: skip if another thread is already working on this chunk
+        bool expected = false;
+        if (!n->isProcessing.compare_exchange_strong(expected, true))
+          continue; // another thread has it, skip
+        n->PropagateLighting();
+        n->GenerateMesh();
+        n->needsMeshUpdate = true;
+        n->isProcessing = false;
+      }
+    });
   }
 
-  return *it->second;
+  return *ptr;
 }
 
 Biome ChunkManager::GetBiome(float Humidity, float Temperature) {
@@ -377,10 +460,23 @@ void ChunkManager::TickWater() {
 
   // Now regenerate only the affected chunks once in background
   for (auto const &cKey : chunksToUpdate) {
-    std::thread([this, cKey]() {
+    // Brief lock just to get the pointer
+    ChunkPrefab *ptr = nullptr;
+    {
       std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
-      get_chunk(cKey).GenerateChunk();
-    }).detach();
+      auto it = Chunks.find(cKey);
+      if (it != Chunks.end())
+        ptr = it->second.get();
+    }
+    if (ptr) {
+      pool().submit([ptr]() {
+        bool expected = false;
+        if (ptr->isProcessing.compare_exchange_strong(expected, true)) {
+          ptr->GenerateChunk();
+          // GenerateChunk resets isProcessing at its end
+        }
+      });
+    }
   }
 
   activeWater = nextActive;
@@ -412,11 +508,15 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
                          lz * ChunkPrefab::xSize * ChunkPrefab::ySize] =
           BlockID;
 
-      // Re-calculate everything for current chunk
-      it->second->GenerateLighting();
-      it->second->PropagateLighting();
-      it->second->GenerateMesh();
-      it->second->needsMeshUpdate = true;
+      // Use isProcessing guard before touching allFaces
+      bool expected = false;
+      if (it->second->isProcessing.compare_exchange_strong(expected, true)) {
+        it->second->GenerateLighting();
+        it->second->PropagateLighting();
+        it->second->GenerateMesh();
+        it->second->needsMeshUpdate = true;
+        it->second->isProcessing = false;
+      }
     }
   }
 
@@ -428,10 +528,14 @@ void ChunkManager::SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors) {
     for (auto &nKey : neighbors) {
       auto nit = Chunks.find(nKey);
       if (nit != Chunks.end() && !nit->second->blocks.empty()) {
-        nit->second->GenerateLighting();
-        nit->second->PropagateLighting();
-        nit->second->GenerateMesh();
-        nit->second->needsMeshUpdate = true;
+        bool exp = false;
+        if (nit->second->isProcessing.compare_exchange_strong(exp, true)) {
+          nit->second->GenerateLighting();
+          nit->second->PropagateLighting();
+          nit->second->GenerateMesh();
+          nit->second->needsMeshUpdate = true;
+          nit->second->isProcessing = false;
+        }
       }
     }
   }

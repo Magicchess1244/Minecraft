@@ -46,6 +46,7 @@ public:
   std::atomic<bool> isGenerated{false};
   std::atomic<bool> isDirty{false};
   std::atomic<bool> needsMeshUpdate{true};
+  std::atomic<bool> isProcessing{false}; // guard against concurrent mesh work
   inline bool isValidPos(int x, int y, int z) const {
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
