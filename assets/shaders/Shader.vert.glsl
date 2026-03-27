@@ -18,7 +18,7 @@ void main() {
     vec3 realPos = floor(a_position + 0.05);
     gl_Position = projBlock.projection * viewBlock.view * vec4(realPos, 1.0);
     
-    // Unpack Data: side(3), blockID(16), light(4)
+    // Unpack Data: side(3), blockID(ChunkPrefab::xSize), light(4)
     uint a_data = floatBitsToUint(a_data_float);
     v_color = float(a_data & 0x7u);
     v_blockID = float((a_data >> 3u) & 0xFFFFu);

@@ -8,7 +8,8 @@
 #include <mutex>
 
 class ChunkPrefab;
-class ChunkCache;
+
+// ─── Spline helpers ──────────────────────────────────────────────────────────
 
 typedef struct {
   float x;
@@ -21,6 +22,8 @@ float GetCaveThreshold(float y);
 float GetCoalChance(float y);
 float GetIronChance(float y);
 float GetDiamondChance(float y);
+
+// ─── Biome ───────────────────────────────────────────────────────────────────
 
 enum class BiomeType {
   Ice,
@@ -47,62 +50,75 @@ typedef struct {
   int ChangeAmount;
 } Biome;
 
+// ─── Raycast ─────────────────────────────────────────────────────────────────
+
 struct RaycastResult {
   bool hit;
   Vector3 pos;
   Vector3 prevPos;
   Uint8 BlockID;
 };
-int BaseHeight(float ValueNoise, int Length, const HeightsDif *Heights);
+
+// ─── ChunkManager ────────────────────────────────────────────────────────────
 
 class ChunkManager {
-private:
-  std::unordered_map<Vector3, std::unique_ptr<ChunkPrefab>> Chunks;
-  ChunkCache *cache; // Chunk caching system
-  std::unordered_map<Vector3, Uint8> Modifications;
-  std::vector<std::pair<Vector3, int>> activeWater;
-  float waterTickTimer = 0.0f;
-  std::recursive_mutex chunks_mutex;
-
 public:
   ChunkManager();
   ~ChunkManager();
+
   int DayLightLevel = 15;
 
+  // ── Chunk access / lifecycle ──────────────────────────────────────────────
+  ChunkPrefab &get_chunk(Vector3 chunkKey);
+  void refresh_ready_neighbours(Vector3 centerKey);
+
+  // ── World queries ─────────────────────────────────────────────────────────
+  Uint8 GetBlockID(Vector3 worldPos);
+  Uint8 GetLightLevel(Vector3 worldPos);
+  Uint8 GetSunlightLevel(Vector3 worldPos);
+  Uint8 GetBlockLightLevel(Vector3 worldPos);
+  bool IsSolid(Vector3 worldPos);
+  RaycastResult RayCast(Vector3 origin, Vector3 direction, float maxDistance);
+
+  // ── Block modification ────────────────────────────────────────────────────
+  void Place(Vector3 worldPos, int blockID);
+  void SetBlock(Vector3 worldPos, int blockID, bool updateNeighbours = true);
+  bool try_set_block_local(ChunkPrefab &chunk, Vector3 worldPos, int blockID);
+  void rebuild_chunk(ChunkPrefab &chunk);
+
+  // ── Modifications map  ────────────────────────────────────────────────────
+  // Returns the player-placed block at worldPos, or 255 if unmodified.
+  Uint8 GetMod(Vector3 worldPos);
+  void GetModificationsForChunk(int xStart, int zStart,
+                                std::unordered_map<int, Uint8> &localMods);
+
+  // ── Biome ─────────────────────────────────────────────────────────────────
+  Biome GetBiome(float humidity, float temperature);
+
+  // ── Block definition helper ───────────────────────────────────────────────
+  Block GetBlock(int blockID) {
+    if (blockID < 0 || blockID >= (int)BlockDefinitionsAmount) {
+      std::cerr << "Invalid Block ID: " << blockID << std::endl;
+      return BlockDefinitions[0];
+    }
+    return BlockDefinitions[blockID];
+  }
+
+  // ── Water simulation ──────────────────────────────────────────────────────
   void TickWater();
   void AddActiveWater(Vector3 pos);
   void AddActiveWater(Vector3 pos, int level);
 
-  ChunkPrefab &get_chunk(Vector3 key);
-  Biome GetBiome(float Humudity, float Temperature);
-  int GetHeight(float Continentalness, float Errotion, float PeakAndVallies);
-  Block GetBlock(int BlockId) {
-    if (BlockId < 0 || BlockId >= (int)BlockDefinitionsAmount) {
-      std::cerr << "Invalid Block ID: " << BlockId << std::endl;
-      return BlockDefinitions[0];
-    }
-    return BlockDefinitions[BlockId];
-  }
-  Uint8 GetMod(Vector3 Pos);
-  void GetModificationsForChunk(int xStart, int zStart,
-                                std::unordered_map<int, Uint8> &localMods);
-  RaycastResult RayCast(Vector3 Origin, Vector3 NormalDir, float MaxDistance);
-  bool IsSolid(Vector3 worldPos);
-  void Place(Vector3 Pos, int BlockID);
-  void SetBlock(Vector3 Pos, int BlockID, bool updateNeighbors = true);
-  Uint8 GetBlockID(Vector3 Pos);
-  Uint8 GetLightLevel(Vector3 Pos);
-  Uint8 GetSunlightLevel(Vector3 Pos);
-  Uint8 GetBlockLightLevel(Vector3 Pos);
+private:
+  // Returns the chunk-grid key (y always 0) for any world position.
+  static Vector3 world_to_chunk_key(Vector3 worldPos);
+
+  // Shared lock used by every method that touches Chunks or Modifications.
+  std::recursive_mutex chunks_mutex;
+
+  std::unordered_map<Vector3, std::unique_ptr<ChunkPrefab>> Chunks;
+  std::unordered_map<Vector3, Uint8> Modifications;
+  std::vector<std::pair<Vector3, int>> activeWater;
 };
-/*
-namespace ChunckManager {
-        bool Collition(Vector3& PlayerPos, int FullRange, int yRange, bool Swim,
-bool Block); bool PlaceBlock(int BlockType, Vector3 Position, int yRange,
-Vector3 PlayerPosition, short& Type); void Size(int PixelSizeX, int PixelSizeY,
-int yRange, int FullRange); void ShowInventor(SDL_Renderer* Renderer, int width,
-int height, std::vector<Slot>& Inventory, int InventorySlot, TTF_Font* font);
-        void SimulateWater(int chunkIndex);
-};
-*/
+
 #endif

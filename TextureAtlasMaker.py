@@ -20,7 +20,7 @@ def get_atlas_columns(atlas_width: int, tile_size: int) -> int:
     return cols
 
 
-def load_and_scale_pngs(folder: str, target_size: int = 16) -> list[Image.Image]:
+def load_and_scale_pngs(folder: str, target_size: int = ChunkPrefab::xSize) -> list[Image.Image]:
     images = []
     supported = (".png",)
     entries = sorted(
@@ -45,7 +45,7 @@ def append_textures_to_atlas(
     atlas_path: str,
     folder_path: str,
     existing_texture_count: int,
-    tile_size: int = 16,
+    tile_size: int = ChunkPrefab::xSize,
 ) -> None:
     # Load atlas
     atlas = Image.open(atlas_path).convert("RGBA")
@@ -126,7 +126,7 @@ def main():
         atlas_path=atlas_path,
         folder_path=folder_path,
         existing_texture_count=existing_count,
-        tile_size=16,
+        tile_size=ChunkPrefab::xSize,
     )
 
 

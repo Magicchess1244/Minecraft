@@ -215,7 +215,7 @@ struct Frustum {
 };
 struct DVertex {
   Vector3 Position; // x.u, y.v, z
-  float Data;       // Packed bits: side(3), blockID(16), light(4)
+  float Data;       // Packed bits: side(3), blockID(ChunkPrefab::xSize), light(4)
 };
 struct Vertex {
   Vector3 Position; // x, y (NDC), z (packed UV)

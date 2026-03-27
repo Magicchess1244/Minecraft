@@ -167,7 +167,7 @@ bool isFaceInFrustum(const Frustum &frustum, const Vector3 faceVerts[4]) {
   return true; // at least partially inside all planes
 }
 SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
-  const int tileSize = 16;
+  const int tileSize = ChunkPrefab::xSize;
   const int atlasSize = 512;
   const float pixelNudge = 0.5f;
 
@@ -188,12 +188,12 @@ SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
 auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
                        float blockID) {
   Uint32 c = (Uint32)(color.x * 255.0f) << 0 | (Uint32)(color.y * 255.0f) << 8 |
-             (Uint32)(color.z * 255.0f) << 16 | (Uint32)(255) << 24;
+             (Uint32)(color.z * 255.0f) << ChunkPrefab::xSize | (Uint32)(255) << 24;
 
   auto packUV = [](float u, float v) -> float {
     uint32_t uu = (uint32_t)(u * 65535.0f) & 0xFFFF;
     uint32_t vv = (uint32_t)(v * 65535.0f) & 0xFFFF;
-    uint32_t packed = (uu << 16) | vv;
+    uint32_t packed = (uu << ChunkPrefab::xSize) | vv;
     return *(float *)&packed;
   };
 
@@ -212,12 +212,12 @@ auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
 void Renderer::AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
                            SDL_FPoint uvMax, Vector3 color) {
   Uint32 c = (Uint32)(color.x * 255.0f) << 0 | (Uint32)(color.y * 255.0f) << 8 |
-             (Uint32)(color.z * 255.0f) << 16 | (Uint32)(255) << 24;
+             (Uint32)(color.z * 255.0f) << ChunkPrefab::xSize | (Uint32)(255) << 24;
 
   auto packUV = [](float u, float v) -> float {
     uint32_t uu = (uint32_t)(u * 65535.0f) & 0xFFFF;
     uint32_t vv = (uint32_t)(v * 65535.0f) & 0xFFFF;
-    uint32_t packed = (uu << 16) | vv;
+    uint32_t packed = (uu << ChunkPrefab::xSize) | vv;
     return *(float *)&packed;
   };
 
@@ -709,8 +709,8 @@ void Renderer::UIDebug(Player &player) {
   DrawText(buf, startX, startY - lineStep, scale, {1, 1, 1});
 
   // Chunks
-  int cx = (int)floor(player.Position.x / 16.0f);
-  int cz = (int)floor(player.Position.z / 16.0f);
+  int cx = (int)floor(player.Position.x / ChunkPrefab::xSize);
+  int cz = (int)floor(player.Position.z / ChunkPrefab::xSize);
   SDL_snprintf(buf, sizeof(buf), "Chunk: %d / %d", cx, cz);
   DrawText(buf, startX, startY - lineStep * 2.0f, scale, {1, 1, 1});
 }
@@ -956,7 +956,7 @@ void Renderer::DrawTerrain(Player &player) {
             vert.Position =
                 Vector3(worldV.x + u * 0.1f, worldV.y + v_uv * 0.1f, worldV.z);
 
-            // Pack Data: side(3), tileIndex(16), light(4)
+            // Pack Data: side(3), tileIndex(ChunkPrefab::xSize), light(4)
             Uint32 tileIndex =
                 (Uint32)BlockDef[face.blockID].Textures[face.side];
             Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |

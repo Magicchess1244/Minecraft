@@ -201,7 +201,6 @@ struct Block {
   ItemType Type;
   std::optional<float> BreakTime;
   std::optional<std::vector<BoundingBox>> collisionBoxes;
-  std::optional<std::vector<std::pair<int, int>>> Storage;
 
   bool hasUI() const { return Type == ItemType::BLOCK_UI; }
   bool isFunctional() const { return Type == ItemType::BLOCK_FUNCTIONAL; }
