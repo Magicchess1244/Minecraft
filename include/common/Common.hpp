@@ -372,11 +372,19 @@ static std::vector<std::string> split(const std::string &s, char delim) {
   return tokens;
 }
 
-// Debug logging macros - only enabled in debug builds
-#ifdef DEBUG_CHUNKS
-#define CHUNK_LOG(msg) std::cout << msg << std::endl
-#else
-#define CHUNK_LOG(msg) ((void)0)
-#endif
+#define RED     "\033[31m"
+#define YELLOW  "\033[33m"
+#define GREEN   "\033[32m"
+#define RESET   "\033[0m"
+
+static void PrintError(const std::string error){
+  std::cerr << RED << "[Error] " << error << RESET << std::endl;
+}
+static void PrintWarning(const std::string warning){
+  std::clog << YELLOW << "[Warning] " << warning << RESET << std::endl;
+}
+static void PrintLog(const std::string log){
+  std::cout << GREEN << "[Log] " << log << RESET << std::endl;
+}
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }

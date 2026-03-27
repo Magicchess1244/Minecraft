@@ -6,6 +6,7 @@
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <utility>
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -19,7 +20,46 @@ float bodyHeight = 1.6f;
 Vector3 playerDirection = {0, 0, 0};
 constexpr bool PLayerColistion = true;
 
-// ─── Seed / Color commands ──────────────────────────────────────────────────
+std::pair<std::string,std::string> GetCredentials(){
+  std::string ip;
+  std::cout << "Enter server IP address (default 127.0.0.1): ";
+  std::getline(std::cin, ip);
+
+  if (ip.empty()) {
+    ip = "127.0.0.1";
+  }
+
+  std::string name;
+  std::cout << "Enter player name: ";
+  std::getline(std::cin, name);
+  if (name.empty()) {
+    name = "Player" + std::to_string(rand() % 1000);
+  }
+  return std::pair(ip, name);
+}
+GameClient::GameClient() : socket(io) {
+  std::pair<std::string, std::string> credential = GetCredentials();
+  tcp::endpoint endpoint(asio::ip::make_address(credential.first), PORT);
+  this->socket.connect(endpoint);
+  std::cout << "Connected to server at " << credential.first << ":" << PORT << std::endl;
+
+  // Send login command first
+  sendCommand("login:" + credential.second);
+
+  // Receive ID and Seed
+  std::string id_str = receiveMessage();
+  if (id_str.find("id:") == 0) {
+    my_id = std::stoi(id_str.substr(3));
+    std::cout << "Assigned ID: " << my_id << " (Name: " << credential.second << ")"
+              << std::endl;
+  }
+  std::string seed_str = receiveMessage();
+  if (seed_str.find("s:") == 0) {
+    unsigned int s =
+        static_cast<unsigned int>(std::stoul(seed_str.substr(2)));
+    SetSeed(s);
+  }
+}
 
 void GameClient::set_seed() {
   // Seed is now received in the constructor.
@@ -192,7 +232,6 @@ void GameClient::listen() {
 }
 
 // ─── Outgoing Messages ─────────────────────────────────────────────────────
-
 void GameClient::update_pos() {
   auto Player = get_players()[0];
   std::string Pos = "up:" + std::to_string(my_id) + ":" +
@@ -525,25 +564,6 @@ void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager,
 // ─── Main Game Loop ─────────────────────────────────────────────────────────
 
 void GameLoop(GameClient &game) {
-  int myId = game.get_my_id();
-  Player localPlayer;
-  localPlayer.id = myId;
-  localPlayer.name = game.get_my_name();
-  localPlayer.Position = {0, ChunkPrefab::ySize, 0};
-  localPlayer.color = Color::GetColor(
-      static_cast<PlayerColor>(myId % static_cast<int>(PlayerColor::COUNT)));
-
-  game.add_player(localPlayer);
-  auto &p = game.get_players();
-  game.set_seed();
-  game.set_color();
-  game.sendCommand("gm"); // Request all world modifications
-  game.StartListener();
-
-  // Wait a bit for server data if any
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-  int inventorySlot = 0;
 
   ChunkManager chunkManager;
   Renderer RendererObject(game, chunkManager);
