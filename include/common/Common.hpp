@@ -383,8 +383,11 @@ static void PrintError(const std::string error){
 static void PrintWarning(const std::string warning){
   std::clog << YELLOW << "[Warning] " << warning << RESET << std::endl;
 }
-static void PrintLog(const std::string log){
+static void PrintSuccesfull(const std::string log){
   std::cout << GREEN << "[Log] " << log << RESET << std::endl;
+}
+static void PrintLog(const std::string log){
+  std::cout << "[Log] " << log << RESET << std::endl;
 }
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }

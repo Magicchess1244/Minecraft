@@ -1,4 +1,4 @@
-#include "../../include/client/GameClient.hpp"
+#include "../../include/client/GameManager.hpp"
 #include <iostream>
 
 int main(int argc, char *argv[]) {
@@ -7,9 +7,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  
-
-
+  GameManager manager{}; 
 
   SDL_Quit();
   return 0;

@@ -123,12 +123,4 @@ public:
   void Quit() { this->running = false; }
 };
 
-namespace BitMiner {
-int FindSlot(std::vector<Slot> &Inventory, short Type);
-void PlayerInput(Vector3 &PlayerDirection, bool OnGround, int &InventorySlots, Vector3 &PlayerRot);
-void PlayerMovement(Player &player, int &inventorySlot);
-void PlayerAction(Player &player, int &inventorySlot, ChunkManager &manager, std::vector<Slot> &inventory, GameClient &game, Renderer *renderer);
-void GameLoop(GameClient &game);
-}
-
 #endif
