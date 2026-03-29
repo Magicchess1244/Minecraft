@@ -130,18 +130,6 @@ float GetDiamondChance(float y) { return SampleSpline(y, DiamondChance, 5); }
 ChunkManager::ChunkManager() {}
 ChunkManager::~ChunkManager() {}
 
-// ─── Private helpers
-// ──────────────────────────────────────────────────────────
-
-// Convert any world position to the chunk-grid key (y is always 0).
-/*static*/ Vector3 ChunkManager::world_to_chunk_key(Vector3 worldPos) {
-  return {
-      std::floor(worldPos.x / (float)ChunkPrefab::xSize),
-      0.0f,
-      std::floor(worldPos.z / (float)ChunkPrefab::zSize),
-  };
-}
-
 // ─── Chunk access
 // ─────────────────────────────────────────────────────────────
 
@@ -243,7 +231,7 @@ Biome ChunkManager::GetBiome(float humidity, float temperature) {
 RaycastResult ChunkManager::RayCast(Vector3 origin, Vector3 direction,
                                     float maxDistance) {
   int numSteps = (int)(maxDistance * 10);
-  Vector3 chunkKey = world_to_chunk_key(origin);
+  Vector3 chunkKey = worldToChunkKey(origin);
   ChunkPrefab *chunk = &get_chunk(chunkKey);
   Vector3 lastPos = origin.Truncate();
 
@@ -254,7 +242,7 @@ RaycastResult ChunkManager::RayCast(Vector3 origin, Vector3 direction,
     if (newPos == lastPos)
       continue;
 
-    Vector3 newKey = world_to_chunk_key(newPos);
+    Vector3 newKey = worldToChunkKey(newPos);
     if (newKey != chunkKey) {
       chunkKey = newKey;
       chunk = &get_chunk(newKey);
@@ -336,7 +324,7 @@ void ChunkManager::SetBlock(Vector3 worldPos, int blockID,
   if (worldPos.y < 0 || worldPos.y >= ChunkPrefab::ySize)
     return;
 
-  Vector3 chunkKey = world_to_chunk_key(worldPos);
+  Vector3 chunkKey = worldToChunkKey(worldPos);
   ChunkPrefab *ownerChunk = nullptr;
   std::vector<ChunkPrefab *> neighbourChunks;
 
@@ -637,7 +625,7 @@ void ChunkManager::TickWater() {
   std::set<Vector3> chunksToRebuild;
   for (const auto &[pos, bid] : toPlace) {
     SetBlock(pos, bid, false); // skip neighbour updates during simulation
-    chunksToRebuild.insert(world_to_chunk_key(pos));
+    chunksToRebuild.insert(worldToChunkKey(pos));
   }
 
   // Kick off a background regeneration for each affected chunk.

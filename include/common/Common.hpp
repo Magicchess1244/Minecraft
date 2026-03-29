@@ -11,7 +11,6 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <unordered_map>
 #include <vector>
 
 constexpr unsigned int MAX_PLAYERS = 8;
@@ -392,3 +391,11 @@ static void PrintLog(const std::string log){
 }
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }
+
+static Vector3 worldToChunkKey(Vector3 worldPos) {
+  return {
+      std::floor(worldPos.x / 16),
+      0.0f,
+      std::floor(worldPos.z / 16),
+  };
+}

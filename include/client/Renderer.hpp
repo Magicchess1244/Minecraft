@@ -331,25 +331,19 @@ private:
   int chunksPerBuffer = 25, totalBuffers = 0;
   Vector3 lastPlayerChunk{-999, -999, -999};
   Vector3 lastRot{-999, -999, -999};
-  std::vector<ChunkDistance> cachedVisibleChunks;
   std::vector<ChunkPrefab *> opaqueChunks;
   std::vector<ChunkPrefab *> lastVisibleChunks;
 
-  auto AddRect(float x, float y, float w, float h, Vector3 color,
-               float blockID = 0);
-  void AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
-                   SDL_FPoint uvMax, Vector3 color);
-  void DrawText(const std::string &text, float x, float y, float scale,
-                Vector3 color, float maxWidth, float wrapWidth);
+  auto AddRect(float x, float y, float w, float h, Vector3 color, float blockID = 0);
+  void AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin, SDL_FPoint uvMax, Vector3 color);
+  void DrawText(const std::string &text, float x, float y, float scale, Vector3 color, float maxWidth, float wrapWidth);
   void UICrossHair();
-  std::vector<InventoryBox>
-  BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX,
-                      float &outPanelY, float &outPanelW, float &outPanelH);
+  std::vector<InventoryBox> BuildInventoryBoxes(float aspect, bool is3x3, float &outPanelX, float &outPanelY, float &outPanelW, float &outPanelH);
   void CraftingTable(CraftingVars &Crafting);
   void SmeltingTable(CraftingVars &Crafting);
   void UIBigInventory(const std::vector<Slot> &inventory, int inventorySlot);
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
-  std::vector<ChunkDistance> SortChunks(Player &player);
+  std::vector<ChunkDistance> SortChunks(Player &player, Vector3 PlayerChunk);
   void DrawTerrain(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();

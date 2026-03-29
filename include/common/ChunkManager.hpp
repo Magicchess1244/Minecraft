@@ -115,9 +115,6 @@ public:
   void AddActiveWater(Vector3 pos, int level);
 
 private:
-  // Returns the chunk-grid key (y always 0) for any world position.
-  static Vector3 world_to_chunk_key(Vector3 worldPos);
-
   // ── Thread pool ──────────────────────────────────────────────────────────
   // Owned by ChunkManager so its workers are joined *before* Chunks is
   // destroyed (members are destroyed in reverse declaration order, so pool
