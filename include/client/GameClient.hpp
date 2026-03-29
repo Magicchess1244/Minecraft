@@ -50,7 +50,7 @@ public:
     }
     if (net_thread.joinable())
       net_thread.join();
-    std::cout << "Client disconnected cleanly.\n";
+    PrintSuccesfull("Client disconnected cleanly.");
   }
 
   void listen(); // Declaration for listener thread

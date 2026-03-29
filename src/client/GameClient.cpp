@@ -31,7 +31,7 @@ GameClient::GameClient() : socket(io) {
   std::pair<std::string, std::string> credential = GetCredentials();
   tcp::endpoint endpoint(asio::ip::make_address(credential.first), PORT);
   this->socket.connect(endpoint);
-  std::cout << "Connected to server at " << credential.first << ":" << PORT << std::endl;
+  PrintLog("Connected to server at " + credential.first + ":" + std::to_string(PORT));
 
   // Send login command first
   sendCommand("login:" + credential.second);
@@ -40,8 +40,7 @@ GameClient::GameClient() : socket(io) {
   std::string id_str = receiveMessage();
   if (id_str.find("id:") == 0) {
     my_id = std::stoi(id_str.substr(3));
-    std::cout << "Assigned ID: " << my_id << " (Name: " << credential.second << ")"
-              << std::endl;
+    PrintLog("Assigned ID: " + std::to_string(my_id) + " (Name: " + credential.second + ")");
   }
   std::string seed_str = receiveMessage();
   if (seed_str.find("s:") == 0) {

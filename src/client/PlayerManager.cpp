@@ -4,7 +4,6 @@ constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 5.0f;
 constexpr float JumpHeight = 1.5f;
 constexpr float JumpPower = 5.0f;
-float deltaTime = 1.0f;
 float JumpTimer = 0;
 float bodyHeight = 1.6f;
 Vector3 playerDirection = {0, 0, 0};
@@ -127,7 +126,7 @@ void PlayerManager::PlayerRotation(Vector3 RotationDir) {
 // ─── Movement & Collision ───────────────────────────────────────────────────
 
 void PlayerManager::PlayerMove(Vector3 playerDirection,
-                ChunkManager &manager) {
+                ChunkManager &manager, float deltaTime) {
   auto isColliding = [&](Vector3 pos) {
     if (!PLayerColistion)
       return false;
@@ -262,7 +261,7 @@ void PlayerManager::PlayerBreackPlace(bool Left, bool Right, ChunkManager &manag
 // ─── Player Action (per-frame) ──────────────────────────────────────────────
 
 void PlayerManager::PlayerAction(int inventorySlot, ChunkManager &manager,
-                  Renderer *renderer) {
+                  Renderer *renderer, float deltaTime) {
 
   static bool hasInitialChunkLoaded = false;
   if (!hasInitialChunkLoaded) {
@@ -324,7 +323,7 @@ void PlayerManager::PlayerAction(int inventorySlot, ChunkManager &manager,
   PlayerInput(playerDirection, OnGround, this->players[0].Inwater, inventorySlot,
               RotationDir, LeftClick, RightClick);
   PlayerRotation(RotationDir);
-  PlayerMove(playerDirection, manager);
+  PlayerMove(playerDirection, manager, deltaTime);
   PlayerBreackPlace(LeftClick, RightClick, manager, inventorySlot,
                     this->players[0].inventory, renderer);
 }

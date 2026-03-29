@@ -8,8 +8,10 @@
 #include <SDL3/SDL_stdinc.h>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 #include <ostream>
+#include <string>
 #include <sys/types.h>
 #include <vector>
 
@@ -1169,7 +1171,7 @@ void Renderer::DrawBg(std::vector<Player> &players) {
 
   SDL_EndGPUCopyPass(this->runTimeRenderVars.copyPass);
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdCopy)) {
-    std::cout << "Heil la memoria de Puigdemont\n";
+    PrintError("Error in submitting the cmd buffer");
     return;
   }
 
@@ -1182,7 +1184,7 @@ void Renderer::DrawBg(std::vector<Player> &players) {
       &this->basicInitVars.Height);
 
   if (this->runTimeRenderVars.swap_texture == NULL) {
-    std::cout << "La swap_texture no s'ha fet be\n";
+    PrintError("La swap_texture no s'ha fet be");
     SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender);
     return; // CRITICAL: Must return here!
   }
@@ -1358,8 +1360,7 @@ void Renderer::UpdateViewportAndProjection() {
   this->basicInitVars.Width = drawableWidth;
   this->basicInitVars.Height = drawableHeight;
 
-  std::cout << "Updating viewport to: " << drawableWidth << "x"
-            << drawableHeight << std::endl;
+  PrintLog("Updating viewport to: " + std::to_string(drawableWidth) + "x" + std::to_string(drawableHeight));
 
   // Recreate depth texture with new size
   if (this->DepthTexture) {
@@ -1561,7 +1562,6 @@ void Renderer::ConsumeIngredients(Player &player) {
     if (player.inventory[s].Amount == 0) {
       player.inventory[s].Type = 0;
     }
-    // std::cout << "Finish" << std::endl;}
   }
 }
 
@@ -1736,7 +1736,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
          players[0]);
 
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
-    std::cout << "Failed to submit render command buffer\n";
+    PrintError("Failed to submit render command buffer");
     return;
   }
 }
@@ -1753,7 +1753,7 @@ SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
   } else if (SDL_strstr(filename, ".frag")) {
     stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
   } else {
-    SDL_Log("Unknown shader type: %s", filename);
+    PrintWarning("Unknown shader type: %s" + std::string(filename));
     return NULL;
   }
 
@@ -1791,14 +1791,14 @@ SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
     entrypoint = "main0";
     format = SDL_GPU_SHADERFORMAT_MSL;
   } else {
-    SDL_Log("No supported shader format found!");
+    PrintWarning("No supported shader format found!");
     return NULL;
   }
 
   size_t code_size;
   void *code = SDL_LoadFile(fullpath, &code_size);
   if (!code) {
-    SDL_Log("Couldn't load shader file %s: %s", fullpath, SDL_GetError());
+    PrintWarning("Couldn't load shader file %s: %s" + std::string(fullpath) + std::string(SDL_GetError()));
     return NULL;
   }
 
@@ -1815,7 +1815,7 @@ SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
 
   SDL_GPUShader *shader = SDL_CreateGPUShader(device, &shader_info);
   if (!shader) {
-    SDL_Log("Couldn't create shader %s: %s", filename, SDL_GetError());
+    PrintWarning("Couldn't create shader %s: %s" + std::string(filename) + SDL_GetError());
     SDL_free(code);
     return NULL;
   }
@@ -1840,7 +1840,7 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
 
   result = SDL_CreateGPUTexture(this->basicInitVars.GPU, &createinfo);
   if (!result) {
-    SDL_Log("Failed to create depth texture: %s", SDL_GetError());
+    PrintWarning("Failed to create depth texture: %s" + std::string(SDL_GetError()));
     return NULL;
   }
 
@@ -1853,9 +1853,9 @@ void Renderer::Init() {
   this->basicInitVars.GPU =
       SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
   if (this->basicInitVars.GPU) {
-    SDL_Log("GPU Driver: %s", SDL_GetGPUDeviceDriver(this->basicInitVars.GPU));
+    PrintLog("GPU Driver: " + std::string(SDL_GetGPUDeviceDriver(this->basicInitVars.GPU)));
   } else {
-    SDL_Log("Failed to create GPU device: %s", SDL_GetError());
+    PrintError("Failed to create GPU device: " + std::string(SDL_GetError()));
     return;
   }
 
@@ -1863,20 +1863,20 @@ void Renderer::Init() {
       SDL_CreateWindow("Bit Miner", this->basicInitVars.Width,
                        this->basicInitVars.Height, SDL_WINDOW_RESIZABLE);
   if (this->basicInitVars.window == nullptr) {
-    std::cout << "Error creating basicInitVars.window: " << SDL_GetError();
+    PrintError("Error creating basicInitVars.window: " + std::string(SDL_GetError()));
     SDL_Quit();
     assert(false);
   }
 
   if (!SDL_ClaimWindowForGPUDevice(this->basicInitVars.GPU,
                                    this->basicInitVars.window)) {
-    SDL_Log("Error claiming window for GPU device: %s", SDL_GetError());
+    PrintWarning("Error claiming window for GPU device: " + std::string(SDL_GetError()));
   }
   this->basicInitVars.event = {};
   SDL_SetWindowRelativeMouseMode(basicInitVars.window, true);
 
   if (!TTF_WasInit() && !TTF_Init()) {
-    SDL_Log("Failed to initialize SDL_ttf: %s", SDL_GetError());
+    PrintWarning("Failed to initialize SDL_ttf: " + std::string(SDL_GetError()));
   }
 }
 void Renderer::GenerateBuffer() {
@@ -1900,10 +1900,10 @@ void Renderer::GenerateBuffer() {
   const Uint32 totalIndexSize =
       singleChunkIndexSize * totalChunks * 2; // *2 for double sided water
 
-  std::cout << "Vertex size per buffer: " << packedVertexSize
-            << "\t Index Size per buffer: " << packedIndexSize
-            << "\n Total buffers: " << this->totalBuffers
-            << "\t Chunks per buffer: " << this->chunksPerBuffer << std::endl;
+  PrintLog( "Vertex size per buffer: " + std::to_string(packedVertexSize)
+            + "\t Index Size per buffer: " + std::to_string(packedIndexSize)
+            + "\n Total buffers: " + std::to_string(this->totalBuffers)
+            + "\t Chunks per buffer: " + std::to_string(this->chunksPerBuffer));
 
   for (int i = 0; i < this->totalBuffers; i++) {
     Mesh mesh{};
@@ -1991,7 +1991,7 @@ void Renderer::UIVertexGPUInit() {
 }
 void Renderer::LoadTexture() {
   if (!this->basicInitVars.GPU) {
-    SDL_Log("Cannot load texture: GPU device not initialized");
+    PrintWarning("Cannot load texture: GPU device not initialized");
     return;
   }
 
@@ -2006,18 +2006,18 @@ void Renderer::LoadTexture() {
 
   SDL_Surface *surface = SDL_LoadPNG(fullPath);
   if (!surface) {
-    SDL_Log("Failed to load texture at %s: %s", fullPath, SDL_GetError());
+    PrintWarning("Failed to load texture at %s: %s" + std::string(fullPath) + SDL_GetError());
     return;
   }
 
-  SDL_Log("Loaded texture: %s (%dx%d)", fullPath, surface->w, surface->h);
+  PrintLog("Loaded texture: %s (%dx%d)" + std::string(fullPath) + std::to_string(surface->w) + std::to_string(surface->h));
 
   // Convert to a guaranteed RGBA8 per-pixel format
   SDL_Surface *rgbaSurface =
       SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
   SDL_DestroySurface(surface);
   if (!rgbaSurface) {
-    SDL_Log("Failed to convert surface: %s", SDL_GetError());
+    PrintWarning("Failed to convert surface: " + std::string(SDL_GetError()));
     return;
   }
   surface = rgbaSurface;
@@ -2034,7 +2034,7 @@ void Renderer::LoadTexture() {
   this->TextureAtlas =
       SDL_CreateGPUTexture(this->basicInitVars.GPU, &textureInfo);
   if (!this->TextureAtlas) {
-    SDL_Log("Failed to create GPU texture: %s", SDL_GetError());
+    PrintWarning("Failed to create GPU texture: " + std::string(SDL_GetError()));
     SDL_DestroySurface(surface);
     return;
   }
@@ -2048,7 +2048,7 @@ void Renderer::LoadTexture() {
       SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
 
   if (!transferBuffer) {
-    SDL_Log("Failed to create transfer buffer: %s", SDL_GetError());
+    PrintError("Failed to create transfer buffer: %s" + std::string(SDL_GetError()));
     SDL_DestroySurface(surface);
     return;
   }
@@ -2102,12 +2102,9 @@ void Renderer::LoadTexture() {
 
   this->Sampler = SDL_CreateGPUSampler(this->basicInitVars.GPU, &samplerInfo);
   if (this->Sampler) {
-    SDL_Log("Sampler created successfully");
+    PrintSuccesfull("Sampler created successfully");
   } else {
-    SDL_Log("Failed to create sampler: %s", SDL_GetError());
-  }
-  if (!this->Sampler) {
-    SDL_Log("Failed to create sampler: %s", SDL_GetError());
+    PrintWarning("Failed to create sampler: %s" + std::string(SDL_GetError()));
   }
 
   // Load Font
@@ -2123,10 +2120,10 @@ void Renderer::LoadTexture() {
   uiVars.font =
       TTF_OpenFont(fullFontPath, 48); // Sharper text at higher resolution
   if (!uiVars.font) {
-    SDL_Log("Failed to load font at %s: %s", fullFontPath, SDL_GetError());
+    PrintWarning("Failed to load font at %s: %s" + std::string(fullFontPath) + SDL_GetError());
     return;
   }
-  SDL_Log("Loaded font: %s", fullFontPath);
+  PrintLog("Loaded font: %s" + std::string(fullFontPath));
 
   // Create font atlas (Alphanumeric + basic symbols)
   const char *fontChars =
@@ -2134,8 +2131,7 @@ void Renderer::LoadTexture() {
   SDL_Surface *digitSurface =
       TTF_RenderText_Blended(uiVars.font, fontChars, 0, {255, 255, 255, 255});
   if (digitSurface) {
-    SDL_Log("Digit surface created: %dx%d, format: %s", digitSurface->w,
-            digitSurface->h, SDL_GetPixelFormatName(digitSurface->format));
+    PrintLog("Digit surface created: %dx%d, format: %s" + std::to_string(digitSurface->w) + std::to_string(digitSurface->h) + SDL_GetPixelFormatName(digitSurface->format));
     SDL_Surface *rgbaDigitSurface =
         SDL_ConvertSurface(digitSurface, SDL_PIXELFORMAT_RGBA32);
     SDL_DestroySurface(digitSurface);
@@ -2199,7 +2195,7 @@ void Renderer::LoadTexture() {
         SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
                                      fontTransferBuffer);
       }
-      SDL_Log("Font texture uploaded successfully");
+      PrintSuccesfull("Font texture uploaded successfully");
     }
     SDL_DestroySurface(digitSurface);
   }
@@ -2238,12 +2234,12 @@ void Renderer::PipelineInit() {
   this->pipelineInitVars.vertex_shader =
       LoadShader(this->basicInitVars.GPU, "Shader.vert", 0, 2, 0, 0);
   if (!this->pipelineInitVars.vertex_shader) {
-    SDL_Log("Couldn't load vertex shader: %s", SDL_GetError());
+    PrintError("Couldn't load vertex shader: %s" + std::string(SDL_GetError()));
   }
   this->pipelineInitVars.fragment_shader =
       LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 1, 0, 0);
   if (!this->pipelineInitVars.fragment_shader) {
-    SDL_Log("Couldn't load fragment shader: %s", SDL_GetError());
+    PrintError("Couldn't load fragment shader: %s" + std::string(SDL_GetError()));
   }
 
   SDL_zero(this->pipelineInitVars.pipeline_desc);
@@ -2340,7 +2336,7 @@ void Renderer::PipelineInit() {
     this->pipelineInitVars.uiPipeline =
         SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &ui_desc);
     if (!this->pipelineInitVars.uiPipeline) {
-      SDL_Log("Failed to create UI pipeline: %s", SDL_GetError());
+      PrintError("Failed to create UI pipeline: %s" + std::string(SDL_GetError()));
     }
   }
 
@@ -2376,15 +2372,15 @@ void Renderer::PipelineInit() {
     this->pipelineInitVars.textPipeline =
         SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &text_desc);
     if (this->pipelineInitVars.textPipeline) {
-      SDL_Log("Text pipeline created successfully");
+      PrintSuccesfull("Text pipeline created successfully");
     } else {
-      SDL_Log("Failed to create text pipeline: %s", SDL_GetError());
+      PrintWarning("Failed to create text pipeline: %s" + std::string(SDL_GetError()));
     }
 
     SDL_ReleaseGPUShader(this->basicInitVars.GPU, text_vert);
     SDL_ReleaseGPUShader(this->basicInitVars.GPU, text_frag);
   } else {
-    SDL_Log("Failed to load text shaders!");
+    PrintWarning("Failed to load text shaders!");
   }
 
   // Create Text Buffer
@@ -2443,7 +2439,7 @@ Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
 
   if (!this->pipelineInitVars.graphicsPipeline ||
       !this->pipelineInitVars.transparentPipeline) {
-    SDL_Log("Failed to create pipelines: %s", SDL_GetError());
+    PrintError("Failed to create pipelines: %s" + std::string(SDL_GetError()));
   }
 
   SDL_ReleaseGPUShader(this->basicInitVars.GPU,

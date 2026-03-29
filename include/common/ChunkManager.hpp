@@ -4,8 +4,13 @@
 #include "BlockDef.hpp"
 #include "Common.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
 class ChunkPrefab;
 
@@ -113,12 +118,70 @@ private:
   // Returns the chunk-grid key (y always 0) for any world position.
   static Vector3 world_to_chunk_key(Vector3 worldPos);
 
+  // ── Thread pool ──────────────────────────────────────────────────────────
+  // Owned by ChunkManager so its workers are joined *before* Chunks is
+  // destroyed (members are destroyed in reverse declaration order, so pool
+  // must be declared AFTER Chunks).
+  struct ChunkThreadPool {
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex mtx;
+    std::condition_variable cv;
+    bool stop = false;
+
+    ChunkThreadPool() {
+      int n = (int)std::thread::hardware_concurrency();
+      if (n < 2)
+        n = 2;
+      if (n > 8)
+        n = 8;
+      for (int i = 0; i < n; i++) {
+        workers.emplace_back([this] {
+          while (true) {
+            std::function<void()> task;
+            {
+              std::unique_lock<std::mutex> lock(mtx);
+              cv.wait(lock, [this] { return stop || !tasks.empty(); });
+              if (stop && tasks.empty())
+                return;
+              task = std::move(tasks.front());
+              tasks.pop();
+            }
+            task();
+          }
+        });
+      }
+    }
+
+    ~ChunkThreadPool() {
+      {
+        std::unique_lock<std::mutex> lock(mtx);
+        stop = true;
+      }
+      cv.notify_all();
+      for (auto &w : workers)
+        w.join();
+    }
+
+    void submit(std::function<void()> fn) {
+      {
+        std::unique_lock<std::mutex> lock(mtx);
+        tasks.push(std::move(fn));
+      }
+      cv.notify_one();
+    }
+  };
+
   // Shared lock used by every method that touches Chunks or Modifications.
   std::recursive_mutex chunks_mutex;
 
   std::unordered_map<Vector3, std::unique_ptr<ChunkPrefab>> Chunks;
   std::unordered_map<Vector3, Uint8> Modifications;
   std::vector<std::pair<Vector3, int>> activeWater;
+
+  // pool is declared LAST so it is destroyed FIRST (reverse member order).
+  // This ensures all worker threads are joined before Chunks is freed.
+  ChunkThreadPool pool;
 };
 
 #endif

@@ -1,11 +1,7 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Chunck.hpp"
 
-#include <condition_variable>
-#include <functional>
-#include <queue>
 #include <set>
-#include <thread>
 
 // ─── Terrain spline tables
 // ────────────────────────────────────────────────────
@@ -121,67 +117,12 @@ float GetCoalChance(float y) { return SampleSpline(y, CoalChance, 5); }
 float GetIronChance(float y) { return SampleSpline(y, IronChance, 5); }
 float GetDiamondChance(float y) { return SampleSpline(y, DiamondChance, 5); }
 
-// ─── Thread pool (file-private)
-// ───────────────────────────────────────────────
-
-namespace {
-
-struct ChunkThreadPool {
-  std::vector<std::thread> workers;
-  std::queue<std::function<void()>> tasks;
-  std::mutex mtx;
-  std::condition_variable cv;
-  bool stop = false;
-
-  ChunkThreadPool() {
-    int n = (int)std::thread::hardware_concurrency();
-    if (n < 2)
-      n = 2;
-    if (n > 8)
-      n = 8; // avoid over-subscription
-    for (int i = 0; i < n; i++) {
-      workers.emplace_back([this] {
-        while (true) {
-          std::function<void()> task;
-          {
-            std::unique_lock<std::mutex> lock(mtx);
-            cv.wait(lock, [this] { return stop || !tasks.empty(); });
-            if (stop && tasks.empty())
-              return;
-            task = std::move(tasks.front());
-            tasks.pop();
-          }
-          task();
-        }
-      });
-    }
-  }
-
-  ~ChunkThreadPool() {
-    {
-      std::unique_lock<std::mutex> lock(mtx);
-      stop = true;
-    }
-    cv.notify_all();
-    for (auto &w : workers)
-      w.join();
-  }
-
-  void submit(std::function<void()> fn) {
-    {
-      std::unique_lock<std::mutex> lock(mtx);
-      tasks.push(std::move(fn));
-    }
-    cv.notify_one();
-  }
-};
-
-ChunkThreadPool &pool() {
-  static ChunkThreadPool p;
-  return p;
-}
-
-} // namespace
+// ─── Thread pool (member of ChunkManager)
+// ──────────────────────────────────────────────
+// Defined in ChunkManager.hpp as ChunkManager::ChunkThreadPool.
+// The pool member is declared last in ChunkManager so it is destroyed first,
+// ensuring all worker threads join before Chunks (and ChunkPrefab data) is
+// freed.
 
 // ─── ChunkManager constructor / destructor
 // ────────────────────────────────────
@@ -225,7 +166,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 chunkKey) {
     ChunkPrefab *ptr = newChunk.get();
     Chunks[chunkKey] = std::move(newChunk);
 
-    pool().submit([ptr]() { ptr->GenerateChunk(); });
+    pool.submit([ptr]() { ptr->GenerateChunk(); });
     return *ptr;
   }
 
@@ -235,7 +176,7 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 chunkKey) {
   // so we use that as the trigger to update its rendered neighbours.
   if (chunk.isGenerated && chunk.isDirty) {
     chunk.isDirty = false;
-    pool().submit([this, chunkKey]() { refresh_ready_neighbours(chunkKey); });
+    pool.submit([this, chunkKey]() { refresh_ready_neighbours(chunkKey); });
   }
 
   return chunk;
@@ -709,7 +650,7 @@ void ChunkManager::TickWater() {
         ptr = it->second.get();
     }
     if (ptr) {
-      pool().submit([ptr]() {
+      pool.submit([ptr]() {
         bool expected = false;
         if (ptr->isProcessing.compare_exchange_strong(expected, true)) {
           ptr->GenerateChunk();

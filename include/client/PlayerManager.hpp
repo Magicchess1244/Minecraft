@@ -14,10 +14,10 @@ class PlayerManager{
     int FindSlot(std::vector<Slot> &Inventory, short Type, bool isEntity);
     void PlayerInput(Vector3 &PlayerDirection, bool OnGround, bool InWater, int &InventorySlots, Vector3 &PlayerRot, bool &LeftClick, bool &RightClick);
     void PlayerRotation( Vector3 RotationDir);
-    void PlayerMove(Vector3 playerDirection,ChunkManager &manager);
+    void PlayerMove(Vector3 playerDirection,ChunkManager &manager, float deltaTime);
     void PlayerBreackPlace(bool Left, bool Right, ChunkManager &manager, int inventorySlot, std::vector<Slot> &inventory, Renderer *renderer);
 
   public:
     PlayerManager(GameClient &client);
-    void PlayerAction(int inventorySlot, ChunkManager &manager, Renderer *renderer);
+    void PlayerAction(int inventorySlot, ChunkManager &manager, Renderer *renderer, float deltaTime);
 };
