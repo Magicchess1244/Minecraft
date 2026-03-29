@@ -488,6 +488,8 @@ public:
     basicInitVars.event = {};
     runTimeRenderVars.cmdCopy = nullptr;
     runTimeRenderVars.cmdRender = nullptr;
+
+    SDL_Quit();
   };
 
   void SetUi(int i) {

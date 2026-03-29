@@ -376,18 +376,19 @@ static std::vector<std::string> split(const std::string &s, char delim) {
 #define YELLOW  "\033[38;5;220m"  // softer yellow
 #define GREEN   "\033[38;5;82m"   // softer green
 #define RESET   "\033[0m"
+#define DEBUG   true
 
 static void PrintError(const std::string error){
-  std::cerr << RED << "[Error] " << error << RESET << std::endl;
+  if (DEBUG) std::cerr << RED << "[Error] " << error << RESET << std::endl;
 }
 static void PrintWarning(const std::string warning){
-  std::clog << YELLOW << "[Warning] " << warning << RESET << std::endl;
+  if (DEBUG) std::clog << YELLOW << "[Warning] " << warning << RESET << std::endl;
 }
 static void PrintSuccesfull(const std::string log){
-  std::cout << GREEN << "[Successful] " << log << RESET << std::endl;
+  if (DEBUG) std::cout << GREEN << "[Successful] " << log << RESET << std::endl;
 }
 static void PrintLog(const std::string log){
-  std::cout << "[Log] " << log << std::endl;
+  if (DEBUG) std::cout << "[Log] " << log << std::endl;
 }
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }

@@ -26,6 +26,7 @@ const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
 constexpr int RenderDistance = 9;
+const float tanHalfFov = tan(FOV * PI / 360.0f);
 static constexpr int CRAFTING_RESULT_SLOT = 49;
 static constexpr int CRAFTING_INPUT_FIRST = 40;
 static constexpr int CRAFTING_INPUT_LAST = 48;
@@ -1160,11 +1161,9 @@ void Renderer::DrawTerrain(Player &player) {
   }
 }
 void Renderer::DrawBg(std::vector<Player> &players) {
-  this->runTimeRenderVars.cmdCopy =
-      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  this->runTimeRenderVars.cmdCopy = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
-  this->runTimeRenderVars.copyPass =
-      SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdCopy);
+  this->runTimeRenderVars.copyPass = SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdCopy);
   DrawTerrain(players[0]);
 
   SDL_EndGPUCopyPass(this->runTimeRenderVars.copyPass);
@@ -1173,18 +1172,15 @@ void Renderer::DrawBg(std::vector<Player> &players) {
     return;
   }
 
-  this->runTimeRenderVars.cmdRender =
-      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  this->runTimeRenderVars.cmdRender = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
-  SDL_WaitAndAcquireGPUSwapchainTexture(
-      this->runTimeRenderVars.cmdRender, this->basicInitVars.window,
-      &this->runTimeRenderVars.swap_texture, &this->basicInitVars.Width,
-      &this->basicInitVars.Height);
+  SDL_WaitAndAcquireGPUSwapchainTexture( this->runTimeRenderVars.cmdRender, this->basicInitVars.window,
+      &this->runTimeRenderVars.swap_texture, &this->basicInitVars.Width, &this->basicInitVars.Height);
 
   if (this->runTimeRenderVars.swap_texture == NULL) {
     PrintError("La swap_texture no s'ha fet be");
     SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender);
-    return; // CRITICAL: Must return here!
+    return;
   }
   SDL_GPUColorTargetInfo color_target_info;
   SDL_zero(color_target_info);
@@ -1193,7 +1189,6 @@ void Renderer::DrawBg(std::vector<Player> &players) {
   color_target_info.store_op = SDL_GPU_STOREOP_STORE;
   color_target_info.texture = this->runTimeRenderVars.swap_texture;
 
-  // Setup depth buffer for proper depth testing
   SDL_GPUDepthStencilTargetInfo depth_target_info;
   SDL_zero(depth_target_info);
   depth_target_info.texture = this->DepthTexture;
@@ -1208,34 +1203,25 @@ void Renderer::DrawBg(std::vector<Player> &players) {
 
   Matrix view = LookAt(player.Rotation, player.Position);
 
-  float aspect =
-      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+  float aspect = (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
   Matrix proj = Perspective(FOV, aspect, Znear, Zfar);
 
-  // mvp.print();
-  SDL_PushGPUVertexUniformData(
-      this->runTimeRenderVars.cmdRender, 0, proj.getColumnMajorData().data(),
+  SDL_PushGPUVertexUniformData( this->runTimeRenderVars.cmdRender, 0, proj.getColumnMajorData().data(),
       sizeof(float) * proj.getColumnMajorData().size());
 
-  SDL_PushGPUVertexUniformData(
-      this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
+  SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
       sizeof(float) * view.getColumnMajorData().size());
 
   Uint32 water = (this->chunkManager.GetBlockID(player.Position) == 5) ? 1 : 0;
 
-  SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0, &water,
-                                 sizeof(Uint32));
+  SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0, &water, sizeof(Uint32));
 
-  this->runTimeRenderVars.pass =
-      SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
+  this->runTimeRenderVars.pass = SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
                              &color_target_info, 1, &depth_target_info);
 
-  // Bind Texture Atlas and Sampler
   if (this->TextureAtlas && this->Sampler) {
-    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                   this->Sampler};
-    SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
-                                &samplerBinding, 1);
+    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas, this->Sampler};
+    SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding, 1);
   }
 
   // Pass 1: Draw Opaque everything
@@ -1714,30 +1700,21 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               std::vector<Player> &players) {
   EventManager(players[0], inventorySlot);
 
-  // Transform frustum to world space based on player position and rotation
-  // Create a fresh frustum in camera space
-  this->runTimeRenderVars.aspect =
-      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
-  float tanHalfFov = tan(FOV * PI / 360.0f);
-  Frustum worldFrustum = Frustum::createFrustumFromCamera(
-      this->runTimeRenderVars.aspect, tanHalfFov, Znear, Zfar);
-
-  // Transform to world space using player's position and rotation
+  this->runTimeRenderVars.aspect = (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+  Frustum worldFrustum = Frustum::createFrustumFromCamera(this->runTimeRenderVars.aspect, tanHalfFov, Znear, Zfar);
   worldFrustum.transformToWorldSpace(players[0].Position, players[0].Rotation);
-
-  // Store the world-space frustum for use in DrawTerrain
   this->frustum = worldFrustum;
 
   DrawBg(players);
-
-  DrawUI(this->runTimeRenderVars.cmdRender, inventory, inventorySlot,
-         players[0]);
+  DrawUI(this->runTimeRenderVars.cmdRender, inventory, inventorySlot, players[0]);
 
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
     PrintError("Failed to submit render command buffer");
     return;
   }
 }
+
+
 SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
                           Uint32 sampler_count, Uint32 uniform_buffer_count,
                           Uint32 storage_buffer_count,
@@ -2029,8 +2006,7 @@ void Renderer::LoadTexture() {
   textureInfo.num_levels = 1;
   textureInfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
 
-  this->TextureAtlas =
-      SDL_CreateGPUTexture(this->basicInitVars.GPU, &textureInfo);
+  this->TextureAtlas = SDL_CreateGPUTexture(this->basicInitVars.GPU, &textureInfo);
   if (!this->TextureAtlas) {
     PrintWarning("Failed to create GPU texture: " + std::string(SDL_GetError()));
     SDL_DestroySurface(surface);
@@ -2042,8 +2018,7 @@ void Renderer::LoadTexture() {
   SDL_GPUTransferBufferCreateInfo transferInfo = {};
   transferInfo.size = textureSize;
   transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-  SDL_GPUTransferBuffer *transferBuffer =
-      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
+  SDL_GPUTransferBuffer *transferBuffer = SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
 
   if (!transferBuffer) {
     PrintError("Failed to create transfer buffer: %s" + std::string(SDL_GetError()));
@@ -2051,20 +2026,16 @@ void Renderer::LoadTexture() {
     return;
   }
 
-  void *data =
-      SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer, false);
+  void *data = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer, false);
   if (data) {
     // Copy row by row to handle potential pitch differences
     for (int y = 0; y < surface->h; y++) {
-      SDL_memcpy((Uint8 *)data + (y * surface->w * 4),
-                 (Uint8 *)surface->pixels + (y * surface->pitch),
-                 surface->w * 4);
+      SDL_memcpy((Uint8 *)data + (y * surface->w * 4), (Uint8 *)surface->pixels + (y * surface->pitch), surface->w * 4);
     }
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer);
   }
 
-  SDL_GPUCommandBuffer *cmd =
-      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
   if (cmd) {
     SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
 
@@ -2104,6 +2075,9 @@ void Renderer::LoadTexture() {
   } else {
     PrintWarning("Failed to create sampler: %s" + std::string(SDL_GetError()));
   }
+
+
+
 
   // Load Font
   const char *fontPathRelative = "assets/square_pixel-7.ttf";
@@ -2425,6 +2399,9 @@ void Renderer::PipelineInit() {
 }
 Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
     : gameClient(gameClient), chunkManager(manager) {
+
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) PrintError("SDL_Init failed: " + std::string(SDL_GetError()));
+
   TextureAtlas = nullptr;
   Sampler = nullptr;
   SDL_zero(uiVars);
@@ -2435,8 +2412,7 @@ Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
   LoadTexture();
   PipelineInit();
 
-  if (!this->pipelineInitVars.graphicsPipeline ||
-      !this->pipelineInitVars.transparentPipeline) {
+  if (!this->pipelineInitVars.graphicsPipeline || !this->pipelineInitVars.transparentPipeline) {
     PrintError("Failed to create pipelines: %s" + std::string(SDL_GetError()));
   }
 

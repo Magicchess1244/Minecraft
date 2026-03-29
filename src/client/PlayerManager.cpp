@@ -33,8 +33,8 @@ void PlayerManager::PlayerInit(){
 
 int PlayerManager::FindSlot(std::vector<Slot> &Inventory, short Type, bool isEntity) {
   int index = 0;
-  if (Type == 0)
-    return -1;
+  if (Type == 0) return -1;
+  
   for (Slot slot : Inventory) {
     if ((slot.Type == Type && slot.isEntity == isEntity || slot.Type == 0) &&
         slot.Amount < 64) {
