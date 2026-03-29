@@ -506,7 +506,7 @@ public:
   void DrawUI(SDL_GPUCommandBuffer *cmd, const std::vector<Slot> &inventory,
               int inventorySlot, Player &player);
 
-  void MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
+  void MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                       std::vector<Player> &players);
   void OpenInventory(bool craftingTable);
 };

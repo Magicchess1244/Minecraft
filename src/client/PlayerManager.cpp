@@ -261,7 +261,7 @@ void PlayerManager::PlayerBreackPlace(bool Left, bool Right, ChunkManager &manag
 
 // ─── Player Action (per-frame) ──────────────────────────────────────────────
 
-void PlayerManager::PlayerAction(int &inventorySlot, ChunkManager &manager,
+void PlayerManager::PlayerAction(int inventorySlot, ChunkManager &manager,
                   Renderer *renderer) {
 
   static bool hasInitialChunkLoaded = false;

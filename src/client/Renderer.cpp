@@ -1712,7 +1712,7 @@ void Renderer::HandleEKey() {
   this->OpenInventory(false);
   this->uiRuntimeVars.usingUI = this->uiRuntimeVars.bigInventory;
 }
-void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int &inventorySlot,
+void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               std::vector<Player> &players) {
   EventManager(players[0], inventorySlot);
 

@@ -19,5 +19,5 @@ class PlayerManager{
 
   public:
     PlayerManager(GameClient &client);
-    void PlayerAction(int &inventorySlot, ChunkManager &manager, Renderer *renderer);
+    void PlayerAction(int inventorySlot, ChunkManager &manager, Renderer *renderer);
 };

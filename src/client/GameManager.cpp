@@ -22,8 +22,9 @@ void GameManager::GameLoop(){
     TickUpdate();
 
     this->playerManager.PlayerAction(0, this->chunkManager,
-                 this->renderer);
-    this->renderer.MainRenderLoop(this->localPlayer.inventory, 0, p);
+                 &this->renderer);
+    auto& p = this->gameClient.get_players(); 
+    this->renderer.MainRenderLoop(p[0].inventory, 0, p);
 
     TimeUpdate();
   }

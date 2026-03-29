@@ -39,7 +39,7 @@ COMMON_OBJS := $(COMMON_SRCS:.cpp=.o)
 COMMON_OBJS_DEBUG := $(patsubst %.cpp,%.debug.o,$(COMMON_SRCS))
 # Client source files
 CLIENT_SRCS := $(SRC_CLIENT)/ClientMain.cpp $(SRC_CLIENT)/GameClient.cpp \
-$(SRC_CLIENT)/Renderer.cpp
+$(SRC_CLIENT)/Renderer.cpp $(SRC_CLIENT)/GameManager.cpp $(SRC_CLIENT)/PlayerManager.cpp
 CLIENT_OBJS := $(CLIENT_SRCS:.cpp=.o)
 CLIENT_OBJS_DEBUG := $(patsubst %.cpp,%.debug.o,$(CLIENT_SRCS))
 # Server source files

@@ -372,9 +372,9 @@ static std::vector<std::string> split(const std::string &s, char delim) {
   return tokens;
 }
 
-#define RED     "\033[31m"
-#define YELLOW  "\033[33m"
-#define GREEN   "\033[32m"
+#define RED     "\033[38;5;203m"  // softer red
+#define YELLOW  "\033[38;5;220m"  // softer yellow
+#define GREEN   "\033[38;5;82m"   // softer green
 #define RESET   "\033[0m"
 
 static void PrintError(const std::string error){
@@ -384,10 +384,10 @@ static void PrintWarning(const std::string warning){
   std::clog << YELLOW << "[Warning] " << warning << RESET << std::endl;
 }
 static void PrintSuccesfull(const std::string log){
-  std::cout << GREEN << "[Log] " << log << RESET << std::endl;
+  std::cout << GREEN << "[Successful] " << log << RESET << std::endl;
 }
 static void PrintLog(const std::string log){
-  std::cout << "[Log] " << log << RESET << std::endl;
+  std::cout << "[Log] " << log << std::endl;
 }
 
 inline float Lerp(float a, float b, float t) { return a + t * (b - a); }
