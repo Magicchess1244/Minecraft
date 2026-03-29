@@ -1,6 +1,7 @@
 #include "../../include/common/PerlinNoise.hpp"
 #include <cstdint>
 #include <cmath>
+#include <string>
 
 int seed = 5;
 
@@ -198,5 +199,5 @@ float PerlinNoise(Vector3 Pos, int Octaves, float ConstFrequency) {
 
 void SetSeed(int givenSeed) { 
     seed = givenSeed; 
-    std::cout << "Seed: " << seed << std::endl;
+    PrintLog("Seed: " + std::to_string(seed));
 }

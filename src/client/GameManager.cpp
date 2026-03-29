@@ -21,8 +21,7 @@ void GameManager::GameLoop(){
     ModUpdate();
     TickUpdate();
 
-    this->playerManager.PlayerAction(0, this->chunkManager,
-                 &this->renderer, this->deltaTime);
+    this->playerManager.PlayerAction(0, this->deltaTime);
     auto& p = this->gameClient.get_players(); 
     this->renderer.MainRenderLoop(p[0].inventory, 0, p);
 

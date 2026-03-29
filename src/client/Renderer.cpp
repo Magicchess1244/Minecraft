@@ -9,8 +9,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <iostream>
-#include <ostream>
 #include <string>
 #include <sys/types.h>
 #include <vector>
@@ -27,7 +25,7 @@ int g_initialClickSlot = -1;
 const float FOV = 90.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
-constexpr int RenderDistance = 12;
+constexpr int RenderDistance = 9;
 static constexpr int CRAFTING_RESULT_SLOT = 49;
 static constexpr int CRAFTING_INPUT_FIRST = 40;
 static constexpr int CRAFTING_INPUT_LAST = 48;

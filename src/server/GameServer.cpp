@@ -4,6 +4,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -17,8 +18,7 @@ GameServer::GameServer()
   loadModifications();
   loadPlayers();
 
-  std::cout << "Server listening on port " << PORT << " with seed " << seed
-            << "...\n";
+  PrintLog( "Server listening on port " + std::to_string(PORT) + " with seed " + std::to_string(seed));
 }
 
 GameServer::~GameServer() {
@@ -47,13 +47,13 @@ GameServer::~GameServer() {
 
   saveModifications();
   savePlayers();
-  std::cout << "Server shutdown cleanly.\n";
+  PrintSuccesfull("Server shutdown cleanly.");
 }
 
 // ─── Seed ────────────────────────────────────────────────────────────────────
 
 void GameServer::set_seed(unsigned int new_seed) {
-  std::cout << "Server seed set to: " << new_seed << std::endl;
+  PrintLog("Server seed set to: " + std::to_string(new_seed));
   seed = new_seed;
 }
 
@@ -63,7 +63,7 @@ unsigned int GameServer::get_seed() const { return seed; }
 
 void GameServer::AcceptClients() {
   try {
-    std::cout << "Waiting for clients..." << std::endl;
+    PrintLog("Waiting for clients...");
     while (true) {
       tcp::socket socket(io);
       acceptor.accept(socket);
@@ -250,8 +250,8 @@ void GameServer::handlePlayers(std::shared_ptr<tcp::socket> socket, int id) {
           std::cerr << "Read error (Player " << id << "): " << error.message()
                     << std::endl;
         } else {
-          std::cout << "Player " << id << " disconnected." << std::endl;
-          // id--;
+          PrintWarning("Player " + std::to_string(id) + " disconnected.");
+          id--;
         }
         break;
       }
@@ -387,9 +387,7 @@ void GameServer::saveModifications() {
 void GameServer::loadModifications() {
   std::ifstream ifs("modifications.dat", std::ios::binary);
   if (!ifs) {
-    std::cout
-        << "No modifications.dat found, starting with empty modifications."
-        << std::endl;
+    PrintLog("No modifications.dat found, starting with empty modifications.");
     return;
   }
 
@@ -402,8 +400,7 @@ void GameServer::loadModifications() {
     ifs.read(reinterpret_cast<char *>(&type), sizeof(type));
     Modifications[pos] = type;
   }
-  std::cout << "Loaded " << Modifications.size() << " modifications from disk."
-            << std::endl;
+  PrintLog("Loaded " + std::to_string(Modifications.size()) + " modifications from disk.");
 }
 
 // ─── Persistence: Players ───────────────────────────────────────────────────
@@ -454,6 +451,5 @@ void GameServer::loadPlayers() {
              invSize * sizeof(Slot));
     persistentPlayers[name] = p;
   }
-  std::cout << "Loaded " << persistentPlayers.size() << " persistent players."
-            << std::endl;
+  PrintLog("Loaded " + std::to_string(persistentPlayers.size()) + " persistent players.");
 }

@@ -12,7 +12,7 @@ class GameManager {
     ChunkManager chunkManager{};
     GameClient gameClient{};
     Renderer renderer{this->gameClient, this->chunkManager};
-    PlayerManager playerManager{this->gameClient};
+    PlayerManager playerManager{this->gameClient, this->renderer, this->chunkManager};
     float deltaTime = 1.0f;
     float acumulatedDeltaTime = 1.0f;
     int tick = 0;

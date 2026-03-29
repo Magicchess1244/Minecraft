@@ -322,9 +322,9 @@ struct BlockMod {
 };
 
 struct Slot {
-  short Amount;
-  short Type;
-  bool isEntity;
+  short Amount = 0;
+  short Type = 0;
+  bool isEntity = false;
 };
 
 struct Player {
