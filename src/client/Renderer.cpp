@@ -716,93 +716,88 @@ void Renderer::UIDebug(Player &player) {
   DrawText(buf, startX, startY - lineStep * 2.0f, scale, {1, 1, 1});
 }
 
-void Renderer::DrawUI(SDL_GPUCommandBuffer *cmd,
-                      const std::vector<Slot> &inventory, int inventorySlot,
-                      Player &player) {
-  this->uiVars.uiVertices.clear();
-  this->uiVars.textVertices.clear();
+void Renderer::DrawUI(const std::vector<Slot> &inventory, int inventorySlot, Player &player) {
+    BuildUIGeometry(inventory, inventorySlot, player);
+    UploadUIBuffers();
+    RenderUIPass();
+}
 
-  UICrossHair();
-  UIInventory(inventory, inventorySlot);
-  if (this->uiRuntimeVars.bigInventory)
-    UIBigInventory(inventory, inventorySlot);
+void Renderer::BuildUIGeometry(const std::vector<Slot> &inventory, int inventorySlot, Player &player) {
+    uiVars.uiVertices.clear();
+    uiVars.textVertices.clear();
 
-  UIDebug(player);
+    UICrossHair();
+    UIInventory(inventory, inventorySlot);
+    if (uiRuntimeVars.bigInventory) UIBigInventory(inventory, inventorySlot);
+    UIDebug(player);
+}
 
-  void *mapData = SDL_MapGPUTransferBuffer(
-      this->basicInitVars.GPU, this->uiVars.UIVertexTransferBuffer, true);
-  if (mapData) {
-    SDL_memcpy(mapData, uiVars.uiVertices.data(),
-               uiVars.uiVertices.size() * sizeof(Vertex));
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                               this->uiVars.UIVertexTransferBuffer);
+void Renderer::UploadUIBuffers() {
+    UploadVertexBuffer(uiVars.uiVertices, uiVars.UIVertexTransferBuffer, uiVars.UIVertexBuffer);
+    UploadVertexBuffer(uiVars.textVertices, uiVars.textVertexTransferBuffer, uiVars.textVertexBuffer);
+}
 
-    SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
-    SDL_GPUTransferBufferLocation src = {this->uiVars.UIVertexTransferBuffer,
-                                         0};
-    SDL_GPUBufferRegion dst = {
-        this->uiVars.UIVertexBuffer, 0,
-        (Uint32)(this->uiVars.uiVertices.size() * sizeof(Vertex))};
+void Renderer::UploadVertexBuffer(const std::vector<Vertex> &vertices, SDL_GPUTransferBuffer *transferBuffer, SDL_GPUBuffer *gpuBuffer) {
+    if (vertices.empty()) return;
+
+    void *mapped = SDL_MapGPUTransferBuffer(basicInitVars.GPU, transferBuffer, true);
+    if (!mapped) return;
+
+    const Uint32 byteSize = static_cast<Uint32>(vertices.size() * sizeof(Vertex));
+
+    SDL_memcpy(mapped, vertices.data(), byteSize);
+    SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, transferBuffer);
+
+    SDL_GPUTransferBufferLocation src = { transferBuffer, 0 };
+    SDL_GPUBufferRegion           dst = { gpuBuffer, 0, byteSize };
+
+    SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdRender);
     SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
     SDL_EndGPUCopyPass(copyPass);
-  }
+}
 
-  if (!uiVars.textVertices.empty()) {
-    void *mapData = SDL_MapGPUTransferBuffer(
-        this->basicInitVars.GPU, this->uiVars.textVertexTransferBuffer, true);
-    if (mapData) {
-      SDL_memcpy(mapData, uiVars.textVertices.data(),
-                 uiVars.textVertices.size() * sizeof(Vertex));
-      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                                 this->uiVars.textVertexTransferBuffer);
+void Renderer::RenderUIPass() {
+    SDL_GPUColorTargetInfo colorTarget = {};
+    colorTarget.texture  = runTimeRenderVars.swap_texture;
+    colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
+    colorTarget.store_op = SDL_GPU_STOREOP_STORE;
 
-      SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
-      SDL_GPUTransferBufferLocation src = {
-          this->uiVars.textVertexTransferBuffer, 0};
-      SDL_GPUBufferRegion dst = {
-          this->uiVars.textVertexBuffer, 0,
-          (Uint32)(this->uiVars.textVertices.size() * sizeof(Vertex))};
-      SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
-      SDL_EndGPUCopyPass(copyPass);
+    this->runTimeRenderVars.pass = SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender, &colorTarget, 1, nullptr);
+
+    DrawUISprites();
+    DrawUIText();
+
+    SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
+}
+
+void Renderer::DrawUISprites() {
+    if (uiVars.uiVertices.empty()) return;
+
+    SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass, pipelineInitVars.uiPipeline);
+
+    if (TextureAtlas && Sampler) {
+        SDL_GPUTextureSamplerBinding samplerBinding = { TextureAtlas, Sampler };
+        SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding, 1);
     }
-  }
 
-  SDL_GPUColorTargetInfo color_target_info;
-  SDL_zero(color_target_info);
-  color_target_info.texture = this->runTimeRenderVars.swap_texture;
-  color_target_info.load_op = SDL_GPU_LOADOP_LOAD;
-  color_target_info.store_op = SDL_GPU_STOREOP_STORE;
+    SDL_GPUBufferBinding vb = { uiVars.UIVertexBuffer, 0 };
+    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &vb, 1);
+    SDL_DrawGPUPrimitives(this->runTimeRenderVars.pass, static_cast<Uint32>(uiVars.uiVertices.size()), 1, 0, 0);
+}
 
-  SDL_GPURenderPass *pass =
-      SDL_BeginGPURenderPass(cmd, &color_target_info, 1, nullptr);
+void Renderer::DrawUIText() {
+    if (uiVars.textVertices.empty() || !pipelineInitVars.textPipeline) return;
 
-  if (!uiVars.uiVertices.empty()) {
-    SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.uiPipeline);
-    if (this->TextureAtlas && this->Sampler) {
-      SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                     this->Sampler};
-      SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
+    SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass, pipelineInitVars.textPipeline);
+
+    if (uiVars.fontTexture && uiVars.fontSampler) {
+        SDL_GPUTextureSamplerBinding samplerBinding = { uiVars.fontTexture, uiVars.fontSampler };
+        SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding, 1);
     }
-    SDL_GPUBufferBinding vBinding = {this->uiVars.UIVertexBuffer, 0};
-    SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
-    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.uiVertices.size(), 1, 0,
-                          0);
-  }
 
-  if (!uiVars.textVertices.empty() && this->pipelineInitVars.textPipeline) {
-    SDL_BindGPUGraphicsPipeline(pass, this->pipelineInitVars.textPipeline);
-    if (this->uiVars.fontTexture && this->uiVars.fontSampler) {
-      SDL_GPUTextureSamplerBinding samplerBinding = {this->uiVars.fontTexture,
-                                                     this->uiVars.fontSampler};
-      SDL_BindGPUFragmentSamplers(pass, 0, &samplerBinding, 1);
-    }
-    SDL_GPUBufferBinding vBinding = {this->uiVars.textVertexBuffer, 0};
-    SDL_BindGPUVertexBuffers(pass, 0, &vBinding, 1);
-    SDL_DrawGPUPrimitives(pass, (Uint32)this->uiVars.textVertices.size(), 1, 0,
-                          0);
-  }
-
-  SDL_EndGPURenderPass(pass);
+    SDL_GPUBufferBinding vb = { uiVars.textVertexBuffer, 0 };
+    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &vb, 1);
+    SDL_DrawGPUPrimitives(this->runTimeRenderVars.pass, static_cast<Uint32>(uiVars.textVertices.size()), 1, 0, 0);
 }
 std::vector<ChunkDistance> Renderer::SortChunks(Player &player, Vector3 PlayerChunk) {
   SpiralIterator spiral(RenderDistance * 2 + 1);
@@ -1140,7 +1135,6 @@ void Renderer::DrawBg(std::vector<Player> &players) {
     SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding, 1);
   }
 
-  // Pass 1: Draw Opaque everything
   SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass, this->pipelineInitVars.graphicsPipeline);
 
   for (auto& mesh : this->Terrain){
@@ -1163,72 +1157,59 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
 
   int myId = gameClient.get_my_id();
 
-  {
-    std::lock_guard<std::mutex> lock(gameClient.get_mutex());
-    for (const auto &p : players) {
-      if (p.id == myId)
-        continue;
+  for (const auto &p : players) {
+    if (p.id == myId) continue;
 
-      Vector3 pos = p.Position;
+    Vector3 pos = p.Position;
 
-      for (int side = 0; side < 6; side++) {
-        Uint32 base = verts.size();
-        for (int i = 0; i < 4; i++) {
-          Vector3 p = EntityDef[(int)EntityType::PLAYER].Model[side][i] + pos;
-          // Dummy UVs since players don't use them yet
-          Uint32 packedData = (side & 0x7) | (0 << 3) | (15 << 19);
-          DVertex vert;
-          vert.Position = Vector3(p.x, p.y, p.z);
-          vert.Data = *(float *)&packedData;
-          verts.push_back(vert);
-        }
-        indices.push_back(base + 0);
-        indices.push_back(base + 2);
-        indices.push_back(base + 1);
-        indices.push_back(base + 1);
-        indices.push_back(base + 2);
-        indices.push_back(base + 3);
+    for (int side = 0; side < 6; side++) {
+      Uint32 base = verts.size();
+      for (int i = 0; i < 4; i++) {
+        Vector3 p = EntityDef[(int)EntityType::PLAYER].Model[side][i] + pos;
+        // Dummy UVs since players don't use them yet
+        Uint32 packedData = (side & 0x7) | (0 << 3) | (15 << 19);
+        DVertex vert;
+        vert.Position = Vector3(p.x, p.y, p.z);
+        vert.Data = *(float *)&packedData;
+        verts.push_back(vert);
       }
+      indices.push_back(base + 0);
+      indices.push_back(base + 2);
+      indices.push_back(base + 1);
+      indices.push_back(base + 1);
+      indices.push_back(base + 2);
+      indices.push_back(base + 3);
     }
   }
 
   if (verts.empty())
     return;
 
-  // Upload to GPU
-  void *vData =
-      SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
+  void *vData = SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
   SDL_memcpy(vData, verts.data(), verts.size() * sizeof(DVertex));
   SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer);
 
-  void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU,
-                                         EntityIndexTransferBuffer, true);
+  void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityIndexTransferBuffer, true);
   SDL_memcpy(iData, indices.data(), indices.size() * sizeof(Uint32));
   SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityIndexTransferBuffer);
 
   SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(basicInitVars.GPU);
   SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
   SDL_GPUTransferBufferLocation vSrc = {EntityTransferBuffer, 0};
-  SDL_GPUBufferRegion vDst = {EntityBuffer, 0,
-                              (Uint32)(verts.size() * sizeof(DVertex))};
+  SDL_GPUBufferRegion vDst = {EntityBuffer, 0, (Uint32)(verts.size() * sizeof(DVertex))};
   SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, true);
   SDL_GPUTransferBufferLocation iSrc = {EntityIndexTransferBuffer, 0};
-  SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0,
-                              (Uint32)(indices.size() * sizeof(Uint32))};
+  SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0, (Uint32)(indices.size() * sizeof(Uint32))};
   SDL_UploadToGPUBuffer(copy, &iSrc, &iDst, true);
   SDL_EndGPUCopyPass(copy);
   SDL_SubmitGPUCommandBuffer(cmd);
 
-  // Draw
-  SDL_BindGPUGraphicsPipeline(runTimeRenderVars.pass,
-                              pipelineInitVars.graphicsPipeline);
+  SDL_BindGPUGraphicsPipeline(runTimeRenderVars.pass, pipelineInitVars.graphicsPipeline);
   SDL_GPUBufferBinding vBinding = {EntityBuffer, 0};
   SDL_BindGPUVertexBuffers(runTimeRenderVars.pass, 0, &vBinding, 1);
   SDL_GPUBufferBinding iBinding = {EntityIndexBuffer, 0};
-  SDL_BindGPUIndexBuffer(runTimeRenderVars.pass, &iBinding,
-                         SDL_GPU_INDEXELEMENTSIZE_32BIT);
-  SDL_DrawGPUIndexedPrimitives(runTimeRenderVars.pass, (Uint32)indices.size(),
-                               1, 0, 0, 0);
+  SDL_BindGPUIndexBuffer(runTimeRenderVars.pass, &iBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+  SDL_DrawGPUIndexedPrimitives(runTimeRenderVars.pass, (Uint32)indices.size(), 1, 0, 0, 0);
 }
 void Renderer::UpdateViewportAndProjection() {
   // Get the actual drawable size (important for high-DPI displays)
@@ -1601,7 +1582,7 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
   this->frustum = worldFrustum;
 
   DrawBg(players);
-  DrawUI(this->runTimeRenderVars.cmdRender, inventory, inventorySlot, players[0]);
+  DrawUI(inventory, inventorySlot, players[0]);
 
   if (!SDL_SubmitGPUCommandBuffer(this->runTimeRenderVars.cmdRender)) {
     PrintError("Failed to submit render command buffer");

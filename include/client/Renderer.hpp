@@ -343,6 +343,12 @@ private:
   void SmeltingTable(CraftingVars &Crafting);
   void UIBigInventory(const std::vector<Slot> &inventory, int inventorySlot);
   void UIInventory(const std::vector<Slot> &inventory, int inventorySlot);
+  void BuildUIGeometry(const std::vector<Slot> &inventory, int inventorySlot, Player &player);
+  void UploadUIBuffers();
+  void UploadVertexBuffer(const std::vector<Vertex> &vertices, SDL_GPUTransferBuffer *transferBuffer, SDL_GPUBuffer *gpuBuffer);
+  void RenderUIPass();
+  void DrawUISprites();
+  void DrawUIText();
   std::vector<ChunkDistance> SortChunks(Player &player, Vector3 PlayerChunk);
   void DrawTerrain(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
@@ -499,8 +505,7 @@ public:
   void UIDebug(Player &player);
   void DrawBg(std::vector<Player> &players);
   void DrawPlayers(std::vector<Player> &players);
-  void DrawUI(SDL_GPUCommandBuffer *cmd, const std::vector<Slot> &inventory,
-              int inventorySlot, Player &player);
+  void DrawUI(const std::vector<Slot> &inventory, int inventorySlot, Player &player);
 
   void MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                       std::vector<Player> &players);
