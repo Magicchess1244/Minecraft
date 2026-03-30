@@ -321,8 +321,7 @@ void ChunkManager::Place(Vector3 worldPos, int blockID) {
 
 void ChunkManager::SetBlock(Vector3 worldPos, int blockID,
                             bool updateNeighbours) {
-  if (worldPos.y < 0 || worldPos.y >= ChunkPrefab::ySize)
-    return;
+  if (worldPos.y < 0 || worldPos.y >= ChunkPrefab::ySize) return;
 
   Vector3 chunkKey = worldToChunkKey(worldPos);
   ChunkPrefab *ownerChunk = nullptr;

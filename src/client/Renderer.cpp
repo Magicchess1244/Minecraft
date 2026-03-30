@@ -968,7 +968,7 @@ void Renderer::DrawTerrain(Player &player) {
     mesh->OpaqueIndexCount = (int)currentIndexOffset;
     mesh->BaseVertex = (int)currentVertexOffset;
     mesh->BaseIndex = (int)currentIndexOffset;
-
+    
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->VertextransferBuffer);
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->IndextransferBuffer);
 
@@ -979,6 +979,7 @@ void Renderer::DrawTerrain(Player &player) {
     SDL_GPUTransferBufferLocation iLoc{mesh->IndextransferBuffer, 0};
     SDL_GPUBufferRegion iReg{mesh->IndexBuffer.buffer, 0, (Uint32)(currentIndexOffset * sizeof(Uint32))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
+    
   }
 
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
@@ -1058,7 +1059,6 @@ void Renderer::DrawTerrain(Player &player) {
 
     tMesh->TransparentIndexCount = (int)iOffset;
     tMesh->BaseVertex = (int)vOffset;
-
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tMesh->VertextransferBuffer);
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tMesh->IndextransferBuffer);
 
@@ -1149,8 +1149,7 @@ void Renderer::DrawBg(std::vector<Player> &players) {
   SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
 }
 void Renderer::DrawPlayers(std::vector<Player> &players) {
-  if (players.size() <= 1)
-    return;
+  if (players.size() == 1) return;
 
   std::vector<DVertex> verts;
   std::vector<Uint32> indices;
@@ -1732,24 +1731,20 @@ void Renderer::Init() {
 }
 void Renderer::GenerateBuffer() {
   // Calculate buffer packing
-  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
+  int totalChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1) / 2.5f;
   for (int i = std::sqrt(totalChunks) + 1; i > 0; i--) {
     if (totalChunks % i) {
       chunksPerBuffer = i;
       break;
     }
   }
-  this->totalBuffers = (totalChunks + chunksPerBuffer) / chunksPerBuffer +
-                       1; // +1 for dedicated transparency
+  this->totalBuffers = (totalChunks) / chunksPerBuffer;
 
   // Each buffer now holds multiple chunks
   const Uint32 singleChunkVertexSize = sizeof(DVertex) * 4 * FacesPerChunk;
   const Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * FacesPerChunk;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
   const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
-  const Uint32 totalVertexSize = singleChunkVertexSize * totalChunks;
-  const Uint32 totalIndexSize =
-      singleChunkIndexSize * totalChunks * 2; // *2 for double sided water
 
   PrintLog( "Vertex size per buffer: " + std::to_string(packedVertexSize)
             + "\t Index Size per buffer: " + std::to_string(packedIndexSize)
@@ -1761,36 +1756,27 @@ void Renderer::GenerateBuffer() {
     Uint32 currentVSize = packedVertexSize;
     Uint32 currentISize = packedIndexSize;
 
-    if (i == this->totalBuffers - 1) {
-      currentVSize = totalVertexSize;
-      currentISize = totalIndexSize;
-    }
-
     SDL_GPUBufferCreateInfo vertexInfo = {};
     vertexInfo.size = currentVSize;
     vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    mesh.VertexBuffer.buffer =
-        SDL_CreateGPUBuffer(this->basicInitVars.GPU, &vertexInfo);
+    mesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &vertexInfo);
     mesh.VertexBuffer.offset = 0;
 
     SDL_GPUBufferCreateInfo indexInfo = {};
     indexInfo.size = currentISize;
     indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
-    mesh.IndexBuffer.buffer =
-        SDL_CreateGPUBuffer(this->basicInitVars.GPU, &indexInfo);
+    mesh.IndexBuffer.buffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &indexInfo);
     mesh.IndexBuffer.offset = 0;
 
     SDL_GPUTransferBufferCreateInfo VertextransferInfo{};
     VertextransferInfo.size = currentVSize;
     VertextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    mesh.VertextransferBuffer = SDL_CreateGPUTransferBuffer(
-        this->basicInitVars.GPU, &VertextransferInfo);
+    mesh.VertextransferBuffer = SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &VertextransferInfo);
 
     SDL_GPUTransferBufferCreateInfo IndextransferInfo{};
     IndextransferInfo.size = currentISize;
     IndextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    mesh.IndextransferBuffer = SDL_CreateGPUTransferBuffer(
-        this->basicInitVars.GPU, &IndextransferInfo);
+    mesh.IndextransferBuffer = SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &IndextransferInfo);
 
     this->Terrain.push_back(mesh);
   }

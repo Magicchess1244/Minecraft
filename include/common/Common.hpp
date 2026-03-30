@@ -376,7 +376,7 @@ static std::vector<std::string> split(const std::string &s, char delim) {
 #define GREEN   "\033[38;5;82m"   // softer green
 #define RESET   "\033[0m"
 #define DEBUG   true
-#define LOG   false
+#define LOG   true
 
 static void PrintError(const std::string error){
   if (DEBUG) std::cerr << RED << "[Error] " << error << RESET << std::endl;
