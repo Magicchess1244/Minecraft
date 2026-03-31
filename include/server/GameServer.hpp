@@ -2,10 +2,8 @@
 
 #include "../common/Common.hpp"
 #include <asio.hpp>
-#include <atomic>
 #include <map>
 #include <mutex>
-#include <vector>
 
 using asio::ip::tcp;
 #define PORT 12345

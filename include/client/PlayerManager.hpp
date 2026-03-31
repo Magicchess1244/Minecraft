@@ -1,15 +1,13 @@
 #pragma once
 #include "../../include/common/Common.hpp"
-#include "../../include/client/GameClient.hpp"
-#include "Renderer.hpp"
 #include <vector>
 
+class GameManager;
+class RaycastResult;
 
 class PlayerManager{
   private:
-    GameClient &gameClient;
-    Renderer &renderer;
-    ChunkManager &chunkManager;
+    GameManager& gameManager;
     std::vector<Player>& players;
     int inventorySlot = 0;
     std::vector<Slot> inventory{};
@@ -26,6 +24,6 @@ class PlayerManager{
     void Place(RaycastResult ray);
 
   public:
-    PlayerManager(GameClient &client, Renderer &renderer, ChunkManager &manager);
+    PlayerManager(GameManager& manager);
     void PlayerAction(int inventorySlot, float deltaTime);
 };

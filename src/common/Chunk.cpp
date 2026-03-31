@@ -1,4 +1,5 @@
 #include "../../include/common/Chunck.hpp"
+#include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
 #include <cstdlib>

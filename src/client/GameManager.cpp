@@ -2,13 +2,11 @@
 
 constexpr unsigned int tickPerSeconds = 20;
 
-GameManager::GameManager() {
+GameManager::GameManager() : playerManager(*this), renderer(*this) {
   if (!gameClient.GetRunning()) {
     PrintError("Could not connect to server. Exiting.");
-    return;
   } else {
     this->lastTime = std::chrono::high_resolution_clock::now();
-    GameLoop();
   }
 }
 

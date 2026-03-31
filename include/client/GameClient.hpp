@@ -1,14 +1,7 @@
-#ifndef __GAME_CLIENT_H
-#define __GAME_CLIENT_H
+#pragma once
 
 #include "../common/Common.hpp"
-#include "../common/PerlinNoise.hpp"
-#include "Renderer.hpp"
 #include <asio.hpp>
-#include <asio/ip/address_v4.hpp>
-#include <iostream>
-#include <mutex>
-#include <thread>
 
 using asio::ip::tcp;
 #define PORT 12345
@@ -122,5 +115,3 @@ public:
   bool GetRunning() const { return running; }
   void Quit() { this->running = false; }
 };
-
-#endif

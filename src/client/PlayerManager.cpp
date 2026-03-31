@@ -1,4 +1,5 @@
 #include "../../include/client/PlayerManager.hpp"
+#include "../../include/client/GameManager.hpp"
 
 constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 5.0f;
@@ -13,22 +14,22 @@ constexpr float bounds = 0.3f;
 Vector3 playerDirection = {0, 0, 0};
 constexpr bool playerColistion = true;
 
-PlayerManager::PlayerManager(GameClient &client, Renderer &renderer, ChunkManager &chunkManager) :
-gameClient(client), players(this->gameClient.get_players()), renderer(renderer), chunkManager(chunkManager){
+PlayerManager::PlayerManager(GameManager &manager) : gameManager(manager), players(this->gameManager.GetGameClient().get_players()){
   for (int i = 0; i < 9; i++) inventory.push_back(Slot{});
   PlayerInit();
 }
 
 void PlayerManager::PlayerInit(){
-  int myId = this->gameClient.get_my_id();
+  GameClient &gameClient = this->gameManager.GetGameClient();
+  int myId = gameClient.get_my_id();
   Player localPlayer{};
   localPlayer.id = myId;
-  localPlayer.name = this->gameClient.get_my_name();
+  localPlayer.name = gameClient.get_my_name();
   localPlayer.Position = {0, ChunkPrefab::ySize, 0};
   localPlayer.color = Color::GetColor(
       static_cast<PlayerColor>(myId % static_cast<int>(PlayerColor::COUNT)));
 
-  this->gameClient.add_player(localPlayer);
+  gameClient.add_player(localPlayer);
 }
 
 int PlayerManager::FindSlot(std::vector<Slot> &Inventory, short Type, bool isEntity) {
@@ -115,6 +116,7 @@ void PlayerManager::PlayerMove(Vector3 playerDirection, float deltaTime) {
 
     float yChecks[] = {-1.4f, -0.8f, 0.1f};
     float xzChecks[] = {-bounds, bounds};
+    ChunkManager& chunkManager = this->gameManager.GetChunkManager();
 
     for (float yOff : yChecks) {
       for (float xOff : xzChecks) {
@@ -157,17 +159,22 @@ void PlayerManager::PlayerMove(Vector3 playerDirection, float deltaTime) {
 void PlayerManager::PlayerBreackPlace(bool left, bool right) {
   if (!(left || right)) return;
 
+  ChunkManager& chunkManager = this->gameManager.GetChunkManager();
+
   RaycastResult ray = chunkManager.RayCast(this->players[0].Position, this->players[0].Rotation.Forward(), 7);
   
   if (!ray.hit) return;
 
   if (left) Break(ray);
   else if (!BlockDef[ray.BlockID].hasUI()) Place(ray);
-  else this->renderer.SetUi(ray.BlockID);
+  //else this->gameManager.SetUi(ray.BlockID);
+  //FIX need to show ui when right click ui blocks
 }
 
 void PlayerManager::Break(RaycastResult ray){
   if (ray.BlockID == 4) return;
+
+  ChunkManager& chunkManager = this->gameManager.GetChunkManager();
 
   chunkManager.Place(ray.pos, 0);
   std::string mod = "mod:" + std::to_string(ray.pos.x) + "/" + std::to_string(ray.pos.y) + "/" + std::to_string(ray.pos.z) + ":0";
@@ -180,8 +187,9 @@ void PlayerManager::Break(RaycastResult ray){
     }
     this->inventory[slotIdx].Amount++;
   }
-  this->gameClient.sendCommand(mod);
-  this->gameClient.sync_inventory();
+  GameClient& gameClient = this->gameManager.GetGameClient();
+  gameClient.sendCommand(mod);
+  gameClient.sync_inventory();
 }
 
 void PlayerManager::Place(RaycastResult ray){
@@ -190,12 +198,13 @@ void PlayerManager::Place(RaycastResult ray){
   Uint8 type = this->inventory[inventorySlot].Type;
   this->inventory[inventorySlot].Amount--;
   if (this->inventory[inventorySlot].Amount == 0) this->inventory[inventorySlot].Type = 0;
-  this->chunkManager.Place(ray.pos, type);
+  this->gameManager.GetChunkManager().Place(ray.pos, type);
 
   std::string mod = "mod:" + std::to_string((int)ray.pos.x) + "/" + std::to_string((int)ray.pos.y) + "/" + std::to_string((int)ray.pos.z) + ":" + std::to_string(type);
 
-  this->gameClient.sendCommand(mod);
-  this->gameClient.sync_inventory();
+  GameClient& gameClient = this->gameManager.GetGameClient();
+  gameClient.sendCommand(mod);
+  gameClient.sync_inventory();
 }
 
 void PlayerManager::PlayerAction(int inventorySlot, float deltaTime) {
@@ -207,22 +216,23 @@ void PlayerManager::PlayerAction(int inventorySlot, float deltaTime) {
     chunkKey.y = 0;
     chunkKey.z = std::floor(this->players[0].Position.z / ChunkPrefab::zSize);
 
+    ChunkManager& chunkManager = this->gameManager.GetChunkManager();
     if (!chunkManager.get_chunk(chunkKey).isGenerated) {
       return;
     }
     hasInitialChunkLoaded = true;
-
-    if (this->gameClient.get_is_new_player()) {
+    GameClient& gameClient = this->gameManager.GetGameClient();
+    if (gameClient.get_is_new_player()) {
       int height = chunkManager.get_chunk(chunkKey).GetHeight(
           {this->players[0].Position.x, this->players[0].Position.z});
       this->players[0].Position.x = std::floor(this->players[0].Position.x) + 0.5f;
       this->players[0].Position.z = std::floor(this->players[0].Position.z) + 0.5f;
       this->players[0].Position.y = height + 2.5f;
-      this->gameClient.set_is_new_player(false);
+      gameClient.set_is_new_player(false);
     }
   }
 
-  if (this->renderer.UsingUI()) return;
+  if (this->gameManager.GetUsingUI()) return;
 
   jumpTimer += deltaTime;
   Vector3 rotationDir = {0, 0, 0};
@@ -235,6 +245,7 @@ void PlayerManager::PlayerAction(int inventorySlot, float deltaTime) {
 }
 
 bool PlayerManager::OnGround(){
+  ChunkManager& chunkManager = this->gameManager.GetChunkManager();
   return chunkManager.RayCast(this->players[0].Position, {0, -1, 0}, bodyHeight + 0.15f).hit ||
   chunkManager.RayCast(this->players[0].Position + Vector3(bounds, 0, 0), {0, -1, 0}, bodyHeight + 0.15f).hit ||
   chunkManager.RayCast(this->players[0].Position + Vector3(-bounds, 0, 0), {0, -1, 0}, bodyHeight + 0.15f).hit ||
@@ -243,6 +254,7 @@ bool PlayerManager::OnGround(){
 }
 
 bool PlayerManager::OnWater(){
+  ChunkManager& chunkManager = this->gameManager.GetChunkManager();
   return (chunkManager.GetBlockID(this->players[0].Position - Vector3(0, 0.8f, 0)) == 5) ||
     (chunkManager.GetBlockID(this->players[0].Position) == 5);
 }

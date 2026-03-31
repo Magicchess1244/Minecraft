@@ -2,6 +2,6 @@
 
 int main(int argc, char *argv[]) {
   GameManager manager{}; 
-
+  manager.GameLoop();
   return 0;
 }

@@ -1,7 +1,9 @@
 #include "../../include/client/Renderer.hpp"
-#include "../../include/client/GameClient.hpp"
+#include "../../include/client/GameManager.hpp"
 #include "../../include/common/EntityDef.hpp"
 #include "../../include/common/RecipeDef.hpp"
+#include "../../include/common/Chunck.hpp"
+
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_scancode.h>
@@ -805,6 +807,7 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player, Vector3 PlayerCh
 
   int maxChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
   visibleChunkList.reserve(maxChunks);
+  ChunkManager& chunkManager = this->gameManager.GetChunkManager(); 
 
   while (spiral.hasNext()) {
     std::pair<int, int> Pos = spiral.next();
@@ -1123,7 +1126,7 @@ void Renderer::DrawBg(std::vector<Player> &players) {
   SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
       sizeof(float) * view.getColumnMajorData().size());
 
-  Uint32 water = (this->chunkManager.GetBlockID(player.Position) == 5) ? 1 : 0;
+  Uint32 water = (this->gameManager.GetChunkManager().GetBlockID(player.Position) == 5) ? 1 : 0;
 
   SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0, &water, sizeof(Uint32));
 
@@ -1154,11 +1157,12 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
   std::vector<DVertex> verts;
   std::vector<Uint32> indices;
 
-  int myId = gameClient.get_my_id();
-
+  bool first = true;
   for (const auto &p : players) {
-    if (p.id == myId) continue;
-
+    if (first) {
+      first =false;
+      continue;
+    }
     Vector3 pos = p.Position;
 
     for (int side = 0; side < 6; side++) {
@@ -1234,13 +1238,11 @@ void Renderer::UpdateViewportAndProjection() {
       Frustum().createFrustumFromCamera(aspect, tanHalfFov, Znear, Zfar);
 }
 void Renderer::OpenInventory(bool craftingTable) {
-  this->uiRuntimeVars.usingUI = !this->uiRuntimeVars.usingUI;
-  this->uiRuntimeVars.bigInventory = !this->uiRuntimeVars.bigInventory;
+  this->gameManager.SetUi(!this->gameManager.GetUsingUI());
+  this->uiRuntimeVars.bigInventory = this->gameManager.GetUsingUI();
   this->uiRuntimeVars.isCraftingTable = craftingTable;
-  SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
-                                 !this->uiRuntimeVars.bigInventory);
-  if (!this->uiRuntimeVars.bigInventory)
-    this->uiRuntimeVars.isCraftingTable = false;
+  SDL_SetWindowRelativeMouseMode(this->basicInitVars.window, !this->uiRuntimeVars.bigInventory);
+  if (!this->uiRuntimeVars.bigInventory) this->uiRuntimeVars.isCraftingTable = false;
 }
 void Renderer::EventManager(Player &player, int &inventorySlot) {
   while (SDL_PollEvent(&this->basicInitVars.event)) {
@@ -1270,7 +1272,7 @@ void Renderer::EventManager(Player &player, int &inventorySlot) {
   }
 }
 
-void Renderer::HandleQuit() { this->gameClient.Quit(); }
+void Renderer::HandleQuit() { this->gameManager.GetGameClient().Quit(); }
 
 void Renderer::HandleMouseWheel(int &inventorySlot) {
   int delta = this->basicInitVars.event.wheel.y;
@@ -1551,12 +1553,11 @@ void Renderer::HandleKeyDown(Player &player, int &inventorySlot) {
 }
 
 void Renderer::HandleEscapeKey() {
-  if (!this->uiRuntimeVars.usingUI)
-    return;
+  if (!this->gameManager.GetUsingUI()) return;
   this->uiRuntimeVars.bigInventory = false;
   this->uiRuntimeVars.isCraftingTable = false;
   this->uiRuntimeVars.isFurnace = false;
-  this->uiRuntimeVars.usingUI = false;
+  this->gameManager.SetUi(false);
   SDL_SetWindowRelativeMouseMode(this->basicInitVars.window, true);
 }
 
@@ -1569,7 +1570,6 @@ void Renderer::HandleF11Key() {
 
 void Renderer::HandleEKey() {
   this->OpenInventory(false);
-  this->uiRuntimeVars.usingUI = this->uiRuntimeVars.bigInventory;
 }
 void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               std::vector<Player> &players) {
@@ -2259,8 +2259,7 @@ void Renderer::PipelineInit() {
   this->EntityIndexTransferBuffer = SDL_CreateGPUTransferBuffer(
       this->basicInitVars.GPU, &entityIndexTransferInfo);
 }
-Renderer::Renderer(GameClient &gameClient, ChunkManager &manager)
-    : gameClient(gameClient), chunkManager(manager) {
+Renderer::Renderer(GameManager& manager): gameManager(manager){
 
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) PrintError("SDL_Init failed: " + std::string(SDL_GetError()));
 

@@ -1,12 +1,11 @@
 #pragma once
 
 #include "../common/Common.hpp"
-
 #include "../common/Chunck.hpp"
-#include "../common/ChunkManager.hpp"
-#include <SDL3/SDL_gpu.h>
-#include <SDL3_image/SDL_image.h>
-#include <vector>
+#include <unordered_map>
+
+class ChunkPrefab;
+class GameManager;
 
 class SpiralIterator {
 private:
@@ -273,8 +272,6 @@ struct RunTimeRenderVars {
   SDL_GPUTexture *swap_texture = nullptr;
   float aspect = 0;
 };
-class GameClient;
-
 struct CachedChunkMesh {
   std::vector<DVertex> vertices;
   std::vector<Uint32> indices;
@@ -307,7 +304,7 @@ struct CraftingVars {
 };
 struct UIRuntimeVars {
   bool fullScreen = false, bigInventory = false, isCraftingTable = false,
-       showDebug = false, usingUI = false, isFurnace = false;
+       showDebug = false, isFurnace = false;
 };
 class Renderer {
 private:
@@ -323,8 +320,6 @@ private:
   SDL_GPUTransferBuffer *EntityTransferBuffer = nullptr;
   SDL_GPUBuffer *EntityIndexBuffer = nullptr;
   SDL_GPUTransferBuffer *EntityIndexTransferBuffer = nullptr;
-  ChunkManager &chunkManager;
-  GameClient &gameClient;
   UIRuntimeVars uiRuntimeVars;
   Frustum frustum;
   std::vector<Mesh> Terrain;
@@ -333,6 +328,7 @@ private:
   Vector3 lastRot{-999, -999, -999};
   std::vector<ChunkPrefab *> opaqueChunks;
   std::vector<ChunkPrefab *> lastVisibleChunks;
+  GameManager& gameManager;
 
   auto AddRect(float x, float y, float w, float h, Vector3 color, float blockID = 0);
   void AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin, SDL_FPoint uvMax, Vector3 color);
@@ -382,7 +378,7 @@ private:
   void UIVertexGPUInit();
 
 public:
-  Renderer(GameClient &gameClient, ChunkManager &manager);
+  Renderer(GameManager &manager);
   ~Renderer() {
     for (auto &mesh : this->Terrain) {
       SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.IndexBuffer.buffer);
@@ -500,7 +496,6 @@ public:
       OpenInventory(false);
     }
   };
-  bool UsingUI() { return this->uiRuntimeVars.usingUI; };
   void Stats(Player &player);
   void UIDebug(Player &player);
   void DrawBg(std::vector<Player> &players);
