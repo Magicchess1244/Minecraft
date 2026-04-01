@@ -38,8 +38,8 @@ public:
   int zPos = -1;
 
   std::vector<DrawnFace> allFaces;
-  std::vector<Uint8> blocks; // Persistent block data for collision/raycasting
-  std::vector<LightData> lightData; // Same size as blocks
+  std::vector<Uint8> blocks;
+  std::vector<LightData> lightData;
 
   std::atomic<bool> isGenerated{false};
   std::atomic<bool> isDirty{false};

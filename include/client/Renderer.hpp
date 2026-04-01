@@ -329,6 +329,7 @@ private:
   std::vector<ChunkPrefab *> opaqueChunks;
   std::vector<ChunkPrefab *> lastVisibleChunks;
   GameManager& gameManager;
+  SDL_GPUBufferBinding QuadIndexBinding;
 
   auto AddRect(float x, float y, float w, float h, Vector3 color, float blockID = 0);
   void AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin, SDL_FPoint uvMax, Vector3 color);

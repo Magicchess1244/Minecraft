@@ -1,8 +1,8 @@
 #include "../../include/client/Renderer.hpp"
 #include "../../include/client/GameManager.hpp"
+#include "../../include/common/Chunck.hpp"
 #include "../../include/common/EntityDef.hpp"
 #include "../../include/common/RecipeDef.hpp"
-#include "../../include/common/Chunck.hpp"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gpu.h>
@@ -191,7 +191,8 @@ SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
 auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
                        float blockID) {
   Uint32 c = (Uint32)(color.x * 255.0f) << 0 | (Uint32)(color.y * 255.0f) << 8 |
-             (Uint32)(color.z * 255.0f) << ChunkPrefab::xSize | (Uint32)(255) << 24;
+             (Uint32)(color.z * 255.0f) << ChunkPrefab::xSize |
+             (Uint32)(255) << 24;
 
   auto packUV = [](float u, float v) -> float {
     uint32_t uu = (uint32_t)(u * 65535.0f) & 0xFFFF;
@@ -215,7 +216,8 @@ auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
 void Renderer::AddTextRect(float x, float y, float w, float h, SDL_FPoint uvMin,
                            SDL_FPoint uvMax, Vector3 color) {
   Uint32 c = (Uint32)(color.x * 255.0f) << 0 | (Uint32)(color.y * 255.0f) << 8 |
-             (Uint32)(color.z * 255.0f) << ChunkPrefab::xSize | (Uint32)(255) << 24;
+             (Uint32)(color.z * 255.0f) << ChunkPrefab::xSize |
+             (Uint32)(255) << 24;
 
   auto packUV = [](float u, float v) -> float {
     uint32_t uu = (uint32_t)(u * 65535.0f) & 0xFFFF;
@@ -718,96 +720,119 @@ void Renderer::UIDebug(Player &player) {
   DrawText(buf, startX, startY - lineStep * 2.0f, scale, {1, 1, 1});
 }
 
-void Renderer::DrawUI(const std::vector<Slot> &inventory, int inventorySlot, Player &player) {
-    BuildUIGeometry(inventory, inventorySlot, player);
-    UploadUIBuffers();
-    RenderUIPass();
+void Renderer::DrawUI(const std::vector<Slot> &inventory, int inventorySlot,
+                      Player &player) {
+  BuildUIGeometry(inventory, inventorySlot, player);
+  UploadUIBuffers();
+  RenderUIPass();
 }
 
-void Renderer::BuildUIGeometry(const std::vector<Slot> &inventory, int inventorySlot, Player &player) {
-    uiVars.uiVertices.clear();
-    uiVars.textVertices.clear();
+void Renderer::BuildUIGeometry(const std::vector<Slot> &inventory,
+                               int inventorySlot, Player &player) {
+  uiVars.uiVertices.clear();
+  uiVars.textVertices.clear();
 
-    UICrossHair();
-    UIInventory(inventory, inventorySlot);
-    if (uiRuntimeVars.bigInventory) UIBigInventory(inventory, inventorySlot);
-    UIDebug(player);
+  UICrossHair();
+  UIInventory(inventory, inventorySlot);
+  if (uiRuntimeVars.bigInventory)
+    UIBigInventory(inventory, inventorySlot);
+  UIDebug(player);
 }
 
 void Renderer::UploadUIBuffers() {
-    UploadVertexBuffer(uiVars.uiVertices, uiVars.UIVertexTransferBuffer, uiVars.UIVertexBuffer);
-    UploadVertexBuffer(uiVars.textVertices, uiVars.textVertexTransferBuffer, uiVars.textVertexBuffer);
+  UploadVertexBuffer(uiVars.uiVertices, uiVars.UIVertexTransferBuffer,
+                     uiVars.UIVertexBuffer);
+  UploadVertexBuffer(uiVars.textVertices, uiVars.textVertexTransferBuffer,
+                     uiVars.textVertexBuffer);
 }
 
-void Renderer::UploadVertexBuffer(const std::vector<Vertex> &vertices, SDL_GPUTransferBuffer *transferBuffer, SDL_GPUBuffer *gpuBuffer) {
-    if (vertices.empty()) return;
+void Renderer::UploadVertexBuffer(const std::vector<Vertex> &vertices,
+                                  SDL_GPUTransferBuffer *transferBuffer,
+                                  SDL_GPUBuffer *gpuBuffer) {
+  if (vertices.empty())
+    return;
 
-    void *mapped = SDL_MapGPUTransferBuffer(basicInitVars.GPU, transferBuffer, true);
-    if (!mapped) return;
+  void *mapped =
+      SDL_MapGPUTransferBuffer(basicInitVars.GPU, transferBuffer, true);
+  if (!mapped)
+    return;
 
-    const Uint32 byteSize = static_cast<Uint32>(vertices.size() * sizeof(Vertex));
+  const Uint32 byteSize = static_cast<Uint32>(vertices.size() * sizeof(Vertex));
 
-    SDL_memcpy(mapped, vertices.data(), byteSize);
-    SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, transferBuffer);
+  SDL_memcpy(mapped, vertices.data(), byteSize);
+  SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, transferBuffer);
 
-    SDL_GPUTransferBufferLocation src = { transferBuffer, 0 };
-    SDL_GPUBufferRegion           dst = { gpuBuffer, 0, byteSize };
+  SDL_GPUTransferBufferLocation src = {transferBuffer, 0};
+  SDL_GPUBufferRegion dst = {gpuBuffer, 0, byteSize};
 
-    SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdRender);
-    SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
-    SDL_EndGPUCopyPass(copyPass);
+  SDL_GPUCopyPass *copyPass =
+      SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdRender);
+  SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
+  SDL_EndGPUCopyPass(copyPass);
 }
 
 void Renderer::RenderUIPass() {
-    SDL_GPUColorTargetInfo colorTarget = {};
-    colorTarget.texture  = runTimeRenderVars.swap_texture;
-    colorTarget.load_op  = SDL_GPU_LOADOP_LOAD;
-    colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+  SDL_GPUColorTargetInfo colorTarget = {};
+  colorTarget.texture = runTimeRenderVars.swap_texture;
+  colorTarget.load_op = SDL_GPU_LOADOP_LOAD;
+  colorTarget.store_op = SDL_GPU_STOREOP_STORE;
 
-    this->runTimeRenderVars.pass = SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender, &colorTarget, 1, nullptr);
+  this->runTimeRenderVars.pass = SDL_BeginGPURenderPass(
+      this->runTimeRenderVars.cmdRender, &colorTarget, 1, nullptr);
 
-    DrawUISprites();
-    DrawUIText();
+  DrawUISprites();
+  DrawUIText();
 
-    SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
+  SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
 }
 
 void Renderer::DrawUISprites() {
-    if (uiVars.uiVertices.empty()) return;
+  if (uiVars.uiVertices.empty())
+    return;
 
-    SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass, pipelineInitVars.uiPipeline);
+  SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
+                              pipelineInitVars.uiPipeline);
 
-    if (TextureAtlas && Sampler) {
-        SDL_GPUTextureSamplerBinding samplerBinding = { TextureAtlas, Sampler };
-        SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding, 1);
-    }
+  if (TextureAtlas && Sampler) {
+    SDL_GPUTextureSamplerBinding samplerBinding = {TextureAtlas, Sampler};
+    SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
+                                &samplerBinding, 1);
+  }
 
-    SDL_GPUBufferBinding vb = { uiVars.UIVertexBuffer, 0 };
-    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &vb, 1);
-    SDL_DrawGPUPrimitives(this->runTimeRenderVars.pass, static_cast<Uint32>(uiVars.uiVertices.size()), 1, 0, 0);
+  SDL_GPUBufferBinding vb = {uiVars.UIVertexBuffer, 0};
+  SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &vb, 1);
+  SDL_DrawGPUPrimitives(this->runTimeRenderVars.pass,
+                        static_cast<Uint32>(uiVars.uiVertices.size()), 1, 0, 0);
 }
 
 void Renderer::DrawUIText() {
-    if (uiVars.textVertices.empty() || !pipelineInitVars.textPipeline) return;
+  if (uiVars.textVertices.empty() || !pipelineInitVars.textPipeline)
+    return;
 
-    SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass, pipelineInitVars.textPipeline);
+  SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
+                              pipelineInitVars.textPipeline);
 
-    if (uiVars.fontTexture && uiVars.fontSampler) {
-        SDL_GPUTextureSamplerBinding samplerBinding = { uiVars.fontTexture, uiVars.fontSampler };
-        SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding, 1);
-    }
+  if (uiVars.fontTexture && uiVars.fontSampler) {
+    SDL_GPUTextureSamplerBinding samplerBinding = {uiVars.fontTexture,
+                                                   uiVars.fontSampler};
+    SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
+                                &samplerBinding, 1);
+  }
 
-    SDL_GPUBufferBinding vb = { uiVars.textVertexBuffer, 0 };
-    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &vb, 1);
-    SDL_DrawGPUPrimitives(this->runTimeRenderVars.pass, static_cast<Uint32>(uiVars.textVertices.size()), 1, 0, 0);
+  SDL_GPUBufferBinding vb = {uiVars.textVertexBuffer, 0};
+  SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &vb, 1);
+  SDL_DrawGPUPrimitives(this->runTimeRenderVars.pass,
+                        static_cast<Uint32>(uiVars.textVertices.size()), 1, 0,
+                        0);
 }
-std::vector<ChunkDistance> Renderer::SortChunks(Player &player, Vector3 PlayerChunk) {
+std::vector<ChunkDistance> Renderer::SortChunks(Player &player,
+                                                Vector3 PlayerChunk) {
   SpiralIterator spiral(RenderDistance * 2 + 1);
   std::vector<ChunkDistance> visibleChunkList;
 
   int maxChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
   visibleChunkList.reserve(maxChunks);
-  ChunkManager& chunkManager = this->gameManager.GetChunkManager(); 
+  ChunkManager &chunkManager = this->gameManager.GetChunkManager();
 
   while (spiral.hasNext()) {
     std::pair<int, int> Pos = spiral.next();
@@ -821,7 +846,8 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player, Vector3 PlayerCh
                    (float)ChunkPrefab::ySize,
                    (ChunkPos.z + 1) * (float)ChunkPrefab::zSize};
 
-    if (!frustum.isChunkInFrustum(Min, Max)) continue;
+    if (!frustum.isChunkInFrustum(Min, Max))
+      continue;
 
     ChunkPrefab &chunk = chunkManager.get_chunk(ChunkPos);
 
@@ -870,9 +896,11 @@ void Renderer::DrawTerrain(Player &player) {
     const std::vector<ChunkPrefab *> &newChunks = newBuckets[bufferIdx];
 
     bool anyChunkDirty = false;
-    for (auto *c : newChunks) anyChunkDirty = c->needsMeshUpdate || anyChunkDirty;
+    for (auto *c : newChunks)
+      anyChunkDirty = c->needsMeshUpdate || anyChunkDirty;
 
-    if (newChunks == mesh->currentChunks && !anyChunkDirty && !mesh->needsUpdate) {
+    if (newChunks == mesh->currentChunks && !anyChunkDirty &&
+        !mesh->needsUpdate) {
       mesh->TransparentIndexCount = 0;
       continue;
     }
@@ -888,21 +916,28 @@ void Renderer::DrawTerrain(Player &player) {
       continue;
     }
 
-    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
-    Uint32 *Indexdata = (Uint32 *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, mesh->IndextransferBuffer, true);
+    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(
+        this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
+    // Uint32 *Indexdata = (Uint32
+    // *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
+    // mesh->IndextransferBuffer, true);
 
-    if (!Vertexdata || !Indexdata) continue;
+    if (!Vertexdata)
+      continue;
 
     size_t currentVertexOffset = 0;
     size_t currentIndexOffset = 0;
-    const size_t maxVertices = chunksPerBuffer * 4 * FacesPerChunk;
-    const size_t maxIndices = chunksPerBuffer * 6 * FacesPerChunk;
+    const size_t maxVertices = chunksPerBuffer * FacesPerChunk;
+    const size_t maxIndices = chunksPerBuffer * FacesPerChunk;
 
     for (auto *chunk : newChunks) {
-      if (!chunk->isGenerated) continue;
-      Vector3 chunkPosKey = worldToChunkKey(Vector3{(float)chunk->xPos,0,(float)chunk->zPos});
+      if (!chunk->isGenerated)
+        continue;
+      Vector3 chunkPosKey =
+          worldToChunkKey(Vector3{(float)chunk->xPos, 0, (float)chunk->zPos});
 
-      if (chunk->needsMeshUpdate || opaqueMeshCache.find(chunkPosKey) == opaqueMeshCache.end()) {
+      if (chunk->needsMeshUpdate ||
+          opaqueMeshCache.find(chunkPosKey) == opaqueMeshCache.end()) {
         auto &cache = opaqueMeshCache[chunkPosKey];
         cache.vertices.clear();
         cache.indices.clear();
@@ -912,79 +947,56 @@ void Renderer::DrawTerrain(Player &player) {
         Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
 
         for (const auto &face : chunk->allFaces) {
-          if (face.Transparent) continue;
+          if (face.Transparent)
+            continue;
 
           Vector3 worldPos = face.blockPos + chunkWorldPos;
 
-          Uint32 baseV = (Uint32)cache.vertices.size();
-          for (int j = 0; j < 4; j++) {
-            Vector3 v = Verts[face.side][j];
-            float u, v_uv;
-            if (face.side < 2) {
-              u = (1.0f - Verts[face.side][j].x);
-              v_uv = (1.0f - Verts[face.side][j].y);
-            } else if (face.side < 4) {
-              u = (1.0f - Verts[face.side][j].z);
-              v_uv = (1.0f - Verts[face.side][j].y);
-            } else {
-              u = Verts[face.side][j].x;
-              v_uv = Verts[face.side][j].z;
-            }
+          DVertex vert;
+          vert.Position = face.blockPos + chunkWorldPos;
 
-            DVertex vert;
-            Vector3 worldV = worldPos + v;
-            vert.Position = Vector3(worldV.x + u * 0.1f, worldV.y + v_uv * 0.1f, worldV.z);
+          // Pack Data: side(3), tileIndex(ChunkPrefab::xSize), light(4)
+          Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
+          Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
+                          ((face.LightLevel & 0xF) << 19);
+          vert.Data = *(float *)&packed;
 
-            // Pack Data: side(3), tileIndex(ChunkPrefab::xSize), light(4)
-            Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
-            Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) | ((face.LightLevel & 0xF) << 19);
-            vert.Data = *(float *)&packed;
-
-            cache.vertices.push_back(vert);
-          }
-          cache.indices.push_back(baseV + 0);
-          cache.indices.push_back(baseV + 2);
-          cache.indices.push_back(baseV + 1);
-          cache.indices.push_back(baseV + 1);
-          cache.indices.push_back(baseV + 2);
-          cache.indices.push_back(baseV + 3);
+          cache.vertices.push_back(vert);
         }
         chunk->needsMeshUpdate = false;
       }
 
       auto &cache = opaqueMeshCache[chunkPosKey];
-      if (cache.vertices.empty()) continue;
+      if (cache.vertices.empty())
+        continue;
 
-      if (currentVertexOffset + cache.vertices.size() > maxVertices || currentIndexOffset + cache.indices.size() > maxIndices) continue;
+      if (currentVertexOffset + cache.vertices.size() > maxVertices ||
+          currentIndexOffset + cache.indices.size() > maxIndices)
+        continue;
 
-      memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(), cache.vertices.size() * sizeof(DVertex));
-
-      Uint32 vertexBase = (Uint32)currentVertexOffset;
-      for (size_t i = 0; i < cache.indices.size(); i++)  Indexdata[currentIndexOffset + i] = cache.indices[i] + vertexBase;
+      memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
+             cache.vertices.size() * sizeof(DVertex));
 
       currentVertexOffset += cache.vertices.size();
-      currentIndexOffset += cache.indices.size();
     }
 
-    if (currentIndexOffset == 0) continue;
+    if (currentVertexOffset == 0)
+      continue;
 
-    mesh->OpaqueIndexCount = (int)currentIndexOffset;
+    mesh->OpaqueIndexCount = (int)currentVertexOffset;
     mesh->BaseVertex = (int)currentVertexOffset;
-    mesh->BaseIndex = (int)currentIndexOffset;
-    
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->VertextransferBuffer);
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->IndextransferBuffer);
+    mesh->BaseIndex = 0;
+
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               mesh->VertextransferBuffer);
+    // SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+    // mesh->IndextransferBuffer);
 
     SDL_GPUTransferBufferLocation vLoc{mesh->VertextransferBuffer, 0};
-    SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0, (Uint32)(currentVertexOffset * sizeof(DVertex))};
+    SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
+                             (Uint32)(currentVertexOffset * sizeof(DVertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
-
-    SDL_GPUTransferBufferLocation iLoc{mesh->IndextransferBuffer, 0};
-    SDL_GPUBufferRegion iReg{mesh->IndexBuffer.buffer, 0, (Uint32)(currentIndexOffset * sizeof(Uint32))};
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
-    
   }
-
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
   static std::vector<TransparentDrawnFace> cachedTransparentFaces;
   static Vector3 lastSortPos;
@@ -996,11 +1008,15 @@ void Renderer::DrawTerrain(Player &player) {
   bool anyTransparentDirty = false;
   for (auto &cd : visibleChunks) {
     ChunkPrefab *chunk = cd.chunk;
-    anyTransparentDirty = (chunk->needsMeshUpdate && chunk->isGenerated) || anyTransparentDirty;
-   
+    anyTransparentDirty =
+        (chunk->needsMeshUpdate && chunk->isGenerated) || anyTransparentDirty;
+
     Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
     for (auto &face : chunk->allFaces) {
-      if (face.Transparent) transparentFaces.push_back({face.blockPos + chunkWorldPos, (int)face.side, (int)face.blockID, face.LightLevel});
+      if (face.Transparent)
+        transparentFaces.push_back({face.blockPos + chunkWorldPos,
+                                    (int)face.side, (int)face.blockID,
+                                    face.LightLevel});
     }
   }
 
@@ -1012,72 +1028,51 @@ void Renderer::DrawTerrain(Player &player) {
     cachedTransparentFaces.clear();
     return;
   }
+  DVertex *vData = (DVertex *)SDL_MapGPUTransferBuffer(
+      this->basicInitVars.GPU, tMesh->VertextransferBuffer, true);
+  // Uint32 *iData = (Uint32 *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
+  // tMesh->IndextransferBuffer, true);
 
-  DVertex *vData = (DVertex *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, tMesh->VertextransferBuffer, true);
-  Uint32 *iData = (Uint32 *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, tMesh->IndextransferBuffer, true);
-
-  if (vData && iData) {
+  if (vData) {
     size_t vOffset = 0;
-    size_t iOffset = 0;
-    const size_t maxV = this->totalBuffers * 4 * FacesPerChunk;
-    const size_t maxI = this->totalBuffers * 6 * FacesPerChunk;
+    // size_t iOffset = 0;
+    const size_t maxV = chunksPerBuffer * FacesPerChunk;
 
     for (auto &face : transparentFaces) {
-      if (vOffset + 4 > maxV || iOffset + 6 > maxI)
-        continue;
+      if (vOffset + 1 > maxV)
+        break;
 
-      for (int j = 0; j < 4; j++) {
-        Vector3 v = Verts[face.side][j];
-        float u, v_uv;
-        if (face.side < 2) {
-          u = (1.0f - Verts[face.side][j].x);
-          v_uv = (1.0f - Verts[face.side][j].y);
-        } else if (face.side < 4) {
-          u = (1.0f - Verts[face.side][j].z);
-          v_uv = (1.0f - Verts[face.side][j].y);
-        } else {
-          u = Verts[face.side][j].x;
-          v_uv = Verts[face.side][j].z;
-        }
+      DVertex vert;
+      vert.Position = face.blockPos;
 
-        DVertex vert;
-        Vector3 worldV = v + face.blockPos;
-        vert.Position = Vector3(worldV.x + u * 0.1f, worldV.y + v_uv * 0.1f, worldV.z);
+      Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
+      Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
+                      ((face.light & 0xF) << 19);
+      vert.Data = *(float *)&packed;
+      vData[vOffset] = vert;
 
-        Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
-        Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) | ((face.light & 0xF) << 19);
-        vert.Data = *(float *)&packed;
-        vData[vOffset + j] = vert;
-      }
-
-      iData[iOffset + 0] = (Uint32)vOffset + 0;
-      iData[iOffset + 1] = (Uint32)vOffset + 2;
-      iData[iOffset + 2] = (Uint32)vOffset + 1;
-      iData[iOffset + 3] = (Uint32)vOffset + 1;
-      iData[iOffset + 4] = (Uint32)vOffset + 2;
-      iData[iOffset + 5] = (Uint32)vOffset + 3;
-      iOffset += 6;
-      vOffset += 4;
+      vOffset += 1;
     }
 
-    tMesh->TransparentIndexCount = (int)iOffset;
+    tMesh->TransparentIndexCount = (int)vOffset;
     tMesh->BaseVertex = (int)vOffset;
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tMesh->VertextransferBuffer);
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tMesh->IndextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               tMesh->VertextransferBuffer);
+    // SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+    // tMesh->IndextransferBuffer);
 
     SDL_GPUTransferBufferLocation vLoc{tMesh->VertextransferBuffer, 0};
-    SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0, (Uint32)(vOffset * sizeof(DVertex))};
+    SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
+                             (Uint32)(vOffset * sizeof(DVertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
-
-    SDL_GPUTransferBufferLocation iLoc{tMesh->IndextransferBuffer, 0};
-    SDL_GPUBufferRegion iReg{tMesh->IndexBuffer.buffer, 0, (Uint32)(iOffset * sizeof(Uint32))};
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &iLoc, &iReg, true);
   }
 }
 void Renderer::DrawBg(std::vector<Player> &players) {
-  this->runTimeRenderVars.cmdCopy = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  this->runTimeRenderVars.cmdCopy =
+      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
-  this->runTimeRenderVars.copyPass = SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdCopy);
+  this->runTimeRenderVars.copyPass =
+      SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdCopy);
   DrawTerrain(players[0]);
 
   SDL_EndGPUCopyPass(this->runTimeRenderVars.copyPass);
@@ -1086,10 +1081,13 @@ void Renderer::DrawBg(std::vector<Player> &players) {
     return;
   }
 
-  this->runTimeRenderVars.cmdRender = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  this->runTimeRenderVars.cmdRender =
+      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
 
-  SDL_WaitAndAcquireGPUSwapchainTexture( this->runTimeRenderVars.cmdRender, this->basicInitVars.window,
-      &this->runTimeRenderVars.swap_texture, &this->basicInitVars.Width, &this->basicInitVars.Height);
+  SDL_WaitAndAcquireGPUSwapchainTexture(
+      this->runTimeRenderVars.cmdRender, this->basicInitVars.window,
+      &this->runTimeRenderVars.swap_texture, &this->basicInitVars.Width,
+      &this->basicInitVars.Height);
 
   if (this->runTimeRenderVars.swap_texture == NULL) {
     PrintError("La swap_texture no s'ha fet be");
@@ -1117,42 +1115,61 @@ void Renderer::DrawBg(std::vector<Player> &players) {
 
   Matrix view = LookAt(player.Rotation, player.Position);
 
-  float aspect = (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+  float aspect =
+      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
   Matrix proj = Perspective(FOV, aspect, Znear, Zfar);
 
-  SDL_PushGPUVertexUniformData( this->runTimeRenderVars.cmdRender, 0, proj.getColumnMajorData().data(),
+  SDL_PushGPUVertexUniformData(
+      this->runTimeRenderVars.cmdRender, 0, proj.getColumnMajorData().data(),
       sizeof(float) * proj.getColumnMajorData().size());
 
-  SDL_PushGPUVertexUniformData(this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
+  SDL_PushGPUVertexUniformData(
+      this->runTimeRenderVars.cmdRender, 1, view.getColumnMajorData().data(),
       sizeof(float) * view.getColumnMajorData().size());
 
-  Uint32 water = (this->gameManager.GetChunkManager().GetBlockID(player.Position) == 5) ? 1 : 0;
+  Uint32 water =
+      (this->gameManager.GetChunkManager().GetBlockID(player.Position) == 5)
+          ? 1
+          : 0;
 
-  SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0, &water, sizeof(Uint32));
+  SDL_PushGPUFragmentUniformData(this->runTimeRenderVars.cmdRender, 0, &water,
+                                 sizeof(Uint32));
 
-  this->runTimeRenderVars.pass = SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
+  this->runTimeRenderVars.pass =
+      SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
                              &color_target_info, 1, &depth_target_info);
 
   if (this->TextureAtlas && this->Sampler) {
-    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas, this->Sampler};
-    SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0, &samplerBinding, 1);
+    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
+                                                   this->Sampler};
+    SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
+                                &samplerBinding, 1);
   }
 
-  SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass, this->pipelineInitVars.graphicsPipeline);
+  SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
+                              this->pipelineInitVars.graphicsPipeline);
 
-  for (auto& mesh : this->Terrain){
-    if (mesh.OpaqueIndexCount + mesh.TransparentIndexCount == 0) continue;
-    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &mesh.VertexBuffer, 1);
-    SDL_BindGPUIndexBuffer(this->runTimeRenderVars.pass, &mesh.IndexBuffer, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-    SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, mesh.OpaqueIndexCount + mesh.TransparentIndexCount, 1, 0, 0, 0);
+  SDL_BindGPUIndexBuffer(this->runTimeRenderVars.pass, &this->QuadIndexBinding,
+                         SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+  for (auto &mesh : this->Terrain) {
+    int faceCount = mesh.OpaqueIndexCount + mesh.TransparentIndexCount;
+    if (faceCount == 0)
+      continue;
+
+    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0,
+                             &mesh.VertexBuffer, 1);
+    SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, 6, faceCount, 0,
+                                 0, 0);
   }
 
-  DrawPlayers(players);
+  // DrawPlayers(players);
 
   SDL_EndGPURenderPass(this->runTimeRenderVars.pass);
 }
 void Renderer::DrawPlayers(std::vector<Player> &players) {
-  if (players.size() == 1) return;
+  if (players.size() == 1)
+    return;
 
   std::vector<DVertex> verts;
   std::vector<Uint32> indices;
@@ -1160,7 +1177,7 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
   bool first = true;
   for (const auto &p : players) {
     if (first) {
-      first =false;
+      first = false;
       continue;
     }
     Vector3 pos = p.Position;
@@ -1188,31 +1205,38 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
   if (verts.empty())
     return;
 
-  void *vData = SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
+  void *vData =
+      SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer, true);
   SDL_memcpy(vData, verts.data(), verts.size() * sizeof(DVertex));
   SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityTransferBuffer);
 
-  void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU, EntityIndexTransferBuffer, true);
+  void *iData = SDL_MapGPUTransferBuffer(basicInitVars.GPU,
+                                         EntityIndexTransferBuffer, true);
   SDL_memcpy(iData, indices.data(), indices.size() * sizeof(Uint32));
   SDL_UnmapGPUTransferBuffer(basicInitVars.GPU, EntityIndexTransferBuffer);
 
   SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(basicInitVars.GPU);
   SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
   SDL_GPUTransferBufferLocation vSrc = {EntityTransferBuffer, 0};
-  SDL_GPUBufferRegion vDst = {EntityBuffer, 0, (Uint32)(verts.size() * sizeof(DVertex))};
+  SDL_GPUBufferRegion vDst = {EntityBuffer, 0,
+                              (Uint32)(verts.size() * sizeof(DVertex))};
   SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, true);
   SDL_GPUTransferBufferLocation iSrc = {EntityIndexTransferBuffer, 0};
-  SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0, (Uint32)(indices.size() * sizeof(Uint32))};
+  SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0,
+                              (Uint32)(indices.size() * sizeof(Uint32))};
   SDL_UploadToGPUBuffer(copy, &iSrc, &iDst, true);
   SDL_EndGPUCopyPass(copy);
   SDL_SubmitGPUCommandBuffer(cmd);
 
-  SDL_BindGPUGraphicsPipeline(runTimeRenderVars.pass, pipelineInitVars.graphicsPipeline);
+  SDL_BindGPUGraphicsPipeline(runTimeRenderVars.pass,
+                              pipelineInitVars.graphicsPipeline);
   SDL_GPUBufferBinding vBinding = {EntityBuffer, 0};
   SDL_BindGPUVertexBuffers(runTimeRenderVars.pass, 0, &vBinding, 1);
   SDL_GPUBufferBinding iBinding = {EntityIndexBuffer, 0};
-  SDL_BindGPUIndexBuffer(runTimeRenderVars.pass, &iBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-  SDL_DrawGPUIndexedPrimitives(runTimeRenderVars.pass, (Uint32)indices.size(), 1, 0, 0, 0);
+  SDL_BindGPUIndexBuffer(runTimeRenderVars.pass, &iBinding,
+                         SDL_GPU_INDEXELEMENTSIZE_32BIT);
+  SDL_DrawGPUIndexedPrimitives(runTimeRenderVars.pass, (Uint32)indices.size(),
+                               1, 0, 0, 0);
 }
 void Renderer::UpdateViewportAndProjection() {
   // Get the actual drawable size (important for high-DPI displays)
@@ -1223,7 +1247,8 @@ void Renderer::UpdateViewportAndProjection() {
   this->basicInitVars.Width = drawableWidth;
   this->basicInitVars.Height = drawableHeight;
 
-  PrintLog("Updating viewport to: " + std::to_string(drawableWidth) + "x" + std::to_string(drawableHeight));
+  PrintLog("Updating viewport to: " + std::to_string(drawableWidth) + "x" +
+           std::to_string(drawableHeight));
 
   // Recreate depth texture with new size
   if (this->DepthTexture) {
@@ -1241,8 +1266,10 @@ void Renderer::OpenInventory(bool craftingTable) {
   this->gameManager.SetUi(!this->gameManager.GetUsingUI());
   this->uiRuntimeVars.bigInventory = this->gameManager.GetUsingUI();
   this->uiRuntimeVars.isCraftingTable = craftingTable;
-  SDL_SetWindowRelativeMouseMode(this->basicInitVars.window, !this->uiRuntimeVars.bigInventory);
-  if (!this->uiRuntimeVars.bigInventory) this->uiRuntimeVars.isCraftingTable = false;
+  SDL_SetWindowRelativeMouseMode(this->basicInitVars.window,
+                                 !this->uiRuntimeVars.bigInventory);
+  if (!this->uiRuntimeVars.bigInventory)
+    this->uiRuntimeVars.isCraftingTable = false;
 }
 void Renderer::EventManager(Player &player, int &inventorySlot) {
   while (SDL_PollEvent(&this->basicInitVars.event)) {
@@ -1553,7 +1580,8 @@ void Renderer::HandleKeyDown(Player &player, int &inventorySlot) {
 }
 
 void Renderer::HandleEscapeKey() {
-  if (!this->gameManager.GetUsingUI()) return;
+  if (!this->gameManager.GetUsingUI())
+    return;
   this->uiRuntimeVars.bigInventory = false;
   this->uiRuntimeVars.isCraftingTable = false;
   this->uiRuntimeVars.isFurnace = false;
@@ -1568,15 +1596,15 @@ void Renderer::HandleF11Key() {
   UpdateViewportAndProjection();
 }
 
-void Renderer::HandleEKey() {
-  this->OpenInventory(false);
-}
+void Renderer::HandleEKey() { this->OpenInventory(false); }
 void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
                               std::vector<Player> &players) {
   EventManager(players[0], inventorySlot);
 
-  this->runTimeRenderVars.aspect = (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
-  Frustum worldFrustum = Frustum::createFrustumFromCamera(this->runTimeRenderVars.aspect, tanHalfFov, Znear, Zfar);
+  this->runTimeRenderVars.aspect =
+      (float)this->basicInitVars.Width / (float)this->basicInitVars.Height;
+  Frustum worldFrustum = Frustum::createFrustumFromCamera(
+      this->runTimeRenderVars.aspect, tanHalfFov, Znear, Zfar);
   worldFrustum.transformToWorldSpace(players[0].Position, players[0].Rotation);
   this->frustum = worldFrustum;
 
@@ -1588,7 +1616,6 @@ void Renderer::MainRenderLoop(std::vector<Slot> &inventory, int inventorySlot,
     return;
   }
 }
-
 
 SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
                           Uint32 sampler_count, Uint32 uniform_buffer_count,
@@ -1648,7 +1675,8 @@ SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
   size_t code_size;
   void *code = SDL_LoadFile(fullpath, &code_size);
   if (!code) {
-    PrintWarning("Couldn't load shader file %s: %s" + std::string(fullpath) + std::string(SDL_GetError()));
+    PrintWarning("Couldn't load shader file %s: %s" + std::string(fullpath) +
+                 std::string(SDL_GetError()));
     return NULL;
   }
 
@@ -1665,7 +1693,8 @@ SDL_GPUShader *LoadShader(SDL_GPUDevice *device, const char *filename,
 
   SDL_GPUShader *shader = SDL_CreateGPUShader(device, &shader_info);
   if (!shader) {
-    PrintWarning("Couldn't create shader %s: %s" + std::string(filename) + SDL_GetError());
+    PrintWarning("Couldn't create shader %s: %s" + std::string(filename) +
+                 SDL_GetError());
     SDL_free(code);
     return NULL;
   }
@@ -1690,7 +1719,8 @@ SDL_GPUTexture *Renderer::CreateDepthTexture(Uint32 drawablew,
 
   result = SDL_CreateGPUTexture(this->basicInitVars.GPU, &createinfo);
   if (!result) {
-    PrintWarning("Failed to create depth texture: %s" + std::string(SDL_GetError()));
+    PrintWarning("Failed to create depth texture: %s" +
+                 std::string(SDL_GetError()));
     return NULL;
   }
 
@@ -1703,7 +1733,8 @@ void Renderer::Init() {
   this->basicInitVars.GPU =
       SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
   if (this->basicInitVars.GPU) {
-    PrintLog("GPU Driver: " + std::string(SDL_GetGPUDeviceDriver(this->basicInitVars.GPU)));
+    PrintLog("GPU Driver: " +
+             std::string(SDL_GetGPUDeviceDriver(this->basicInitVars.GPU)));
   } else {
     PrintError("Failed to create GPU device: " + std::string(SDL_GetError()));
     return;
@@ -1713,20 +1744,23 @@ void Renderer::Init() {
       SDL_CreateWindow("Bit Miner", this->basicInitVars.Width,
                        this->basicInitVars.Height, SDL_WINDOW_RESIZABLE);
   if (this->basicInitVars.window == nullptr) {
-    PrintError("Error creating basicInitVars.window: " + std::string(SDL_GetError()));
+    PrintError("Error creating basicInitVars.window: " +
+               std::string(SDL_GetError()));
     SDL_Quit();
     assert(false);
   }
 
   if (!SDL_ClaimWindowForGPUDevice(this->basicInitVars.GPU,
                                    this->basicInitVars.window)) {
-    PrintWarning("Error claiming window for GPU device: " + std::string(SDL_GetError()));
+    PrintWarning("Error claiming window for GPU device: " +
+                 std::string(SDL_GetError()));
   }
   this->basicInitVars.event = {};
   SDL_SetWindowRelativeMouseMode(basicInitVars.window, true);
 
   if (!TTF_WasInit() && !TTF_Init()) {
-    PrintWarning("Failed to initialize SDL_ttf: " + std::string(SDL_GetError()));
+    PrintWarning("Failed to initialize SDL_ttf: " +
+                 std::string(SDL_GetError()));
   }
 }
 void Renderer::GenerateBuffer() {
@@ -1738,68 +1772,84 @@ void Renderer::GenerateBuffer() {
       break;
     }
   }
-  this->totalBuffers = (totalChunks) / chunksPerBuffer;
+  this->totalBuffers = totalChunks / chunksPerBuffer;
 
-  // Each buffer now holds multiple chunks
-  const Uint32 singleChunkVertexSize = sizeof(DVertex) * 4 * FacesPerChunk;
-  const Uint32 singleChunkIndexSize = sizeof(Uint32) * 6 * FacesPerChunk;
+  // 1 vertex per face now (was 4), no per-mesh index buffer needed
+  const Uint32 singleChunkVertexSize = sizeof(DVertex) * FacesPerChunk;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
-  const Uint32 packedIndexSize = singleChunkIndexSize * chunksPerBuffer;
 
-  PrintLog( "Vertex size per buffer: " + std::to_string(packedVertexSize)
-            + "\t Index Size per buffer: " + std::to_string(packedIndexSize)
-            + "\n Total buffers: " + std::to_string(this->totalBuffers)
-            + "\t Chunks per buffer: " + std::to_string(this->chunksPerBuffer));
+  PrintLog("Vertex size per buffer: " + std::to_string(packedVertexSize) +
+           "\n Total buffers: " + std::to_string(this->totalBuffers) +
+           "\t Chunks per buffer: " + std::to_string(this->chunksPerBuffer));
 
   for (int i = 0; i < this->totalBuffers; i++) {
     Mesh mesh{};
-    Uint32 currentVSize = packedVertexSize;
-    Uint32 currentISize = packedIndexSize;
 
     SDL_GPUBufferCreateInfo vertexInfo = {};
-    vertexInfo.size = currentVSize;
+    vertexInfo.size = packedVertexSize;
     vertexInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    mesh.VertexBuffer.buffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &vertexInfo);
+    mesh.VertexBuffer.buffer =
+        SDL_CreateGPUBuffer(this->basicInitVars.GPU, &vertexInfo);
     mesh.VertexBuffer.offset = 0;
 
-    SDL_GPUBufferCreateInfo indexInfo = {};
-    indexInfo.size = currentISize;
-    indexInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
-    mesh.IndexBuffer.buffer = SDL_CreateGPUBuffer(this->basicInitVars.GPU, &indexInfo);
-    mesh.IndexBuffer.offset = 0;
-
-    SDL_GPUTransferBufferCreateInfo VertextransferInfo{};
-    VertextransferInfo.size = currentVSize;
-    VertextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    mesh.VertextransferBuffer = SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &VertextransferInfo);
-
-    SDL_GPUTransferBufferCreateInfo IndextransferInfo{};
-    IndextransferInfo.size = currentISize;
-    IndextransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    mesh.IndextransferBuffer = SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &IndextransferInfo);
+    SDL_GPUTransferBufferCreateInfo vertexTransferInfo{};
+    vertexTransferInfo.size = packedVertexSize;
+    vertexTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    mesh.VertextransferBuffer = SDL_CreateGPUTransferBuffer(
+        this->basicInitVars.GPU, &vertexTransferInfo);
 
     this->Terrain.push_back(mesh);
   }
+
+  // Single static index buffer shared by all draw calls: {0,1,2, 1,3,2}
+  // gl_VertexID reads these as corner IDs (0-3), gl_InstanceIndex = face index
+  Uint32 quadIndices[6] = {0, 1, 2, 1, 3, 2};
+
+  SDL_GPUBufferCreateInfo quadIdxInfo = {};
+  quadIdxInfo.size = sizeof(quadIndices);
+  quadIdxInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+  this->QuadIndexBinding.buffer =
+      SDL_CreateGPUBuffer(this->basicInitVars.GPU, &quadIdxInfo);
+
+  SDL_GPUTransferBufferCreateInfo transferInfo = {};
+  transferInfo.size = sizeof(quadIndices);
+  transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  SDL_GPUTransferBuffer *transferBuf =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
+
+  Uint32 *mapped = (Uint32 *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
+                                                      transferBuf, false);
+  memcpy(mapped, quadIndices, sizeof(quadIndices));
+  SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, transferBuf);
+
+  SDL_GPUCommandBuffer *cmd =
+      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
+  SDL_GPUTransferBufferLocation src = {transferBuf, 0};
+  SDL_GPUBufferRegion dst = {this->QuadIndexBinding.buffer, 0,
+                             sizeof(quadIndices)};
+  SDL_UploadToGPUBuffer(copy, &src, &dst, false);
+  SDL_EndGPUCopyPass(copy);
+  SDL_SubmitGPUCommandBuffer(cmd);
+  SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, transferBuf);
+
+  this->QuadIndexBinding = {this->QuadIndexBinding.buffer, 0};
 }
 void Renderer::VertexGPUInit() {
   auto &desc = this->pipelineInitVars.vertex_buffer_desc;
   auto &attrs = this->pipelineInitVars.vertex_attributes;
 
-  // Buffer descriptor
   desc.slot = 0;
-  desc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+  desc.input_rate = SDL_GPU_VERTEXINPUTRATE_INSTANCE;
   desc.instance_step_rate = 0;
   desc.pitch = sizeof(DVertex);
 
-  // Helper to reduce repetition
   auto setAttr = [&](int loc, SDL_GPUVertexElementFormat fmt, Uint32 offset) {
     attrs[loc].buffer_slot = 0;
     attrs[loc].location = loc;
     attrs[loc].format = fmt;
     attrs[loc].offset = offset;
   };
-
-  //                loc  format                                offset
   setAttr(0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0);
   setAttr(1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT, sizeof(float) * 3);
 }
@@ -1843,11 +1893,13 @@ void Renderer::LoadTexture() {
 
   SDL_Surface *surface = SDL_LoadPNG(fullPath);
   if (!surface) {
-    PrintWarning("Failed to load texture at %s: %s" + std::string(fullPath) + SDL_GetError());
+    PrintWarning("Failed to load texture at %s: %s" + std::string(fullPath) +
+                 SDL_GetError());
     return;
   }
 
-  PrintLog("Loaded texture: %s (%dx%d)" + std::string(fullPath) + std::to_string(surface->w) + std::to_string(surface->h));
+  PrintLog("Loaded texture: %s (%dx%d)" + std::string(fullPath) +
+           std::to_string(surface->w) + std::to_string(surface->h));
 
   // Convert to a guaranteed RGBA8 per-pixel format
   SDL_Surface *rgbaSurface =
@@ -1868,9 +1920,11 @@ void Renderer::LoadTexture() {
   textureInfo.num_levels = 1;
   textureInfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
 
-  this->TextureAtlas = SDL_CreateGPUTexture(this->basicInitVars.GPU, &textureInfo);
+  this->TextureAtlas =
+      SDL_CreateGPUTexture(this->basicInitVars.GPU, &textureInfo);
   if (!this->TextureAtlas) {
-    PrintWarning("Failed to create GPU texture: " + std::string(SDL_GetError()));
+    PrintWarning("Failed to create GPU texture: " +
+                 std::string(SDL_GetError()));
     SDL_DestroySurface(surface);
     return;
   }
@@ -1880,24 +1934,30 @@ void Renderer::LoadTexture() {
   SDL_GPUTransferBufferCreateInfo transferInfo = {};
   transferInfo.size = textureSize;
   transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-  SDL_GPUTransferBuffer *transferBuffer = SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
+  SDL_GPUTransferBuffer *transferBuffer =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
 
   if (!transferBuffer) {
-    PrintError("Failed to create transfer buffer: %s" + std::string(SDL_GetError()));
+    PrintError("Failed to create transfer buffer: %s" +
+               std::string(SDL_GetError()));
     SDL_DestroySurface(surface);
     return;
   }
 
-  void *data = SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer, false);
+  void *data =
+      SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer, false);
   if (data) {
     // Copy row by row to handle potential pitch differences
     for (int y = 0; y < surface->h; y++) {
-      SDL_memcpy((Uint8 *)data + (y * surface->w * 4), (Uint8 *)surface->pixels + (y * surface->pitch), surface->w * 4);
+      SDL_memcpy((Uint8 *)data + (y * surface->w * 4),
+                 (Uint8 *)surface->pixels + (y * surface->pitch),
+                 surface->w * 4);
     }
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer);
   }
 
-  SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  SDL_GPUCommandBuffer *cmd =
+      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
   if (cmd) {
     SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmd);
 
@@ -1938,9 +1998,6 @@ void Renderer::LoadTexture() {
     PrintWarning("Failed to create sampler: %s" + std::string(SDL_GetError()));
   }
 
-
-
-
   // Load Font
   const char *fontPathRelative = "assets/square_pixel-7.ttf";
   char fullFontPath[512];
@@ -1954,7 +2011,8 @@ void Renderer::LoadTexture() {
   uiVars.font =
       TTF_OpenFont(fullFontPath, 48); // Sharper text at higher resolution
   if (!uiVars.font) {
-    PrintWarning("Failed to load font at %s: %s" + std::string(fullFontPath) + SDL_GetError());
+    PrintWarning("Failed to load font at %s: %s" + std::string(fullFontPath) +
+                 SDL_GetError());
     return;
   }
   PrintLog("Loaded font: %s" + std::string(fullFontPath));
@@ -1965,7 +2023,9 @@ void Renderer::LoadTexture() {
   SDL_Surface *digitSurface =
       TTF_RenderText_Blended(uiVars.font, fontChars, 0, {255, 255, 255, 255});
   if (digitSurface) {
-    PrintLog("Digit surface created: %dx%d, format: %s" + std::to_string(digitSurface->w) + std::to_string(digitSurface->h) + SDL_GetPixelFormatName(digitSurface->format));
+    PrintLog("Digit surface created: %dx%d, format: %s" +
+             std::to_string(digitSurface->w) + std::to_string(digitSurface->h) +
+             SDL_GetPixelFormatName(digitSurface->format));
     SDL_Surface *rgbaDigitSurface =
         SDL_ConvertSurface(digitSurface, SDL_PIXELFORMAT_RGBA32);
     SDL_DestroySurface(digitSurface);
@@ -2073,7 +2133,8 @@ void Renderer::PipelineInit() {
   this->pipelineInitVars.fragment_shader =
       LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 1, 0, 0);
   if (!this->pipelineInitVars.fragment_shader) {
-    PrintError("Couldn't load fragment shader: %s" + std::string(SDL_GetError()));
+    PrintError("Couldn't load fragment shader: %s" +
+               std::string(SDL_GetError()));
   }
 
   SDL_zero(this->pipelineInitVars.pipeline_desc);
@@ -2104,10 +2165,10 @@ void Renderer::PipelineInit() {
       pipelineInitVars.fragment_shader;
   this->pipelineInitVars.pipeline_desc.rasterizer_state.fill_mode =
       SDL_GPU_FILLMODE_FILL;
-  this->pipelineInitVars.pipeline_desc.rasterizer_state.cull_mode =
-      SDL_GPU_CULLMODE_BACK;
-  this->pipelineInitVars.pipeline_desc.rasterizer_state.front_face =
-      SDL_GPU_FRONTFACE_CLOCKWISE;
+  // this->pipelineInitVars.pipeline_desc.rasterizer_state.cull_mode =
+  //     SDL_GPU_CULLMODE_BACK;
+  // this->pipelineInitVars.pipeline_desc.rasterizer_state.front_face =
+  //     SDL_GPU_FRONTFACE_CLOCKWISE;
   VertexGPUInit();
   UIVertexGPUInit();
 
@@ -2170,7 +2231,8 @@ void Renderer::PipelineInit() {
     this->pipelineInitVars.uiPipeline =
         SDL_CreateGPUGraphicsPipeline(this->basicInitVars.GPU, &ui_desc);
     if (!this->pipelineInitVars.uiPipeline) {
-      PrintError("Failed to create UI pipeline: %s" + std::string(SDL_GetError()));
+      PrintError("Failed to create UI pipeline: %s" +
+                 std::string(SDL_GetError()));
     }
   }
 
@@ -2208,7 +2270,8 @@ void Renderer::PipelineInit() {
     if (this->pipelineInitVars.textPipeline) {
       PrintSuccesfull("Text pipeline created successfully");
     } else {
-      PrintWarning("Failed to create text pipeline: %s" + std::string(SDL_GetError()));
+      PrintWarning("Failed to create text pipeline: %s" +
+                   std::string(SDL_GetError()));
     }
 
     SDL_ReleaseGPUShader(this->basicInitVars.GPU, text_vert);
@@ -2259,9 +2322,10 @@ void Renderer::PipelineInit() {
   this->EntityIndexTransferBuffer = SDL_CreateGPUTransferBuffer(
       this->basicInitVars.GPU, &entityIndexTransferInfo);
 }
-Renderer::Renderer(GameManager& manager): gameManager(manager){
+Renderer::Renderer(GameManager &manager) : gameManager(manager) {
 
-  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) PrintError("SDL_Init failed: " + std::string(SDL_GetError()));
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
+    PrintError("SDL_Init failed: " + std::string(SDL_GetError()));
 
   TextureAtlas = nullptr;
   Sampler = nullptr;
@@ -2273,7 +2337,8 @@ Renderer::Renderer(GameManager& manager): gameManager(manager){
   LoadTexture();
   PipelineInit();
 
-  if (!this->pipelineInitVars.graphicsPipeline || !this->pipelineInitVars.transparentPipeline) {
+  if (!this->pipelineInitVars.graphicsPipeline ||
+      !this->pipelineInitVars.transparentPipeline) {
     PrintError("Failed to create pipelines: %s" + std::string(SDL_GetError()));
   }
 

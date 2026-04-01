@@ -566,7 +566,7 @@ void ChunkPrefab::GenerateMesh() {
 
   allFaces.shrink_to_fit();
   // FIX I should be able to eliminate this after generating the chunk mesh
-  // lightData.clear();
+  //lightData.clear();
 }
 Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
   // If within bounds, get from this chunk directly
