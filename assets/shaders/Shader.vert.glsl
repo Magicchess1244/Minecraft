@@ -26,17 +26,17 @@ void main() {
         origin += vec3(0.0, 0.0, 1.0);
         offset = vec3(cx, cy, 0.0);
     } else if (side == 1u) { // Back (-Z)
-        origin += vec3(0.0, 0.0, 0.0);
-        offset = vec3(cx, cy, 0.0);
-    } else if (side == 2u) { // Right (+X)
         origin += vec3(1.0, 0.0, 0.0);
-        offset = vec3(0.0, cy, cx);
+        offset = vec3(-cx, cy, 0.0);
+    } else if (side == 2u) { // Right (+X)
+        origin += vec3(1.0, 0.0, 1.0);
+        offset = vec3(0.0, cy, -cx);
     } else if (side == 3u) { // Left (-X)
         origin += vec3(0.0, 0.0, 0.0);
         offset = vec3(0.0, cy, cx);
     } else if (side == 4u) { // Top (+Y)
-        origin += vec3(0.0, 1.0, 0.0);
-        offset = vec3(cx, 0.0, cy);
+        origin += vec3(0.0, 1.0, 1.0);
+        offset = vec3(cx, 0.0, -cy);
     } else if (side == 5u) { // Bottom (-Y)
         origin += vec3(0.0, 0.0, 0.0);
         offset = vec3(cx, 0.0, cy);
@@ -48,6 +48,6 @@ void main() {
     v_color   = float(side);
     v_blockID = float((a_data >> 3u)  & 0xFFFFu);
     v_light   = float((a_data >> 19u) & 0xFu);
-    v_uv      = vec2(cx, cy);
+    v_uv      = vec2(cx, 1.0 - cy);
     v_pos     = realPos;
 }
