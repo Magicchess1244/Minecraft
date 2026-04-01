@@ -28,12 +28,12 @@ enum class BiomeType {
   Savanna
 };
 
-struct HeightsDif{
+struct HeightsDif {
   float x;
   float y;
 };
 
-struct Biome{
+struct Biome {
   const char *Name;
   BiomeType Type;
   int MaxHumidity;
@@ -51,7 +51,6 @@ struct RaycastResult {
   Uint8 BlockID;
 };
 
-
 float SampleSpline(float value, const HeightsDif *spline, int length);
 int GetBaseHeight(float Continentalness, float Erosion, float Peaks);
 float GetCaveThreshold(float y);
@@ -61,14 +60,18 @@ float GetDiamondChance(float y);
 
 class ChunkManager {
 public:
-  ChunkManager(){};
-  ~ChunkManager(){};
+  ChunkManager() {};
+  ~ChunkManager() {};
 
   int DayLightLevel = 15;
 
   // ── Chunk access / lifecycle ──────────────────────────────────────────────
   ChunkPrefab &get_chunk(Vector3 chunkKey);
   void refresh_ready_neighbours(Vector3 centerKey);
+  size_t GetChunkCount() {
+    std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+    return Chunks.size();
+  }
 
   // ── World queries ─────────────────────────────────────────────────────────
   Uint8 GetBlockID(Vector3 worldPos);
@@ -81,6 +84,7 @@ public:
   void SetBlock(Vector3 worldPos, int blockID, bool updateNeighbours = true);
   bool try_set_block_local(ChunkPrefab &chunk, Vector3 worldPos, int blockID);
   void rebuild_chunk(ChunkPrefab &chunk);
+  void UnloadFarChunks(Vector3 playerPos, float maxDistance);
 
   // ── Modifications map  ────────────────────────────────────────────────────
   // Returns the player-placed block at worldPos, or 255 if unmodified.

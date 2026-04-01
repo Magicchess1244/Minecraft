@@ -569,3 +569,18 @@ void ChunkManager::TickWater() {
 
   activeWater = std::move(nextActive);
 }
+
+void ChunkManager::UnloadFarChunks(Vector3 playerPos, float maxDistance) {
+  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
+  float maxDistSq = maxDistance * maxDistance;
+
+  for (auto it = Chunks.begin(); it != Chunks.end();) {
+    Vector3 chunkPos = {(float)it->second->xPos + ChunkPrefab::xSize / 2.0f, 0,
+                        (float)it->second->zPos + ChunkPrefab::zSize / 2.0f};
+    if ((chunkPos - playerPos).LengthSquared() > maxDistSq) {
+      it = Chunks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}

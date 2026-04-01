@@ -863,6 +863,24 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player,
 
   return visibleChunkList;
 }
+void Renderer::EvictUnusedMeshes(Vector3 playerPos, float maxDistance) {
+  float maxDistSq = maxDistance * maxDistance;
+  size_t startCount = opaqueMeshCache.size();
+  for (auto it = opaqueMeshCache.begin(); it != opaqueMeshCache.end();) {
+    Vector3 chunkWorldPos = {
+        (float)it->first.x * ChunkPrefab::xSize + ChunkPrefab::xSize / 2.0f, 0,
+        (float)it->first.z * ChunkPrefab::zSize + ChunkPrefab::zSize / 2.0f};
+    if ((chunkWorldPos - playerPos).LengthSquared() > maxDistSq) {
+      it = opaqueMeshCache.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (opaqueMeshCache.size() < startCount) {
+    PrintLog("Evicted " + std::to_string(startCount - opaqueMeshCache.size()) +
+             " cached meshes.");
+  }
+}
 void Renderer::DrawTerrain(Player &player) {
   Vector3 PlayerChunk = worldToChunkKey(player.Position);
 
@@ -871,6 +889,12 @@ void Renderer::DrawTerrain(Player &player) {
   if (PlayerChunk == lastPlayerChunk && rotDiff < 0.1f) {
     return;
   }
+
+  // Unload chunks and evict meshes every time the player moves to a new chunk
+  float unloadDistance = (RenderDistance + 12) * ChunkPrefab::xSize;
+  this->gameManager.GetChunkManager().UnloadFarChunks(player.Position,
+                                                      unloadDistance);
+  this->EvictUnusedMeshes(player.Position, unloadDistance);
 
   this->lastPlayerChunk = PlayerChunk;
   this->lastRot = player.Rotation;
@@ -971,9 +995,6 @@ void Renderer::DrawTerrain(Player &player) {
           cache.vertices.push_back(vert);
         }
         chunk->needsMeshUpdate = false;
-        // Optimization: clear opaque faces after caching to save RAM
-        chunk->opaqueFaces.clear();
-        chunk->opaqueFaces.shrink_to_fit();
       }
 
       auto &cache = opaqueMeshCache[chunkPosKey];
@@ -1827,6 +1848,13 @@ void Renderer::GenerateBuffer() {
 
   // Single static index buffer shared by all draw calls: {0,1,2, 1,3,2}
   // gl_VertexID reads these as corner IDs (0-3), gl_InstanceIndex = face index
+  // Clean existing buffer if it exists
+  if (this->QuadIndexBinding.buffer) {
+    SDL_ReleaseGPUBuffer(this->basicInitVars.GPU,
+                         this->QuadIndexBinding.buffer);
+    this->QuadIndexBinding.buffer = nullptr;
+  }
+
   Uint32 quadIndices[6] = {0, 1, 2, 1, 3, 2};
 
   SDL_GPUBufferCreateInfo quadIdxInfo = {};
@@ -1834,6 +1862,12 @@ void Renderer::GenerateBuffer() {
   quadIdxInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
   this->QuadIndexBinding.buffer =
       SDL_CreateGPUBuffer(this->basicInitVars.GPU, &quadIdxInfo);
+
+  if (!this->QuadIndexBinding.buffer) {
+    PrintError("Failed to create quad index buffer: " +
+               std::string(SDL_GetError()));
+    return;
+  }
 
   SDL_GPUTransferBufferCreateInfo transferInfo = {};
   transferInfo.size = sizeof(quadIndices);
@@ -2189,10 +2223,10 @@ void Renderer::PipelineInit() {
       pipelineInitVars.fragment_shader;
   this->pipelineInitVars.pipeline_desc.rasterizer_state.fill_mode =
       SDL_GPU_FILLMODE_FILL;
-  // this->pipelineInitVars.pipeline_desc.rasterizer_state.cull_mode =
-  //     SDL_GPU_CULLMODE_BACK;
-  // this->pipelineInitVars.pipeline_desc.rasterizer_state.front_face =
-  //     SDL_GPU_FRONTFACE_CLOCKWISE;
+  this->pipelineInitVars.pipeline_desc.rasterizer_state.cull_mode =
+      SDL_GPU_CULLMODE_BACK;
+  this->pipelineInitVars.pipeline_desc.rasterizer_state.front_face =
+      SDL_GPU_FRONTFACE_CLOCKWISE;
   VertexGPUInit();
   UIVertexGPUInit();
 
