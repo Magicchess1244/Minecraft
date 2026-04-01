@@ -66,7 +66,6 @@ constexpr HeightsDif DiamondChance[] = {
     {0.0f, 0.010f},
 };
 
-
 constexpr Biome Biomes[11] = {
     {"Ice", BiomeType::Ice, 30, 20, 0, 0, 20, 6},
     {"Tundra", BiomeType::Tundra, 50, 30, 15, 0, 20, 6},
@@ -108,7 +107,6 @@ float GetCaveThreshold(float y) { return SampleSpline(y, CaveThickness, 5); }
 float GetCoalChance(float y) { return SampleSpline(y, CoalChance, 5); }
 float GetIronChance(float y) { return SampleSpline(y, IronChance, 5); }
 float GetDiamondChance(float y) { return SampleSpline(y, DiamondChance, 5); }
-
 
 ChunkPrefab &ChunkManager::get_chunk(Vector3 chunkKey) {
   chunkKey.y = 0;
@@ -288,7 +286,8 @@ void ChunkManager::Place(Vector3 worldPos, int blockID) {
 
 void ChunkManager::SetBlock(Vector3 worldPos, int blockID,
                             bool updateNeighbours) {
-  if (worldPos.y < 0 || worldPos.y >= ChunkPrefab::ySize) return;
+  if (worldPos.y < 0 || worldPos.y >= ChunkPrefab::ySize)
+    return;
 
   Vector3 chunkKey = worldToChunkKey(worldPos);
   ChunkPrefab *ownerChunk = nullptr;
@@ -388,8 +387,9 @@ static bool resolve_world_to_local(
     Vector3 worldPos, const ChunkPrefab **outChunk, int &lx, int &ly, int &lz) {
   Vector3 chunkKey = worldToChunkKey(worldPos);
   auto it = chunks.find(chunkKey);
-  
-  if (it == chunks.end() || !it->second->isGenerated) return false;
+
+  if (it == chunks.end() || !it->second->isGenerated)
+    return false;
 
   const ChunkPrefab &chunk = *it->second;
 
@@ -397,7 +397,8 @@ static bool resolve_world_to_local(
   ly = (int)std::floor(worldPos.y);
   lz = (int)std::floor(worldPos.z) - chunk.zPos;
 
-  if (lx < 0 || lx >= ChunkPrefab::xSize || ly < 0 ||ly >= ChunkPrefab::ySize || lz < 0 || lz >= ChunkPrefab::zSize)
+  if (lx < 0 || lx >= ChunkPrefab::xSize || ly < 0 ||
+      ly >= ChunkPrefab::ySize || lz < 0 || lz >= ChunkPrefab::zSize)
     return false;
 
   *outChunk = &chunk;
@@ -434,7 +435,6 @@ Uint8 ChunkManager::GetLightLevel(Vector3 worldPos) {
   return std::max(chunk->lightData[idx].sunlight,
                   chunk->lightData[idx].blockLight);
 }
-
 
 // ─── Modifications
 // ────────────────────────────────────────────────────────────

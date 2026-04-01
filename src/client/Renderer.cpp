@@ -15,7 +15,7 @@
 #include <sys/types.h>
 #include <vector>
 
-constexpr Uint32 FacesPerChunk = 3500;
+constexpr Uint32 FacesPerChunk = 2200;
 
 Slot g_heldItem = {0, 0};
 std::vector<int> g_draggedSlots;
