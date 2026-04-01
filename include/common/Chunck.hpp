@@ -1,5 +1,4 @@
-#ifndef __CHUNK__
-#define __CHUNK__
+#pragma once
 
 #include "ChunkManager.hpp"
 #include "Common.hpp"
@@ -23,6 +22,7 @@ struct LightData {
   Uint8 blockLight : 4; // 0-15
 };
 class ChunkManager;
+class Biome;
 
 class ChunkPrefab {
 public:
@@ -44,7 +44,7 @@ public:
   std::atomic<bool> isGenerated{false};
   std::atomic<bool> isDirty{false};
   std::atomic<bool> needsMeshUpdate{true};
-  std::atomic<bool> isProcessing{false}; // guard against concurrent mesh work
+  std::atomic<bool> isProcessing{false};
   inline bool isValidPos(int x, int y, int z) const {
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
@@ -57,36 +57,22 @@ public:
   void PropagateLighting();
 
   ChunkManager *manager = nullptr;
+  ChunkPrefab(){}
+  ~ChunkPrefab(){}
 
 private:
-  void GenerateVegetation(const std::vector<int> &heightCache,
-                          const std::vector<Biome> &biomeMap,
-                          std::vector<bool> &solidCache);
+  void GenerateVegetation(const std::vector<int> &heightCache, const std::vector<Biome> &biomeMap, std::vector<bool> &solidCache);
 
-  // Tree models
-  void PlaceStandardTree(int x, int y, int z, int trunkHeight,
-                         std::vector<bool> &solidCache);
-  void PlacePineTree(int x, int y, int z, int trunkHeight,
-                     std::vector<bool> &solidCache);
-  void PlaceLargeTree(int x, int y, int z, int trunkHeight,
-                      std::vector<bool> &solidCache);
-  void PlaceSavannaTree(int x, int y, int z, int trunkHeight,
-                        std::vector<bool> &solidCache);
-  void PlaceJungleTree(int x, int y, int z, int trunkHeight,
-                       std::vector<bool> &solidCache);
+  void PlaceStandardTree(int x, int y, int z, int trunkHeight, std::vector<bool> &solidCache);
+  void PlacePineTree(int x, int y, int z, int trunkHeight, std::vector<bool> &solidCache);
+  void PlaceLargeTree(int x, int y, int z, int trunkHeight, std::vector<bool> &solidCache);
+  void PlaceSavannaTree(int x, int y, int z, int trunkHeight, std::vector<bool> &solidCache);
+  void PlaceJungleTree(int x, int y, int z, int trunkHeight, std::vector<bool> &solidCache);
 
   Uint8 GetCombinedLight(int x, int y, int z);
 
-  // Generation Helpers
-  static void PrecomputeInterpolation(std::vector<float> &caveTr,
-                                      std::vector<float> &coalCh,
-                                      std::vector<float> &ironCh,
-                                      std::vector<float> &diamCh);
-  void GenerateHeightAndBiomes(std::vector<int> &heightCache,
-                               std::vector<Biome> &biomeCache);
-  void PopulateBlocks(const std::vector<int> &heightCache,
-                      const std::vector<Biome> &biomeCache,
-                      std::vector<bool> &solidCache);
+  static void PrecomputeInterpolation(std::vector<float> &caveTr, std::vector<float> &coalCh, std::vector<float> &ironCh, std::vector<float> &diamCh);
+  void GenerateHeightAndBiomes(std::vector<int> &heightCache, std::vector<Biome> &biomeCache);
+  void PopulateBlocks(const std::vector<int> &heightCache, const std::vector<Biome> &biomeCache, std::vector<bool> &solidCache);
+  void GenerateCaves(std::vector<bool>& caveMap, std::vector<float>& caveTrCache);
 };
-
-#endif

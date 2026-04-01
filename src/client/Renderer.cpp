@@ -15,7 +15,7 @@
 #include <sys/types.h>
 #include <vector>
 
-constexpr Uint32 FacesPerChunk = 2500;
+constexpr Uint32 FacesPerChunk = 3500;
 
 Slot g_heldItem = {0, 0};
 std::vector<int> g_draggedSlots;
@@ -24,7 +24,7 @@ bool g_isLeftClickDragging = false;
 bool g_justPickedUp = false;
 int g_initialClickSlot = -1;
 
-const float FOV = 90.0f;
+const float FOV = 80.0f;
 const float Znear = 0.1f;
 constexpr float Zfar = 500.0f;
 constexpr int RenderDistance = 9;

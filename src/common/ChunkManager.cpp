@@ -3,9 +3,6 @@
 
 #include <set>
 
-// ─── Terrain spline tables
-// ────────────────────────────────────────────────────
-
 constexpr HeightsDif ContinentalnessHeight[] = {
     {0.8f, 130},  {0.8f, 180},
     {0.8f, 160},  {0.5f, 130},
@@ -69,8 +66,6 @@ constexpr HeightsDif DiamondChance[] = {
     {0.0f, 0.010f},
 };
 
-// ─── Biome table
-// ──────────────────────────────────────────────────────────────
 
 constexpr Biome Biomes[11] = {
     {"Ice", BiomeType::Ice, 30, 20, 0, 0, 20, 6},
@@ -85,9 +80,6 @@ constexpr Biome Biomes[11] = {
     {"Desert", BiomeType::Desert, 45, 100, 0, 70, 20, 4},
     {"Savanna", BiomeType::Savanna, 70, 95, 30, 60, 20, 5},
 };
-
-// ─── Spline helper functions
-// ──────────────────────────────────────────────────
 
 float SampleSpline(float value, const HeightsDif *spline, int length) {
   if (value >= spline[0].x)
@@ -117,25 +109,7 @@ float GetCoalChance(float y) { return SampleSpline(y, CoalChance, 5); }
 float GetIronChance(float y) { return SampleSpline(y, IronChance, 5); }
 float GetDiamondChance(float y) { return SampleSpline(y, DiamondChance, 5); }
 
-// ─── Thread pool (member of ChunkManager)
-// ──────────────────────────────────────────────
-// Defined in ChunkManager.hpp as ChunkManager::ChunkThreadPool.
-// The pool member is declared last in ChunkManager so it is destroyed first,
-// ensuring all worker threads join before Chunks (and ChunkPrefab data) is
-// freed.
 
-// ─── ChunkManager constructor / destructor
-// ────────────────────────────────────
-
-ChunkManager::ChunkManager() {}
-ChunkManager::~ChunkManager() {}
-
-// ─── Chunk access
-// ─────────────────────────────────────────────────────────────
-
-// Returns (creating if needed) the chunk for the given chunk-grid key.
-// If the chunk is newly created, generation is queued on the thread pool.
-// If the chunk is already generated and dirty, a neighbour-refresh is queued.
 ChunkPrefab &ChunkManager::get_chunk(Vector3 chunkKey) {
   chunkKey.y = 0;
 
@@ -143,7 +117,6 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 chunkKey) {
 
   auto it = Chunks.find(chunkKey);
   if (it == Chunks.end()) {
-    // Create a new, uninitialised chunk and queue generation.
     auto newChunk = std::make_unique<ChunkPrefab>();
     newChunk->xPos = (int)chunkKey.x * ChunkPrefab::xSize;
     newChunk->zPos = (int)chunkKey.z * ChunkPrefab::zSize;
@@ -160,8 +133,6 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 chunkKey) {
 
   ChunkPrefab &chunk = *it->second;
 
-  // Once a chunk finishes generation it sets isDirty = true exactly once,
-  // so we use that as the trigger to update its rendered neighbours.
   if (chunk.isGenerated && chunk.isDirty) {
     chunk.isDirty = false;
     pool.submit([this, chunkKey]() { refresh_ready_neighbours(chunkKey); });
@@ -170,8 +141,6 @@ ChunkPrefab &ChunkManager::get_chunk(Vector3 chunkKey) {
   return chunk;
 }
 
-// Regenerates the mesh for every already-generated, non-dirty neighbour of
-// centerKey (called from the thread pool after a chunk finishes generation).
 void ChunkManager::refresh_ready_neighbours(Vector3 centerKey) {
   const Vector3 offsets[] = {
       {centerKey.x + 1, 0, centerKey.z},
@@ -194,8 +163,6 @@ void ChunkManager::refresh_ready_neighbours(Vector3 centerKey) {
     bool expected = false;
     if (!neighbour->isProcessing.compare_exchange_strong(expected, true))
       continue; // already being processed
-
-    neighbour->PropagateLighting();
     neighbour->GenerateMesh();
     neighbour->needsMeshUpdate = true;
     neighbour->isProcessing = false;
@@ -419,15 +386,10 @@ void ChunkManager::rebuild_chunk(ChunkPrefab &chunk) {
 static bool resolve_world_to_local(
     const std::unordered_map<Vector3, std::unique_ptr<ChunkPrefab>> &chunks,
     Vector3 worldPos, const ChunkPrefab **outChunk, int &lx, int &ly, int &lz) {
-  Vector3 chunkKey = {
-      std::floor(worldPos.x / (float)ChunkPrefab::xSize),
-      0.0f,
-      std::floor(worldPos.z / (float)ChunkPrefab::zSize),
-  };
-
+  Vector3 chunkKey = worldToChunkKey(worldPos);
   auto it = chunks.find(chunkKey);
-  if (it == chunks.end() || !it->second->isGenerated)
-    return false;
+  
+  if (it == chunks.end() || !it->second->isGenerated) return false;
 
   const ChunkPrefab &chunk = *it->second;
 
@@ -435,8 +397,7 @@ static bool resolve_world_to_local(
   ly = (int)std::floor(worldPos.y);
   lz = (int)std::floor(worldPos.z) - chunk.zPos;
 
-  if (lx < 0 || lx >= ChunkPrefab::xSize || ly < 0 ||
-      ly >= ChunkPrefab::ySize || lz < 0 || lz >= ChunkPrefab::zSize)
+  if (lx < 0 || lx >= ChunkPrefab::xSize || ly < 0 ||ly >= ChunkPrefab::ySize || lz < 0 || lz >= ChunkPrefab::zSize)
     return false;
 
   *outChunk = &chunk;
@@ -449,17 +410,11 @@ Uint8 ChunkManager::GetBlockID(Vector3 worldPos) {
   const ChunkPrefab *chunk;
   int lx, ly, lz;
   if (!resolve_world_to_local(Chunks, worldPos, &chunk, lx, ly, lz)) {
-    // Unloaded chunk: pretend it's water below sea level, air above.
     return (worldPos.y < ChunkPrefab::SeaLevel) ? 5 : 0;
   }
 
-  if (chunk->blocks.empty())
-    return 0;
-
   int idx = lx + ly * ChunkPrefab::xSize +
             lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-  if (idx < 0 || idx >= (int)chunk->blocks.size())
-    return 0;
 
   return chunk->blocks[idx];
 }
@@ -475,46 +430,11 @@ Uint8 ChunkManager::GetLightLevel(Vector3 worldPos) {
 
   int idx = lx + ly * ChunkPrefab::xSize +
             lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-  if (idx >= (int)chunk->lightData.size())
-    return 0;
 
   return std::max(chunk->lightData[idx].sunlight,
                   chunk->lightData[idx].blockLight);
 }
 
-Uint8 ChunkManager::GetSunlightLevel(Vector3 worldPos) {
-  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
-
-  const ChunkPrefab *chunk;
-  int lx, ly, lz;
-  if (!resolve_world_to_local(Chunks, worldPos, &chunk, lx, ly, lz) ||
-      chunk->lightData.empty())
-    return 0;
-
-  int idx = lx + ly * ChunkPrefab::xSize +
-            lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-  if (idx >= (int)chunk->lightData.size())
-    return 0;
-
-  return chunk->lightData[idx].sunlight;
-}
-
-Uint8 ChunkManager::GetBlockLightLevel(Vector3 worldPos) {
-  std::lock_guard<std::recursive_mutex> lock(chunks_mutex);
-
-  const ChunkPrefab *chunk;
-  int lx, ly, lz;
-  if (!resolve_world_to_local(Chunks, worldPos, &chunk, lx, ly, lz) ||
-      chunk->lightData.empty())
-    return 0;
-
-  int idx = lx + ly * ChunkPrefab::xSize +
-            lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-  if (idx >= (int)chunk->lightData.size())
-    return 0;
-
-  return chunk->lightData[idx].blockLight;
-}
 
 // ─── Modifications
 // ────────────────────────────────────────────────────────────

@@ -33,8 +33,7 @@ SRC_COMMON := src/common
 SRC_CLIENT := src/client
 SRC_SERVER := src/server
 # Common source files
-COMMON_SRCS := $(SRC_COMMON)/Chunk.cpp $(SRC_COMMON)/ChunkManager.cpp \
-$(SRC_COMMON)/PerlinNoise.cpp
+COMMON_SRCS := $(SRC_COMMON)/Chunk.cpp $(SRC_COMMON)/ChunkManager.cpp $(SRC_COMMON)/PerlinNoise.cpp
 COMMON_OBJS := $(COMMON_SRCS:.cpp=.o)
 COMMON_OBJS_DEBUG := $(patsubst %.cpp,%.debug.o,$(COMMON_SRCS))
 # Client source files

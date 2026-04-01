@@ -14,22 +14,6 @@
 
 class ChunkPrefab;
 
-// ─── Spline helpers ──────────────────────────────────────────────────────────
-
-typedef struct {
-  float x;
-  float y;
-} HeightsDif;
-
-float SampleSpline(float value, const HeightsDif *spline, int length);
-int GetBaseHeight(float Continentalness, float Erosion, float Peaks);
-float GetCaveThreshold(float y);
-float GetCoalChance(float y);
-float GetIronChance(float y);
-float GetDiamondChance(float y);
-
-// ─── Biome ───────────────────────────────────────────────────────────────────
-
 enum class BiomeType {
   Ice,
   Tundra,
@@ -44,7 +28,12 @@ enum class BiomeType {
   Savanna
 };
 
-typedef struct {
+struct HeightsDif{
+  float x;
+  float y;
+};
+
+struct Biome{
   const char *Name;
   BiomeType Type;
   int MaxHumidity;
@@ -53,9 +42,7 @@ typedef struct {
   int MinTemperature;
   int BaseHeight;
   int ChangeAmount;
-} Biome;
-
-// ─── Raycast ─────────────────────────────────────────────────────────────────
+};
 
 struct RaycastResult {
   bool hit;
@@ -64,12 +51,18 @@ struct RaycastResult {
   Uint8 BlockID;
 };
 
-// ─── ChunkManager ────────────────────────────────────────────────────────────
+
+float SampleSpline(float value, const HeightsDif *spline, int length);
+int GetBaseHeight(float Continentalness, float Erosion, float Peaks);
+float GetCaveThreshold(float y);
+float GetCoalChance(float y);
+float GetIronChance(float y);
+float GetDiamondChance(float y);
 
 class ChunkManager {
 public:
-  ChunkManager();
-  ~ChunkManager();
+  ChunkManager(){};
+  ~ChunkManager(){};
 
   int DayLightLevel = 15;
 
@@ -80,8 +73,6 @@ public:
   // ── World queries ─────────────────────────────────────────────────────────
   Uint8 GetBlockID(Vector3 worldPos);
   Uint8 GetLightLevel(Vector3 worldPos);
-  Uint8 GetSunlightLevel(Vector3 worldPos);
-  Uint8 GetBlockLightLevel(Vector3 worldPos);
   bool IsSolid(Vector3 worldPos);
   RaycastResult RayCast(Vector3 origin, Vector3 direction, float maxDistance);
 

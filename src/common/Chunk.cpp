@@ -19,7 +19,7 @@ const Vector3 Direction[6] = {
 };
 
 int ChunkPrefab::GetHeight(Vector2 Pos) {
-  float cont = PerlinNoise2D(Pos, 3, 0.005); // Lowered period
+  float cont = PerlinNoise2D(Pos, 3, 0.005);
   float eros = PerlinNoise2D(Pos, 3, 0.015f);
   float peak = PerlinNoise2D(Pos, 4, 0.02f);
 
@@ -42,7 +42,7 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
   }
 
   // If outside this chunk, use manager's global check
-  return manager->IsSolid({(float)worldX, (float)worldY, (float)worldZ});
+  return true;//manager->IsSolid({(float)worldX, (float)worldY, (float)worldZ});
 }
 
 Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
@@ -83,22 +83,15 @@ void ChunkPrefab::GenerateHeightAndBiomes(std::vector<int> &heightCache,
       int worldZ = zPos + z;
       Vector2 worldPos = {(float)worldX, (float)worldZ};
 
-      float cont = PerlinNoise2D(worldPos, 3, 0.005f);
-      float eros = PerlinNoise2D(worldPos, 3, 0.015f);
-      float peak = PerlinNoise2D(worldPos, 4, 0.02f);
-      int terrainHeight = GetBaseHeight(cont, eros, peak);
+      int terrainHeight = GetHeight(worldPos);
 
       heightCache[(x + 1) + (z + 1) * (xSize + 2)] = terrainHeight;
 
       if (x >= 0 && x < (int)xSize && z >= 0 && z < (int)zSize) {
-        float hum =
-            PerlinNoise2D({worldPos.x * 0.02f, worldPos.y * 0.02f}, 2, 0.5f);
-        float temp = PerlinNoise2D(
-            {worldPos.x * 0.02f + 500.0f, worldPos.y * 0.02f + 500.0f}, 2,
-            0.5f);
+        float hum = PerlinNoise2D({worldPos.x * 0.02f, worldPos.y * 0.02f}, 2, 0.5f);
+        float temp = PerlinNoise2D( {worldPos.x * 0.02f + 500.0f, worldPos.y * 0.02f + 500.0f}, 2, 0.5f);
 
-        float heightFactor =
-            (float)(terrainHeight - SeaLevel) / (float)(ySize - SeaLevel);
+        float heightFactor = (float)(terrainHeight - SeaLevel) / (float)(ySize - SeaLevel);
         if (heightFactor > 0.0f) {
           temp = SDL_clamp(temp - heightFactor, -1.0f, 1.0f);
         }
@@ -106,28 +99,13 @@ void ChunkPrefab::GenerateHeightAndBiomes(std::vector<int> &heightCache,
         hum = (hum > 0) ? pow(hum, 0.7f) : -pow(-hum, 0.7f);
         temp = (temp > 0) ? pow(temp, 0.7f) : -pow(-temp, 0.7f);
 
-        biomeCache[x + z * xSize] =
-            manager->GetBiome((hum + 1.0f) * 50.0f, (temp + 1.0f) * 50.0f);
+        biomeCache[x + z * xSize] = manager->GetBiome((hum + 1.0f) * 50.0f, (temp + 1.0f) * 50.0f);
       }
     }
   }
 }
-
-void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
-                                 const std::vector<Biome> &biomeCache,
-                                 std::vector<bool> &solidCache) {
-  std::vector<float> caveTrCache(ySize), coalChCache(ySize), ironChCache(ySize),
-      diamChCache(ySize);
-  PrecomputeInterpolation(caveTrCache, coalChCache, ironChCache, diamChCache);
-
-  std::unordered_map<int, Uint8> localMods;
-  manager->GetModificationsForChunk(xPos, zPos, localMods);
-
-  // Precompute cave noise for the whole chunk in one pass
-  // Stored as caveMap[x + y*xSize + z*xSize*ySize]
-  // Only computed for cave Y range to save time
-  std::vector<bool> caveMap(xSize * ySize * zSize, false);
-  for (int y = CaveMinY; y <= CaveMaxY; y++) {
+void ChunkPrefab::GenerateCaves(std::vector<bool>& caveMap, std::vector<float>& caveTrCache){
+    for (int y = CaveMinY; y <= CaveMaxY; y++) {
     for (int z = 0; z < (int)zSize; z++) {
       for (int x = 0; x < (int)xSize; x++) {
         float fy = (float)y;
@@ -141,6 +119,17 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
       }
     }
   }
+}
+void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache, const std::vector<Biome> &biomeCache, std::vector<bool> &solidCache) {
+  std::vector<float> caveTrCache(ySize), coalChCache(ySize), ironChCache(ySize), diamChCache(ySize);
+  PrecomputeInterpolation(caveTrCache, coalChCache, ironChCache, diamChCache);
+
+  std::unordered_map<int, Uint8> localMods;
+  manager->GetModificationsForChunk(xPos, zPos, localMods);
+
+  std::vector<bool> caveMap(xSize * ySize * zSize, false);
+  
+  GenerateCaves(caveMap, caveTrCache);
 
   const int beachLevel = SeaLevel + 2;
 
@@ -226,15 +215,11 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
 }
 
 void ChunkPrefab::GenerateChunk() {
-  // Guard: skip if already being processed (shouldn't happen, but be safe)
-  bool expected = false;
-  if (!isProcessing.compare_exchange_strong(expected, true))
-    return;
+  if (isProcessing) return;
 
   size_t totalBlocksSize = (size_t)xSize * ySize * zSize;
-  if (this->blocks.size() != totalBlocksSize) {
-    this->blocks.assign(totalBlocksSize, 0);
-  }
+
+  if(this->blocks.empty()) blocks.assign(totalBlocksSize, 0);
 
   std::vector<int> heightCache((xSize + 2) * (zSize + 2));
   std::vector<Biome> biomeCache(xSize * zSize);
@@ -250,17 +235,17 @@ void ChunkPrefab::GenerateChunk() {
 
   needsMeshUpdate = true;
   isGenerated = true;
-  allFaces.shrink_to_fit();
   isDirty = true;
   isProcessing = false;
+  allFaces.shrink_to_fit();
 }
 
 void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
                                      const std::vector<Biome> &biomeMap,
                                      std::vector<bool> &solidCache) {
   const int heightCacheWidth = xSize + 2;
-  for (int x = 2; x < xSize - 2; x++) {
-    for (int z = 2; z < zSize - 2; z++) {
+  for (int x = 2; x < xSize - 2; x += 2) {
+    for (int z = 2; z < zSize - 2; z += 2) {
       int heightIdx = (x + 1) + (z + 1) * heightCacheWidth;
       int height = heightCache[heightIdx];
 
@@ -518,73 +503,47 @@ void ChunkPrefab::PlaceJungleTree(int x, int y, int z, int trunkHeight,
 
 void ChunkPrefab::GenerateMesh() {
   this->allFaces.clear();
-  int estimatedFaces = xSize * zSize * 6;
+  int estimatedFaces = 5000;
   this->allFaces.reserve(estimatedFaces);
 
-  // Precompute per-column max solid Y to skip empty air above terrain
-  std::vector<int> colTopY(xSize * zSize, -1);
-  for (int z = 0; z < (int)zSize; z++) {
-    for (int x = 0; x < (int)xSize; x++) {
-      for (int y = (int)ySize - 1; y >= 0; y--) {
-        if (blocks[x + y * xSize + z * xSize * ySize] != 0) {
-          colTopY[x + z * xSize] = y;
-          break;
-        }
-      }
-    }
-  }
-
-  // Global max Y across all columns for the Y loop bound
-  int globalTopY = 0;
-  for (int v : colTopY)
-    if (v > globalTopY)
-      globalTopY = v;
-
-  for (int y = 0; y <= globalTopY; y++) {
-    for (int z = 0; z < (int)ChunkPrefab::zSize; z++) {
-      for (int x = 0; x < (int)ChunkPrefab::xSize; x++) {
-        int idx = x + y * ChunkPrefab::xSize +
-                  z * ChunkPrefab::xSize * ChunkPrefab::ySize;
-        Uint8 bid = blocks[idx];
-        if (bid == 0)
-          continue;
+  for (int z = 0; z < ChunkPrefab::zSize; z++) {
+    for (int x = 0; x < ChunkPrefab::xSize; x++) {
+      for (int y = 0; y <= ChunkPrefab::ySize; y++) {
+        int idx = x + y * ChunkPrefab::xSize + z * ChunkPrefab::xSize * ChunkPrefab::ySize;
+        Uint8 blockID = blocks[idx];
+        if (blockID == (int)BlockIDDef::Air) continue;
 
         for (int side = 0; side < 6; side++) {
+          if (y == 0 && side != 4) continue;
           int nx = x + (int)Direction[side].x;
           int ny = y + (int)Direction[side].y;
           int nz = z + (int)Direction[side].z;
 
           Uint8 nBid = 0;
 
-          if (nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 &&
-              ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize) {
-            int nIdx = nx + ny * ChunkPrefab::xSize +
-                       nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
+          if (nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 && ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize) {
+            int nIdx = nx + ny * ChunkPrefab::xSize + nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
             nBid = this->blocks[nIdx];
           } else {
-            nBid = manager->GetBlockID(
-                {(float)(nx + xPos), (float)ny, (float)(nz + zPos)});
+            nBid = manager->GetBlockID({(float)(nx + xPos), (float)ny, (float)(nz + zPos)});
           }
 
           bool visible = false;
-          if (BlockDef[bid].isTransparent()) {
-            visible = (nBid == 0);
-          } else {
-            visible = (nBid == 0 || BlockDef[nBid].isTransparent());
-          }
+          if (BlockDef[blockID].isTransparent()) visible = (nBid == (int)BlockIDDef::Air);
+          else visible = BlockDef[nBid].isTransparent();
 
           if (visible) {
             Uint8 light = GetCombinedLight(nx, ny, nz);
-            this->allFaces.push_back(DrawnFace{{(float)x, (float)y, (float)z},
-                                               (Uint8)side,
-                                               bid,
-                                               light,
-                                               BlockDef[bid].isWater()});
+            this->allFaces.push_back(DrawnFace{{(float)x, (float)y, (float)z}, (Uint8)side, blockID, light, BlockDef[blockID].isWater()});
           }
         }
       }
     }
   }
+
+  allFaces.shrink_to_fit();
+  // FIX I should be able to eliminate this after generating the chunk mesh
+  //lightData.clear();
 }
 Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
   // If within bounds, get from this chunk directly
@@ -609,101 +568,79 @@ void ChunkPrefab::GenerateLighting() {
     for (int z = 0; z < ChunkPrefab::zSize; z++) {
       Uint8 sun = manager->DayLightLevel;
       for (int y = ChunkPrefab::ySize - 1; y >= 0; y--) {
-        int idx = x + y * ChunkPrefab::xSize +
-                  z * ChunkPrefab::xSize * ChunkPrefab::ySize;
-        Uint8 bid = blocks[idx];
+        int idx = x + y * ChunkPrefab::xSize + z * ChunkPrefab::xSize * ChunkPrefab::ySize;
+        Uint8 blockID = blocks[idx];
 
-        // Seed Sunlight
-        if (bid == 0)
+        if (blockID == (int)BlockIDDef::Air)
           lightData[idx].sunlight = sun;
-        else if (bid == 5) {
+        else if (blockID  == (int)BlockIDDef::Water) {
           sun = sun > 1 ? sun - 0.5f : 0;
           lightData[idx].sunlight = sun;
         } else {
           sun = 0;
-          lightData[idx].sunlight = 0;
         }
 
-        // Seed Block Light (Luminescence)
-        if (bid < BlockNum) {
-          lightData[idx].blockLight = BlockDef[bid].Luminance;
-        }
+        lightData[idx].blockLight = BlockDef[blockID].Luminance;
       }
     }
   }
 }
 void ChunkPrefab::PropagateLighting() {
-  // Use flat int indices instead of Vector3 — 4 bytes vs 12 per queue item,
-  // dramatically improves cache behaviour on BFS over 49k cells.
   const int C = xSize;
   const int CS = xSize * ySize;
   std::vector<int> sunQueue;
   std::vector<int> blockQueue;
 
-  const int dirIdx[6] = {1,  -1,   // x+1, x-1
+  const int dirIdx[6] = {1,  -1,
                          C,  -C,   // y+1, y-1 (step of xSize)
                          CS, -CS}; // z+1, z-1 (step of xSize*ySize)
 
   sunQueue.reserve(4096);
   blockQueue.reserve(512);
 
-  // 1. Seed with existing light
-  int total = xSize * ySize * zSize;
-  for (int i = 0; i < total; i++) {
+  for (int i = 0; i < lightData.size(); i++) {
     if (lightData[i].sunlight > 0)
       sunQueue.push_back(i);
     if (lightData[i].blockLight > 0)
       blockQueue.push_back(i);
   }
 
-  // 2. Pull light from neighbors on chunk borders
-  for (int x = 0; x < ChunkPrefab::xSize; x++) {
+for (int x = 0; x < ChunkPrefab::xSize; x++) {
     for (int y = 0; y < ChunkPrefab::ySize; y++) {
-      for (int z = 0; z < ChunkPrefab::zSize; z++) {
-        if (x > 0 && x < ChunkPrefab::xSize - 1 && z > 0 &&
-            z < ChunkPrefab::zSize - 1)
-          continue;
+        for (int z = 0; z < ChunkPrefab::zSize; z++) {
+            for (int i = 0; i < 4; i++) {
+                int nx = x + (int)Direction[i].x;
+                int nz = z + (int)Direction[i].z;
 
-        for (int i = 0; i < 4; i++) {
-          int nx = (int)x + (int)Direction[i].x;
-          int nz = (int)z + (int)Direction[i].z;
+                // Only process neighbors that are OUTSIDE this chunk
+                if (nx >= 0 && nx < ChunkPrefab::xSize &&
+                    nz >= 0 && nz < ChunkPrefab::zSize) continue;
 
-          if (nx < 0 || nx >= ChunkPrefab::xSize || nz < 0 ||
-              nz >= ChunkPrefab::zSize) {
-            Vector3 worldPos = {(float)(nx + xPos), (float)y,
-                                (float)(nz + zPos)};
+                int idx = x + y * ChunkPrefab::xSize + z * ChunkPrefab::xSize * ChunkPrefab::ySize;
 
-            int idx = x + y * ChunkPrefab::xSize +
-                      z * ChunkPrefab::xSize * ChunkPrefab::ySize;
-            if (blocks[idx] != 0 && blocks[idx] != 5 && blocks[idx] != 9)
-              continue;
+                if (blocks[idx] != (int)BlockIDDef::Air &&
+                    blocks[idx] != (int)BlockIDDef::Water) continue;
 
-            Uint8 nSun = manager->GetSunlightLevel(worldPos);
-            if (nSun > 1) {
-              Uint8 newSun = nSun - 1;
-              if (BlockDef[blocks[idx]].isWater())
-                newSun = (newSun > 2) ? newSun - 1 : 0;
-              if (newSun > lightData[idx].sunlight) {
-                lightData[idx].sunlight = newSun;
-                sunQueue.push_back(idx);
-              }
+                Vector3 worldPos = {
+                    (float)(x + xPos) + Direction[i].x,  // world pos of the NEIGHBOR
+                    (float)y,
+                    (float)(z + zPos) + Direction[i].z
+                };
+
+                Uint8 nSun = manager->GetLightLevel(worldPos);
+                if (nSun > 1) {
+                    Uint8 newSun = nSun - 1;
+                    if (BlockDef[blocks[idx]].isWater())
+                        newSun = (newSun > 2) ? newSun - 1 : 0;
+                    if (newSun > lightData[idx].sunlight) {
+                        lightData[idx].sunlight = newSun;
+                        sunQueue.push_back(idx);
+                    }
+                }
             }
-
-            Uint8 nBlock = manager->GetBlockLightLevel(worldPos);
-            if (nBlock > 1) {
-              Uint8 newBlock = nBlock - 1;
-              if (BlockDef[blocks[idx]].isWater())
-                newBlock = (newBlock > 2) ? newBlock - 1 : 0;
-              if (newBlock > lightData[idx].blockLight) {
-                lightData[idx].blockLight = newBlock;
-                blockQueue.push_back(idx);
-              }
-            }
-          }
         }
-      }
     }
-  }
+}
 
   // 3. BFS propagation using flat indices
   auto propagate = [&](std::vector<int> &q, bool isSunlight) {
@@ -715,42 +652,27 @@ void ChunkPrefab::PropagateLighting() {
       int y = (idx / xSize) % ySize;
       int z = idx / (xSize * ySize);
 
-      Uint8 currentLight =
-          isSunlight ? lightData[idx].sunlight : lightData[idx].blockLight;
+      Uint8 currentLight = isSunlight ? lightData[idx].sunlight : lightData[idx].blockLight;
 
-      if (currentLight <= 1)
-        continue;
+      if (currentLight <= 1) continue;
 
       for (int i = 0; i < 6; i++) {
         int nx = x + (int)Direction[i].x;
         int ny = y + (int)Direction[i].y;
         int nz = z + (int)Direction[i].z;
 
-        if (nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 &&
-            ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize) {
-          int nIdx = nx + ny * ChunkPrefab::xSize +
-                     nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-          Uint8 neighborBlock = blocks[nIdx];
+        if (!(nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 && ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize)) continue;
+        int nIdx = nx + ny * ChunkPrefab::xSize + nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
+        Uint8 neighborBlock = blocks[nIdx];
 
-          if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent() &&
-              BlockDef[neighborBlock].Luminance == 0)
-            continue;
+        if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent() && BlockDef[neighborBlock].Luminance == 0) continue;
 
-          Uint8 newLight = currentLight - 1;
-          if (BlockDef[neighborBlock].isWater())
-            newLight = (newLight > 2) ? newLight - 1 : 0;
+        Uint8 newLight = currentLight - 1;
+        if (BlockDef[neighborBlock].isWater()) newLight = (newLight > 2) ? newLight - 1 : 0;
 
-          if (isSunlight) {
-            if (newLight > lightData[nIdx].sunlight) {
-              lightData[nIdx].sunlight = newLight;
-              q.push_back(nIdx);
-            }
-          } else {
-            if (newLight > lightData[nIdx].blockLight) {
-              lightData[nIdx].blockLight = newLight;
-              q.push_back(nIdx);
-            }
-          }
+        if (newLight > GetCombinedLight(nx,ny,nz)) {
+          lightData[nIdx].sunlight = newLight;
+          q.push_back(nIdx);
         }
       }
     }
