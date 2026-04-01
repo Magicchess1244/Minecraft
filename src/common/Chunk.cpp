@@ -248,7 +248,8 @@ void ChunkPrefab::GenerateChunk() {
   isGenerated = true;
   isDirty = true;
   isProcessing = false;
-  allFaces.shrink_to_fit();
+  opaqueFaces.shrink_to_fit();
+  transparentFaces.shrink_to_fit();
 }
 
 void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
@@ -513,9 +514,11 @@ void ChunkPrefab::PlaceJungleTree(int x, int y, int z, int trunkHeight,
 }
 
 void ChunkPrefab::GenerateMesh() {
-  this->allFaces.clear();
+  this->opaqueFaces.clear();
+  this->transparentFaces.clear();
   int estimatedFaces = 5000;
-  this->allFaces.reserve(estimatedFaces);
+  this->opaqueFaces.reserve(estimatedFaces);
+  this->transparentFaces.reserve(500);
 
   for (int z = 0; z < ChunkPrefab::zSize; z++) {
     for (int x = 0; x < ChunkPrefab::xSize; x++) {
@@ -553,20 +556,26 @@ void ChunkPrefab::GenerateMesh() {
 
           if (visible) {
             Uint8 light = GetCombinedLight(nx, ny, nz);
-            this->allFaces.push_back(DrawnFace{{(float)x, (float)y, (float)z},
-                                               (Uint8)side,
-                                               blockID,
-                                               light,
-                                               BlockDef[blockID].isWater()});
+            // Light is 0-15, user requested 3 bits (0-7), so we divide by 2
+            Uint8 packedLight = (light >> 1) & 0x7;
+            Uint32 packed = DrawnFace::Pack((Uint16)idx, (Uint8)side,
+                                            packedLight, (Uint16)blockID);
+
+            if (BlockDef[blockID].isTransparent()) {
+              this->transparentFaces.push_back(packed);
+            } else {
+              this->opaqueFaces.push_back(packed);
+            }
           }
         }
       }
     }
   }
 
-  allFaces.shrink_to_fit();
+  opaqueFaces.shrink_to_fit();
+  transparentFaces.shrink_to_fit();
   // FIX I should be able to eliminate this after generating the chunk mesh
-  //lightData.clear();
+  // lightData.clear();
 }
 Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
   // If within bounds, get from this chunk directly

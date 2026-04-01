@@ -941,29 +941,39 @@ void Renderer::DrawTerrain(Player &player) {
         auto &cache = opaqueMeshCache[chunkPosKey];
         cache.vertices.clear();
         cache.indices.clear();
-        cache.vertices.reserve(chunk->allFaces.size() * 4);
-        cache.indices.reserve(chunk->allFaces.size() * 6);
+        cache.vertices.reserve(chunk->opaqueFaces.size());
+        cache.indices.reserve(chunk->opaqueFaces.size());
 
         Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
 
-        for (const auto &face : chunk->allFaces) {
-          if (face.Transparent)
-            continue;
+        for (uint32_t packed : chunk->opaqueFaces) {
+          uint16_t posIndex;
+          uint8_t side, light;
+          uint16_t blockID;
+          DrawnFace::Unpack(packed, posIndex, side, light, blockID);
 
-          Vector3 worldPos = face.blockPos + chunkWorldPos;
+          int lx = posIndex % ChunkPrefab::xSize;
+          int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
+          int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
+
+          Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
+          Vector3 worldPos = blockPos + chunkWorldPos;
 
           DVertex vert;
-          vert.Position = face.blockPos + chunkWorldPos;
+          vert.Position = worldPos;
 
-          // Pack Data: side(3), tileIndex(ChunkPrefab::xSize), light(4)
-          Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
-          Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
-                          ((face.LightLevel & 0xF) << 19);
-          vert.Data = *(float *)&packed;
+          // Pack Data: side(3), tileIndex(16), light(4)
+          Uint32 tileIndex = (Uint32)BlockDef[blockID].Textures[side];
+          Uint32 packedData = (side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
+                              ((uint32_t(light << 1) & 0xF) << 19);
+          vert.Data = *(float *)&packedData;
 
           cache.vertices.push_back(vert);
         }
         chunk->needsMeshUpdate = false;
+        // Optimization: clear opaque faces after caching to save RAM
+        chunk->opaqueFaces.clear();
+        chunk->opaqueFaces.shrink_to_fit();
       }
 
       auto &cache = opaqueMeshCache[chunkPosKey];
@@ -998,11 +1008,17 @@ void Renderer::DrawTerrain(Player &player) {
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
   }
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
-  static std::vector<TransparentDrawnFace> cachedTransparentFaces;
+  struct TransparentFace {
+    Vector3 pos;
+    Uint8 side;
+    Uint16 blockID;
+    Uint8 light;
+  };
+  static std::vector<TransparentFace> cachedTransparentFaces;
   static Vector3 lastSortPos;
   static float lastSortRotY = -999.0f;
 
-  std::vector<TransparentDrawnFace> transparentFaces;
+  std::vector<TransparentFace> transparentFaces;
   transparentFaces.reserve(500);
 
   bool anyTransparentDirty = false;
@@ -1012,11 +1028,19 @@ void Renderer::DrawTerrain(Player &player) {
         (chunk->needsMeshUpdate && chunk->isGenerated) || anyTransparentDirty;
 
     Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
-    for (auto &face : chunk->allFaces) {
-      if (face.Transparent)
-        transparentFaces.push_back({face.blockPos + chunkWorldPos,
-                                    (int)face.side, (int)face.blockID,
-                                    face.LightLevel});
+    for (uint32_t packed : chunk->transparentFaces) {
+      uint16_t posIndex;
+      uint8_t side, light;
+      uint16_t blockID;
+      DrawnFace::Unpack(packed, posIndex, side, light, blockID);
+
+      int lx = posIndex % ChunkPrefab::xSize;
+      int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
+      int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
+
+      Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
+      transparentFaces.push_back(
+          {blockPos + chunkWorldPos, side, blockID, (uint8_t)(light << 1)});
     }
   }
 
@@ -1043,7 +1067,7 @@ void Renderer::DrawTerrain(Player &player) {
         break;
 
       DVertex vert;
-      vert.Position = face.blockPos;
+      vert.Position = face.pos;
 
       Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
       Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
