@@ -1,5 +1,6 @@
 #include "../../include/client/PlayerManager.hpp"
 #include "../../include/client/GameManager.hpp"
+#include <asio/execution/relationship.hpp>
 
 constexpr float mouseSensitivity = 0.1f;
 constexpr float playerSpeed = 5.0f;
@@ -8,6 +9,7 @@ constexpr float jumpHeight = 1.5f;
 constexpr float jumpPower = 5.0f;
 constexpr float coyeteTimer = 0.25f;
 float jumpTimer = 0;
+float breakTimer = 0;
 constexpr float bodyHeight = 1.6f;
 constexpr float bounds = 0.3f;
 
@@ -156,7 +158,7 @@ void PlayerManager::PlayerMove(Vector3 playerDirection, float deltaTime) {
   if (!isColliding(nextZ)) this->players[0].Position.z = nextZ.z;
 }
 
-void PlayerManager::PlayerBreackPlace(bool left, bool right) {
+void PlayerManager::PlayerBreackPlace(bool left, bool right, float deltaTime) {
   if (!(left || right)) return;
 
   ChunkManager& chunkManager = this->gameManager.GetChunkManager();
@@ -165,15 +167,20 @@ void PlayerManager::PlayerBreackPlace(bool left, bool right) {
   
   if (!ray.hit) return;
 
-  if (left) Break(ray);
+  if (left) Break(ray, deltaTime);
   else if (!BlockDef[ray.BlockID].hasUI()) Place(ray);
   //else this->gameManager.SetUi(ray.BlockID);
   //FIX need to show ui when right click ui blocks
 }
 
-void PlayerManager::Break(RaycastResult ray){
+void PlayerManager::Break(RaycastResult ray, float deltaTime){
   if (ray.BlockID == 4) return;
+  if(breakTimer < 0.25f) {
+    breakTimer += deltaTime;
+    return;
+  };
 
+  breakTimer = 0;
   ChunkManager& chunkManager = this->gameManager.GetChunkManager();
 
   chunkManager.Place(ray.pos, 0);
@@ -241,7 +248,7 @@ void PlayerManager::PlayerAction(int inventorySlot, float deltaTime) {
   PlayerInput(playerDirection, inventorySlot, rotationDir, leftClick, RightClick);
   PlayerRotation(rotationDir);
   PlayerMove(playerDirection, deltaTime);
-  PlayerBreackPlace(leftClick, RightClick);
+  PlayerBreackPlace(leftClick, RightClick, deltaTime);
 }
 
 bool PlayerManager::OnGround(){

@@ -17,10 +17,10 @@ class PlayerManager{
     void PlayerInput(Vector3 &PlayerDirection, int &InventorySlots, Vector3 &PlayerRot, bool &LeftClick, bool &RightClick);
     void PlayerRotation( Vector3 RotationDir);
     void PlayerMove(Vector3 playerDirection, float deltaTime);
-    void PlayerBreackPlace(bool Left, bool Right);
+    void PlayerBreackPlace(bool Left, bool Right, float deltaTime);
     bool OnGround();
     bool OnWater();
-    void Break(RaycastResult ray);
+    void Break(RaycastResult ray, float deltaTime);
     void Place(RaycastResult ray);
 
   public:
