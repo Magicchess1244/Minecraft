@@ -42,7 +42,7 @@ public:
 
   std::vector<Uint32> opaqueFaces;
   std::vector<Uint32> transparentFaces;
-  std::vector<Uint8> blocks;
+  Uint8* blocks = new Uint8[ySize * xSize * zSize]();
   std::vector<LightData> lightData;
 
   std::atomic<bool> isGenerated{false};
@@ -62,7 +62,10 @@ public:
 
   ChunkManager *manager = nullptr;
   ChunkPrefab() {}
-  ~ChunkPrefab() {}
+  ~ChunkPrefab() {
+    delete [] blocks;
+    blocks = nullptr;
+  }
 
 private:
   void GenerateVegetation(const std::vector<int> &heightCache,

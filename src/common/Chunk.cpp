@@ -33,8 +33,6 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ,
   int localZ = worldZ - zPos;
 
   if (isValidPos(localX, localY, localZ)) {
-    if (blocks.empty())
-      return false;
     Uint8 blockID = blocks[localX + localY * ChunkPrefab::xSize +
                            localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
     return blockID != 0 && blockID != 5 &&
@@ -52,8 +50,6 @@ Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ,
   int localZ = worldZ - zPos;
 
   if (isValidPos(localX, localY, localZ)) {
-    if (blocks.empty())
-      return 0;
     return blocks[localX + localY * ChunkPrefab::xSize +
                   localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
   }
@@ -228,9 +224,6 @@ void ChunkPrefab::GenerateChunk() {
     return;
 
   size_t totalBlocksSize = (size_t)xSize * ySize * zSize;
-
-  if (this->blocks.empty())
-    blocks.assign(totalBlocksSize, 0);
 
   std::vector<int> heightCache((xSize + 2) * (zSize + 2));
   std::vector<Biome> biomeCache(xSize * zSize);
@@ -593,8 +586,9 @@ Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
   return manager->GetLightLevel(
       {(float)(x + xPos), (float)y, (float)(z + zPos)});
 }
+//FIX Using execisve mem for light
 void ChunkPrefab::GenerateLighting() {
-  lightData.assign(blocks.size(), {0, 0});
+  lightData.assign(xSize * ySize * zSize, {0, 0});
 
   for (int x = 0; x < ChunkPrefab::xSize; x++) {
     for (int z = 0; z < ChunkPrefab::zSize; z++) {

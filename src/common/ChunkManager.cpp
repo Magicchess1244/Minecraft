@@ -311,8 +311,7 @@ void ChunkManager::SetBlock(Vector3 worldPos, int blockID,
     int ly = (int)std::floor(worldPos.y);
     int lz = (int)std::floor(worldPos.z) - chunk.zPos;
     if (lx >= 0 && lx < ChunkPrefab::xSize && ly >= 0 &&
-        ly < ChunkPrefab::ySize && lz >= 0 && lz < ChunkPrefab::zSize &&
-        !chunk.blocks.empty()) {
+        ly < ChunkPrefab::ySize && lz >= 0 && lz < ChunkPrefab::zSize) {
       chunk.blocks[lx + ly * ChunkPrefab::xSize +
                    lz * ChunkPrefab::xSize * ChunkPrefab::ySize] =
           (Uint8)blockID;
@@ -329,7 +328,7 @@ void ChunkManager::SetBlock(Vector3 worldPos, int blockID,
       };
       for (const auto &key : offsets) {
         auto nit = Chunks.find(key);
-        if (nit != Chunks.end() && !nit->second->blocks.empty())
+        if (nit != Chunks.end())
           neighbourChunks.push_back(nit->second.get());
       }
     }
