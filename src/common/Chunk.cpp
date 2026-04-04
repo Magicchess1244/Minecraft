@@ -221,7 +221,8 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
 }
 
 void ChunkPrefab::GenerateChunk() {
-  if (isProcessing)
+  bool expected = false;
+  if (!isProcessing.compare_exchange_strong(expected, true))
     return;
 
   size_t totalBlocksSize = (size_t)xSize * ySize * zSize;
@@ -234,13 +235,10 @@ void ChunkPrefab::GenerateChunk() {
   PopulateBlocks(heightCache, biomeCache, solidCache);
 
   GenerateVegetation(heightCache, biomeCache, solidCache);
-  GenerateLighting();
-  PropagateLighting();
-  GenerateMesh();
-
-  // Clear light data after mesh generation to save memory
-  lightData.clear();
-  lightData.shrink_to_fit();
+  std::vector<LightData> localLight;
+  GenerateLighting(localLight);
+  PropagateLighting(localLight);
+  GenerateMesh(localLight);
 
   needsMeshUpdate = true;
   isGenerated = true;
@@ -511,7 +509,7 @@ void ChunkPrefab::PlaceJungleTree(int x, int y, int z, int trunkHeight,
   }
 }
 
-void ChunkPrefab::GenerateMesh() {
+void ChunkPrefab::GenerateMesh(const std::vector<LightData> &localLight) {
   this->opaqueFaces.clear();
   this->transparentFaces.clear();
   int estimatedFaces = 5000;
@@ -553,7 +551,7 @@ void ChunkPrefab::GenerateMesh() {
             visible = BlockDef[nBid].isTransparent();
 
           if (visible) {
-            Uint8 light = GetCombinedLight(nx, ny, nz);
+            Uint8 light = GetCombinedLight(nx, ny, nz, localLight);
             // Light is 0-15, store full 4 bits
             Uint8 packedLight = light & 0xF;
             Uint32 packed = DrawnFace::Pack((Uint16)idx, (Uint8)side,
@@ -580,14 +578,15 @@ void ChunkPrefab::GenerateMesh() {
   opaqueFaces.shrink_to_fit();
   transparentFaces.shrink_to_fit();
 }
-Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
+Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z,
+                                    const std::vector<LightData> &localLight) {
   // If within bounds, get from this chunk directly
   if (x >= 0 && x < ChunkPrefab::xSize && y >= 0 && y < ChunkPrefab::ySize &&
       z >= 0 && z < ChunkPrefab::zSize) {
-    if (!lightData.empty()) {
+    if (!localLight.empty()) {
       int idx = x + y * ChunkPrefab::xSize +
                 z * ChunkPrefab::xSize * ChunkPrefab::ySize;
-      return std::max(lightData[idx].sunlight, lightData[idx].blockLight);
+      return std::max(localLight[idx].sunlight, localLight[idx].blockLight);
     }
     // If lightData is cleared, use binary search on faces
     return GetLightFromFaces(x, y, z);
@@ -684,8 +683,8 @@ Uint8 ChunkPrefab::GetLightFromFaces(int x, int y, int z) const {
   return 0;
 }
 // FIX Using execisve mem for light
-void ChunkPrefab::GenerateLighting() {
-  lightData.assign(xSize * ySize * zSize, {0, 0});
+void ChunkPrefab::GenerateLighting(std::vector<LightData> &localLight) {
+  localLight.assign(xSize * ySize * zSize, {0, 0});
 
   for (int x = 0; x < ChunkPrefab::xSize; x++) {
     for (int z = 0; z < ChunkPrefab::zSize; z++) {
@@ -696,20 +695,20 @@ void ChunkPrefab::GenerateLighting() {
         Uint8 blockID = blocks[idx];
 
         if (blockID == (int)BlockIDDef::Air)
-          lightData[idx].sunlight = sun;
+          localLight[idx].sunlight = sun;
         else if (blockID == (int)BlockIDDef::Water) {
           sun = sun > 1 ? sun - 0.5f : 0;
-          lightData[idx].sunlight = sun;
+          localLight[idx].sunlight = sun;
         } else {
           sun = 0;
         }
 
-        lightData[idx].blockLight = BlockDef[blockID].Luminance;
+        localLight[idx].blockLight = BlockDef[blockID].Luminance;
       }
     }
   }
 }
-void ChunkPrefab::PropagateLighting() {
+void ChunkPrefab::PropagateLighting(std::vector<LightData> &localLight) {
   const int C = xSize;
   const int CS = xSize * ySize;
   std::vector<int> sunQueue;
@@ -721,10 +720,10 @@ void ChunkPrefab::PropagateLighting() {
   sunQueue.reserve(4096);
   blockQueue.reserve(512);
 
-  for (int i = 0; i < lightData.size(); i++) {
-    if (lightData[i].sunlight > 0)
+  for (int i = 0; i < localLight.size(); i++) {
+    if (localLight[i].sunlight > 0)
       sunQueue.push_back(i);
-    if (lightData[i].blockLight > 0)
+    if (localLight[i].blockLight > 0)
       blockQueue.push_back(i);
   }
 
@@ -756,8 +755,8 @@ void ChunkPrefab::PropagateLighting() {
             Uint8 newSun = nSun - 1;
             if (BlockDef[blocks[idx]].isWater())
               newSun = (newSun > 2) ? newSun - 1 : 0;
-            if (newSun > lightData[idx].sunlight) {
-              lightData[idx].sunlight = newSun;
+            if (newSun > localLight[idx].sunlight) {
+              localLight[idx].sunlight = newSun;
               sunQueue.push_back(idx);
             }
           }
@@ -777,7 +776,7 @@ void ChunkPrefab::PropagateLighting() {
       int z = idx / (xSize * ySize);
 
       Uint8 currentLight =
-          isSunlight ? lightData[idx].sunlight : lightData[idx].blockLight;
+          isSunlight ? localLight[idx].sunlight : localLight[idx].blockLight;
 
       if (currentLight <= 1)
         continue;
@@ -802,8 +801,8 @@ void ChunkPrefab::PropagateLighting() {
         if (BlockDef[neighborBlock].isWater())
           newLight = (newLight > 2) ? newLight - 1 : 0;
 
-        if (newLight > GetCombinedLight(nx, ny, nz)) {
-          lightData[nIdx].sunlight = newLight;
+        if (newLight > GetCombinedLight(nx, ny, nz, localLight)) {
+          localLight[nIdx].sunlight = newLight;
           q.push_back(nIdx);
         }
       }

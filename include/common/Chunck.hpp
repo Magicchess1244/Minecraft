@@ -49,7 +49,6 @@ public:
   std::vector<Uint32> opaqueFaces;
   std::vector<Uint32> transparentFaces;
   Uint8 *blocks = new Uint8[ySize * xSize * zSize]();
-  std::vector<LightData> lightData;
 
   std::atomic<bool> isGenerated{false};
   std::atomic<bool> isDirty{false};
@@ -62,9 +61,9 @@ public:
   bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight);
   Uint8 GetBlockID(int worldX, int worldY, int worldZ, int terrainHeight);
   int GetHeight(Vector2 Pos);
-  void GenerateMesh();
-  void GenerateLighting();
-  void PropagateLighting();
+  void GenerateMesh(const std::vector<LightData> &localLight);
+  void GenerateLighting(std::vector<LightData> &localLight);
+  void PropagateLighting(std::vector<LightData> &localLight);
   Uint8 GetLightFromFaces(int x, int y, int z) const;
   int BinarySearchFace(Uint16 posIndex, const std::vector<Uint32> &faces) const;
 
@@ -91,7 +90,8 @@ private:
   void PlaceJungleTree(int x, int y, int z, int trunkHeight,
                        std::vector<bool> &solidCache);
 
-  Uint8 GetCombinedLight(int x, int y, int z);
+  Uint8 GetCombinedLight(int x, int y, int z,
+                         const std::vector<LightData> &localLight);
 
   static void PrecomputeInterpolation(std::vector<float> &caveTr,
                                       std::vector<float> &coalCh,

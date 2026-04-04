@@ -15,7 +15,7 @@
 #include <sys/types.h>
 #include <vector>
 
-constexpr Uint32 FacesPerChunk = 2500;
+constexpr Uint32 FacesPerChunk = 5000;
 
 Slot g_heldItem = {0, 0};
 std::vector<int> g_draggedSlots;
@@ -861,41 +861,38 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player,
     visibleChunkList.push_back({&chunk, d2});
   }
 
+  std::sort(visibleChunkList.begin(), visibleChunkList.end(),
+            [](const ChunkDistance &a, const ChunkDistance &b) {
+              return a.distSq < b.distSq;
+            });
+
   return visibleChunkList;
 }
-void Renderer::EvictUnusedMeshes(Vector3 playerPos, float maxDistance) {
-  float maxDistSq = maxDistance * maxDistance;
-  size_t startCount = opaqueMeshCache.size();
-  for (auto it = opaqueMeshCache.begin(); it != opaqueMeshCache.end();) {
-    Vector3 chunkWorldPos = {
-        (float)it->first.x * ChunkPrefab::xSize + ChunkPrefab::xSize / 2.0f, 0,
-        (float)it->first.z * ChunkPrefab::zSize + ChunkPrefab::zSize / 2.0f};
-    if ((chunkWorldPos - playerPos).LengthSquared() > maxDistSq) {
-      it = opaqueMeshCache.erase(it);
-    } else {
-      ++it;
-    }
-  }
-  if (opaqueMeshCache.size() < startCount) {
-    PrintLog("Evicted " + std::to_string(startCount - opaqueMeshCache.size()) +
-             " cached meshes.");
-  }
-}
+
 void Renderer::DrawTerrain(Player &player) {
   Vector3 PlayerChunk = worldToChunkKey(player.Position);
 
   float rotDiff = (player.Rotation - this->lastRot).LengthSquared();
 
-  if (PlayerChunk == lastPlayerChunk && rotDiff < 0.1f) {
+  bool anyGlobalNeedUpdate = false;
+  for (int bufferIdx = 0; bufferIdx < this->totalBuffers - 1; bufferIdx++) {
+    for (auto c : this->Terrain[bufferIdx].currentChunks) {
+      if (c && c->needsMeshUpdate) {
+        anyGlobalNeedUpdate = true;
+        break;
+      }
+    }
+  }
+
+  if (PlayerChunk == lastPlayerChunk && rotDiff < 0.1f &&
+      !anyGlobalNeedUpdate) {
     return;
   }
 
-  // Unload chunks and evict meshes every time the player moves to a new chunk
+  // Unload chunks every time the player moves to a new chunk
   float unloadDistance = (RenderDistance + 12) * ChunkPrefab::xSize;
   this->gameManager.GetChunkManager().UnloadFarChunks(player.Position,
                                                       unloadDistance);
-  this->EvictUnusedMeshes(player.Position, unloadDistance);
-
   this->lastPlayerChunk = PlayerChunk;
   this->lastRot = player.Rotation;
 
@@ -960,55 +957,40 @@ void Renderer::DrawTerrain(Player &player) {
       Vector3 chunkPosKey =
           worldToChunkKey(Vector3{(float)chunk->xPos, 0, (float)chunk->zPos});
 
-      if (chunk->needsMeshUpdate ||
-          opaqueMeshCache.find(chunkPosKey) == opaqueMeshCache.end()) {
-        auto &cache = opaqueMeshCache[chunkPosKey];
-        cache.vertices.clear();
-        cache.indices.clear();
-        cache.vertices.reserve(chunk->opaqueFaces.size());
-        cache.indices.reserve(chunk->opaqueFaces.size());
+      chunk->needsMeshUpdate = false;
 
-        Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
-
-        for (uint32_t packed : chunk->opaqueFaces) {
-          uint16_t posIndex;
-          uint8_t side, light;
-          uint16_t blockID;
-          DrawnFace::Unpack(packed, posIndex, side, light, blockID);
-
-          int lx = posIndex % ChunkPrefab::xSize;
-          int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
-          int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
-
-          Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
-          Vector3 worldPos = blockPos + chunkWorldPos;
-
-          DVertex vert;
-          vert.Position = worldPos;
-
-          // Pack Data: side(3), tileIndex(16), light(4)
-          Uint32 tileIndex = (Uint32)BlockDef[blockID].Textures[side];
-          Uint32 packedData = (side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
-                              ((uint32_t(light) & 0xF) << 19);
-          vert.Data = *(float *)&packedData;
-
-          cache.vertices.push_back(vert);
-        }
-        chunk->needsMeshUpdate = false;
+      if (currentVertexOffset + chunk->opaqueFaces.size() > maxVertices) {
+        PrintLog(
+            "WARNING! Buffer full! Skipping chunk. Need " +
+            std::to_string(currentVertexOffset + chunk->opaqueFaces.size()) +
+            " vs " + std::to_string(maxVertices));
+        continue;
       }
 
-      auto &cache = opaqueMeshCache[chunkPosKey];
-      if (cache.vertices.empty())
-        continue;
+      Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
 
-      if (currentVertexOffset + cache.vertices.size() > maxVertices ||
-          currentIndexOffset + cache.indices.size() > maxIndices)
-        continue;
+      for (uint32_t packed : chunk->opaqueFaces) {
+        uint16_t posIndex;
+        uint8_t side, light;
+        uint16_t blockID;
+        DrawnFace::Unpack(packed, posIndex, side, light, blockID);
 
-      memcpy(&Vertexdata[currentVertexOffset], cache.vertices.data(),
-             cache.vertices.size() * sizeof(DVertex));
+        int lx = posIndex % ChunkPrefab::xSize;
+        int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
+        int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
 
-      currentVertexOffset += cache.vertices.size();
+        Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
+        Vector3 worldPos = blockPos + chunkWorldPos;
+
+        DVertex &vert = Vertexdata[currentVertexOffset++];
+        vert.Position = worldPos;
+
+        // Pack Data: side(3), tileIndex(16), light(4)
+        Uint32 tileIndex = (Uint32)BlockDef[blockID].Textures[side];
+        Uint32 packedData = (side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
+                            ((uint32_t(light) & 0xF) << 19);
+        vert.Data = *(float *)&packedData;
+      }
     }
 
     if (currentVertexOffset == 0)
@@ -1822,6 +1804,21 @@ void Renderer::GenerateBuffer() {
   // 1 vertex per face now (was 4), no per-mesh index buffer needed
   const Uint32 singleChunkVertexSize = sizeof(DVertex) * FacesPerChunk;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
+
+  // Clear old buffers if they exist
+  for (auto &mesh : this->Terrain) {
+    if (mesh.VertexBuffer.buffer)
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.VertexBuffer.buffer);
+    if (mesh.VertextransferBuffer)
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   mesh.VertextransferBuffer);
+    if (mesh.IndexBuffer.buffer)
+      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.IndexBuffer.buffer);
+    if (mesh.IndextransferBuffer)
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   mesh.IndextransferBuffer);
+  }
+  this->Terrain.clear();
 
   PrintLog("Vertex size per buffer: " + std::to_string(packedVertexSize) +
            "\n Total buffers: " + std::to_string(this->totalBuffers) +

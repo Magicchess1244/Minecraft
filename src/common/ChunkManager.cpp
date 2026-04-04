@@ -161,12 +161,10 @@ void ChunkManager::refresh_ready_neighbours(Vector3 centerKey) {
     bool expected = false;
     if (!neighbour->isProcessing.compare_exchange_strong(expected, true))
       continue; // already being processed
-    neighbour->GenerateLighting();
-    neighbour->PropagateLighting();
-    neighbour->GenerateMesh();
-
-    neighbour->lightData.clear();
-    neighbour->lightData.shrink_to_fit();
+    std::vector<LightData> localLight;
+    neighbour->GenerateLighting(localLight);
+    neighbour->PropagateLighting(localLight);
+    neighbour->GenerateMesh(localLight);
 
     neighbour->needsMeshUpdate = true;
     neighbour->isProcessing = false;
@@ -374,13 +372,10 @@ void ChunkManager::rebuild_chunk(ChunkPrefab &chunk) {
   if (!chunk.isProcessing.compare_exchange_strong(expected, true))
     return; // another thread is already rebuilding this chunk
 
-  chunk.GenerateLighting();
-  chunk.PropagateLighting();
-  chunk.GenerateMesh();
-
-  // Clear light data after mesh generation
-  chunk.lightData.clear();
-  chunk.lightData.shrink_to_fit();
+  std::vector<LightData> localLight;
+  chunk.GenerateLighting(localLight);
+  chunk.PropagateLighting(localLight);
+  chunk.GenerateMesh(localLight);
 
   chunk.needsMeshUpdate = true;
   chunk.isProcessing = false;
@@ -438,16 +433,7 @@ Uint8 ChunkManager::GetLightLevel(Vector3 worldPos) {
   if (!resolve_world_to_local(Chunks, worldPos, &chunk, lx, ly, lz))
     return 0;
 
-  // After mesh generation, lightData is cleared and lighting is in faces
-  if (chunk->lightData.empty()) {
-    return chunk->GetLightFromFaces(lx, ly, lz);
-  }
-
-  int idx = lx + ly * ChunkPrefab::xSize +
-            lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-
-  return std::max(chunk->lightData[idx].sunlight,
-                  chunk->lightData[idx].blockLight);
+  return chunk->GetLightFromFaces(lx, ly, lz);
 }
 
 // ─── Modifications
@@ -571,13 +557,7 @@ void ChunkManager::TickWater() {
         ptr = it->second.get();
     }
     if (ptr) {
-      pool.submit([ptr]() {
-        bool expected = false;
-        if (ptr->isProcessing.compare_exchange_strong(expected, true)) {
-          ptr->GenerateChunk();
-          // GenerateChunk resets isProcessing when it finishes.
-        }
-      });
+      pool.submit([ptr]() { ptr->GenerateChunk(); });
     }
   }
 

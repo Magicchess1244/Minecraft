@@ -229,10 +229,6 @@ struct RunTimeRenderVars {
   SDL_GPUTexture *swap_texture = nullptr;
   float aspect = 0;
 };
-struct CachedChunkMesh {
-  std::vector<DVertex> vertices;
-  std::vector<Uint32> indices;
-};
 struct UIVars {
   std::vector<Vertex> uiVertices;
   SDL_GPUBuffer *UIVertexBuffer = nullptr;
@@ -264,7 +260,6 @@ struct UIRuntimeVars {
 };
 class Renderer {
 private:
-  std::unordered_map<Vector3, CachedChunkMesh> opaqueMeshCache;
   BasicInitVars basicInitVars;
   PipileInitVars pipelineInitVars;
   RunTimeRenderVars runTimeRenderVars;
@@ -310,7 +305,6 @@ private:
   void DrawUISprites();
   void DrawUIText();
   std::vector<ChunkDistance> SortChunks(Player &player, Vector3 PlayerChunk);
-  void EvictUnusedMeshes(Vector3 playerPos, float maxDistance);
   void DrawTerrain(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();
