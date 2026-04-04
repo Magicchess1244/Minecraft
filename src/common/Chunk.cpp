@@ -2,6 +2,7 @@
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/PerlinNoise.hpp"
 #include <SDL3/SDL_stdinc.h>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -236,6 +237,10 @@ void ChunkPrefab::GenerateChunk() {
   GenerateLighting();
   PropagateLighting();
   GenerateMesh();
+
+  // Clear light data after mesh generation to save memory
+  lightData.clear();
+  lightData.shrink_to_fit();
 
   needsMeshUpdate = true;
   isGenerated = true;
@@ -549,8 +554,8 @@ void ChunkPrefab::GenerateMesh() {
 
           if (visible) {
             Uint8 light = GetCombinedLight(nx, ny, nz);
-            // Light is 0-15, user requested 3 bits (0-7), so we divide by 2
-            Uint8 packedLight = (light >> 1) & 0x7;
+            // Light is 0-15, store full 4 bits
+            Uint8 packedLight = light & 0xF;
             Uint32 packed = DrawnFace::Pack((Uint16)idx, (Uint8)side,
                                             packedLight, (Uint16)blockID);
 
@@ -565,10 +570,15 @@ void ChunkPrefab::GenerateMesh() {
     }
   }
 
+  // Sort faces by posIndex (lowest 16 bits) to enable binary search
+  auto compareFaces = [](Uint32 a, Uint32 b) {
+    return (a & 0xFFFF) < (b & 0xFFFF);
+  };
+  std::sort(opaqueFaces.begin(), opaqueFaces.end(), compareFaces);
+  std::sort(transparentFaces.begin(), transparentFaces.end(), compareFaces);
+
   opaqueFaces.shrink_to_fit();
   transparentFaces.shrink_to_fit();
-  // FIX I should be able to eliminate this after generating the chunk mesh
-  // lightData.clear();
 }
 Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
   // If within bounds, get from this chunk directly
@@ -579,14 +589,101 @@ Uint8 ChunkPrefab::GetCombinedLight(int x, int y, int z) {
                 z * ChunkPrefab::xSize * ChunkPrefab::ySize;
       return std::max(lightData[idx].sunlight, lightData[idx].blockLight);
     }
-    return 0;
+    // If lightData is cleared, use binary search on faces
+    return GetLightFromFaces(x, y, z);
   }
 
   // Out of bounds - query manager safely (no recursion)
   return manager->GetLightLevel(
       {(float)(x + xPos), (float)y, (float)(z + zPos)});
 }
-//FIX Using execisve mem for light
+
+int ChunkPrefab::BinarySearchFace(Uint16 posIndex,
+                                  const std::vector<Uint32> &faces) const {
+  if (faces.empty())
+    return -1;
+
+  int low = 0;
+  int high = (int)faces.size() - 1;
+
+  while (low <= high) {
+    int mid = low + (high - low) / 2;
+    Uint16 midPos = (Uint16)(faces[mid] & 0xFFFF);
+
+    if (midPos == posIndex)
+      return mid;
+    if (midPos < posIndex)
+      low = mid + 1;
+    else
+      high = mid - 1;
+  }
+  return -1;
+}
+
+Uint8 ChunkPrefab::GetLightFromFaces(int x, int y, int z) const {
+  Uint16 posIndex = (Uint16)(x + y * xSize + z * xSize * ySize);
+
+  // Check opaque faces first
+  int idx = BinarySearchFace(posIndex, opaqueFaces);
+  if (idx != -1) {
+    return (Uint8)((opaqueFaces[idx] >> 19) & 0xF);
+  }
+
+  // Check transparent faces
+  idx = BinarySearchFace(posIndex, transparentFaces);
+  if (idx != -1) {
+    return (Uint8)((transparentFaces[idx] >> 19) & 0xF);
+  }
+
+  // If no face at this exact position, check neighbors.
+  // If we are air, we might be adjacent to a solid block's face.
+  for (int i = 0; i < 6; i++) {
+    int nx = x + (int)Direction[i].x;
+    int ny = y + (int)Direction[i].y;
+    int nz = z + (int)Direction[i].z;
+
+    if (nx >= 0 && nx < xSize && ny >= 0 && ny < ySize && nz >= 0 &&
+        nz < zSize) {
+      Uint16 nPosIndex = (Uint16)(nx + ny * xSize + nz * xSize * ySize);
+      // We want a face on the neighbor that points TOWARDS us.
+      // Opposite sides: 0<->1, 2<->3, 4<->5. side ^ 1 works.
+      Uint8 targetSide = (Uint8)(i ^ 1);
+
+      // Search for neighbor's faces in both vectors
+      auto checkNeighbor = [&](const std::vector<Uint32> &faces) -> int {
+        int res = BinarySearchFace(nPosIndex, faces);
+        if (res == -1)
+          return -1;
+
+        // Multiple faces can have same posIndex, check range
+        int t = res;
+        while (t >= 0 && (Uint16)(faces[t] & 0xFFFF) == nPosIndex) {
+          if (((faces[t] >> 16) & 0x7) == targetSide)
+            return (int)((faces[t] >> 19) & 0xF);
+          t--;
+        }
+        t = res + 1;
+        while (t < (int)faces.size() &&
+               (Uint16)(faces[t] & 0xFFFF) == nPosIndex) {
+          if (((faces[t] >> 16) & 0x7) == targetSide)
+            return (int)((faces[t] >> 19) & 0xF);
+          t++;
+        }
+        return -1;
+      };
+
+      int l = checkNeighbor(opaqueFaces);
+      if (l != -1)
+        return (Uint8)l;
+      l = checkNeighbor(transparentFaces);
+      if (l != -1)
+        return (Uint8)l;
+    }
+  }
+
+  return 0;
+}
+// FIX Using execisve mem for light
 void ChunkPrefab::GenerateLighting() {
   lightData.assign(xSize * ySize * zSize, {0, 0});
 

@@ -56,7 +56,7 @@ void main()
     alpha = 0.6;
   }
 
-  float lightLevel = clamp(v_light / 14.0, 0.06, 1.0);
+  float lightLevel = clamp(v_light / 15.0, 0.06, 1.0);
   finalColor *= lightLevel;
   
   float dist = v_pos.z;

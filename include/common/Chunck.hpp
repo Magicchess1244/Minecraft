@@ -7,17 +7,23 @@
 struct DrawnFace {
   Uint32 data;
 
+  // New packing:
+  // bits 0-15:  posIndex (16 bits)
+  // bits 16-18: side (3 bits)
+  // bits 19-22: light (4 bits, 0-15)
+  // bits 23-31: blockID (9 bits, 0-511)
+
   static Uint32 Pack(Uint16 posIndex, Uint8 side, Uint8 light, Uint16 blockID) {
     return (Uint32)(posIndex & 0xFFFF) | ((Uint32)(side & 0x7) << 16) |
-           ((Uint32)(light & 0x7) << 19) | ((Uint32)(blockID & 0x3FF) << 22);
+           ((Uint32)(light & 0xF) << 19) | ((Uint32)(blockID & 0x1FF) << 23);
   }
 
   static void Unpack(Uint32 packed, Uint16 &posIndex, Uint8 &side, Uint8 &light,
                      Uint16 &blockID) {
     posIndex = (Uint16)(packed & 0xFFFF);
     side = (Uint8)((packed >> 16) & 0x7);
-    light = (Uint8)((packed >> 19) & 0x7);
-    blockID = (Uint16)((packed >> 22) & 0x3FF);
+    light = (Uint8)((packed >> 19) & 0xF);
+    blockID = (Uint16)((packed >> 23) & 0x1FF);
   }
 };
 struct LightData {
@@ -42,7 +48,7 @@ public:
 
   std::vector<Uint32> opaqueFaces;
   std::vector<Uint32> transparentFaces;
-  Uint8* blocks = new Uint8[ySize * xSize * zSize]();
+  Uint8 *blocks = new Uint8[ySize * xSize * zSize]();
   std::vector<LightData> lightData;
 
   std::atomic<bool> isGenerated{false};
@@ -59,11 +65,13 @@ public:
   void GenerateMesh();
   void GenerateLighting();
   void PropagateLighting();
+  Uint8 GetLightFromFaces(int x, int y, int z) const;
+  int BinarySearchFace(Uint16 posIndex, const std::vector<Uint32> &faces) const;
 
   ChunkManager *manager = nullptr;
   ChunkPrefab() {}
   ~ChunkPrefab() {
-    delete [] blocks;
+    delete[] blocks;
     blocks = nullptr;
   }
 

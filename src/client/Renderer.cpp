@@ -989,7 +989,7 @@ void Renderer::DrawTerrain(Player &player) {
           // Pack Data: side(3), tileIndex(16), light(4)
           Uint32 tileIndex = (Uint32)BlockDef[blockID].Textures[side];
           Uint32 packedData = (side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
-                              ((uint32_t(light << 1) & 0xF) << 19);
+                              ((uint32_t(light) & 0xF) << 19);
           vert.Data = *(float *)&packedData;
 
           cache.vertices.push_back(vert);
@@ -1061,7 +1061,7 @@ void Renderer::DrawTerrain(Player &player) {
 
       Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
       transparentFaces.push_back(
-          {blockPos + chunkWorldPos, side, blockID, (uint8_t)(light << 1)});
+          {blockPos + chunkWorldPos, side, blockID, (uint8_t)(light & 0xF)});
     }
   }
 

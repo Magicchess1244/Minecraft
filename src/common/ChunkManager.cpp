@@ -161,7 +161,13 @@ void ChunkManager::refresh_ready_neighbours(Vector3 centerKey) {
     bool expected = false;
     if (!neighbour->isProcessing.compare_exchange_strong(expected, true))
       continue; // already being processed
+    neighbour->GenerateLighting();
+    neighbour->PropagateLighting();
     neighbour->GenerateMesh();
+
+    neighbour->lightData.clear();
+    neighbour->lightData.shrink_to_fit();
+
     neighbour->needsMeshUpdate = true;
     neighbour->isProcessing = false;
   }
@@ -371,6 +377,11 @@ void ChunkManager::rebuild_chunk(ChunkPrefab &chunk) {
   chunk.GenerateLighting();
   chunk.PropagateLighting();
   chunk.GenerateMesh();
+
+  // Clear light data after mesh generation
+  chunk.lightData.clear();
+  chunk.lightData.shrink_to_fit();
+
   chunk.needsMeshUpdate = true;
   chunk.isProcessing = false;
 }
@@ -424,9 +435,13 @@ Uint8 ChunkManager::GetLightLevel(Vector3 worldPos) {
 
   const ChunkPrefab *chunk;
   int lx, ly, lz;
-  if (!resolve_world_to_local(Chunks, worldPos, &chunk, lx, ly, lz) ||
-      chunk->lightData.empty())
+  if (!resolve_world_to_local(Chunks, worldPos, &chunk, lx, ly, lz))
     return 0;
+
+  // After mesh generation, lightData is cleared and lighting is in faces
+  if (chunk->lightData.empty()) {
+    return chunk->GetLightFromFaces(lx, ly, lz);
+  }
 
   int idx = lx + ly * ChunkPrefab::xSize +
             lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
