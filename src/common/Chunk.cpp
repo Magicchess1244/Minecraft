@@ -508,7 +508,8 @@ void ChunkPrefab::PlaceJungleTree(int x, int y, int z, int trunkHeight,
 }
 
 void ChunkPrefab::GenerateMesh(const std::vector<LightData> &localLight) {
-  std::lock_guard<std::recursive_mutex> lock(faceMutex);
+  std::lock_guard<std::recursive_mutex> lockManager(manager->chunks_mutex);
+  std::lock_guard<std::recursive_mutex> lockFace(faceMutex);
   this->opaqueFaces.clear();
   this->transparentFaces.clear();
   int estimatedFaces = 5000;
@@ -619,7 +620,8 @@ int ChunkPrefab::BinarySearchFace(Uint16 posIndex,
 }
 
 Uint8 ChunkPrefab::GetLightFromFaces(int x, int y, int z) const {
-  std::lock_guard<std::recursive_mutex> lock(faceMutex);
+  std::lock_guard<std::recursive_mutex> lockManager(manager->chunks_mutex);
+  std::lock_guard<std::recursive_mutex> lockFace(faceMutex);
   Uint16 posIndex = (Uint16)(x + y * xSize + z * xSize * ySize);
 
   // Check opaque faces first

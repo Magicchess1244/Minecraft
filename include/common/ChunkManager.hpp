@@ -63,6 +63,9 @@ public:
   ChunkManager() {};
   ~ChunkManager() {};
 
+  friend class ChunkPrefab;
+  std::recursive_mutex chunks_mutex;
+
   int DayLightLevel = 15;
 
   // ── Chunk access / lifecycle ──────────────────────────────────────────────
@@ -163,9 +166,6 @@ private:
       cv.notify_one();
     }
   };
-
-  // Shared lock used by every method that touches Chunks or Modifications.
-  std::recursive_mutex chunks_mutex;
 
   std::unordered_map<Vector3, std::unique_ptr<ChunkPrefab>> Chunks;
   std::unordered_map<Vector3, Uint8> Modifications;

@@ -49,5 +49,5 @@ void main() {
     v_blockID = float((a_data >> 3u)  & 0xFFFFu);
     v_light   = float((a_data >> 19u) & 0xFu);
     v_uv      = vec2(cx, 1.0 - cy);
-    v_pos     = realPos;
+    v_pos     = gl_Position.xyz;
 }
