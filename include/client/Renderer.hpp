@@ -266,6 +266,7 @@ private:
   SDL_GPUTexture *DepthTexture = nullptr;
   SDL_GPUTexture *TextureAtlas = nullptr;
   SDL_GPUSampler *Sampler = nullptr;
+  SDL_GPUTexture *BlockPropsTexture = nullptr;
   UIVars uiVars;
   SDL_GPUBuffer *EntityBuffer = nullptr;
   SDL_GPUTransferBuffer *EntityTransferBuffer = nullptr;
@@ -314,6 +315,7 @@ private:
   void PipelineInit();
   void ColorTargetDes();
   void LoadTexture();
+  void UploadBlockProperties();
   void EventManager(Player &player, int &inventorySlot);
   void HandleQuit();
   void HandleMouseWheel(int &inventorySlot);
@@ -377,6 +379,10 @@ public:
     if (TextureAtlas) {
       SDL_ReleaseGPUTexture(this->basicInitVars.GPU, TextureAtlas);
       TextureAtlas = nullptr;
+    }
+    if (BlockPropsTexture) {
+      SDL_ReleaseGPUTexture(this->basicInitVars.GPU, BlockPropsTexture);
+      BlockPropsTexture = nullptr;
     }
     if (Sampler) {
       SDL_ReleaseGPUSampler(this->basicInitVars.GPU, Sampler);

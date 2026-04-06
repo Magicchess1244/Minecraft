@@ -46,8 +46,8 @@ void main() {
     gl_Position   = projBlock.projection * viewBlock.view * vec4(realPos, 1.0);
 
     v_color   = float(side);
-    v_blockID = float((a_data >> 3u)  & 0xFFFFu);
-    v_light   = float((a_data >> 19u) & 0xFu);
+    v_blockID = float((a_data >> 3u)  & 0x1FFu);
+    v_light   = float((a_data >> 12u) & 0xFu);
     v_uv      = vec2(cx, 1.0 - cy);
     v_pos     = gl_Position.xyz;
 }

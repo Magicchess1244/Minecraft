@@ -7,10 +7,16 @@ layout (location = 3) in vec3 v_pos;
 layout (location = 4) in float v_light;
 layout (location = 0) out vec4 FragColor;
 
+struct BlockData {
+    uint textures[6];
+    uint luminance;
+    uint type;
+};
+
 layout (set = 2, binding = 0) uniform sampler2D u_texture;
+layout (set = 2, binding = 1) uniform sampler2D u_blockProps;
 
 layout(set = 3, binding = 0, std140) uniform Water { uint water; } inWater;
-
 
 float NearFog = 100.0;
 float FarFog = 150.0;
@@ -29,7 +35,26 @@ const vec3 FaceLight[6] = vec3[6](
 
 void main()
 {
-  int tileIndex = int(v_blockID + 0.5); 
+  int blockIdx = int(v_blockID + 0.5);
+  int side = int(v_color + 0.5);
+
+  vec4 t0 = texelFetch(u_blockProps, ivec2(0, blockIdx), 0);
+  vec4 t1 = texelFetch(u_blockProps, ivec2(1, blockIdx), 0);
+  vec4 t2 = texelFetch(u_blockProps, ivec2(2, blockIdx), 0);
+  vec4 t3 = texelFetch(u_blockProps, ivec2(3, blockIdx), 0);
+
+  uint textures[6];
+  textures[0] = uint(t0.r * 255.0 + 0.5) | (uint(t0.g * 255.0 + 0.5) << 8);
+  textures[1] = uint(t0.b * 255.0 + 0.5) | (uint(t0.a * 255.0 + 0.5) << 8);
+  textures[2] = uint(t1.r * 255.0 + 0.5) | (uint(t1.g * 255.0 + 0.5) << 8);
+  textures[3] = uint(t1.b * 255.0 + 0.5) | (uint(t1.a * 255.0 + 0.5) << 8);
+  textures[4] = uint(t2.r * 255.0 + 0.5) | (uint(t2.g * 255.0 + 0.5) << 8);
+  textures[5] = uint(t2.b * 255.0 + 0.5) | (uint(t2.a * 255.0 + 0.5) << 8);
+  uint luminance = uint(t3.r * 255.0 + 0.5) | (uint(t3.g * 255.0 + 0.5) << 8);
+  uint type      = uint(t3.b * 255.0 + 0.5) | (uint(t3.a * 255.0 + 0.5) << 8);
+
+  uint tileIndex = textures[side];
+
   float tileX = float(tileIndex % BlockInAtlasRow);
   float tileY = float(tileIndex / BlockInAtlasRow);
   
@@ -40,7 +65,8 @@ void main()
   
   // Use a small inset to avoid bleeding from neighboring tiles
   vec2 insetUV = uv * 0.98 + 0.01;
-  vec2 atlasUV = (vec2(tileX, tileY) + insetUV) / BlockInAtlasRow;
+  vec2 atlasUV = (vec2(tileX, tileY) + insetUV) / float(BlockInAtlasRow);
+  
   vec4 texColor = texture(u_texture, atlasUV);
   
   // If texture is black/transparent, use a fallback to see if it's there
@@ -48,7 +74,7 @@ void main()
       texColor = vec4(1.0, 0.0, 1.0, 1.0); // Magenta fallback
   }
 
-  vec3 finalColor = FaceLight[int(v_color)] * texColor.rgb;
+  vec3 finalColor = FaceLight[side] * texColor.rgb;
 
   if (v_blockID == 5) {
     // Water
@@ -61,7 +87,6 @@ void main()
   
   float dist = v_pos.z;
   float fogFactor = clamp((dist - NearFog) / (FarFog - NearFog), 0.0, 0.8);
-  //vec3 skyColor = vec3(0.45, 0.75, 1.0);
   vec3 skyColor = vec3(0.9, 0.9, 0.9);
   finalColor = mix(finalColor, skyColor, fogFactor);
 

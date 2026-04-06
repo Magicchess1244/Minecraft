@@ -793,10 +793,11 @@ void Renderer::DrawUISprites() {
   SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
                               pipelineInitVars.uiPipeline);
 
-  if (TextureAtlas && Sampler) {
-    SDL_GPUTextureSamplerBinding samplerBinding = {TextureAtlas, Sampler};
+  if (TextureAtlas && BlockPropsTexture && Sampler) {
+    SDL_GPUTextureSamplerBinding samplerBindings[2] = {
+        {TextureAtlas, Sampler}, {BlockPropsTexture, Sampler}};
     SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
-                                &samplerBinding, 1);
+                                samplerBindings, 2);
   }
 
   SDL_GPUBufferBinding vb = {uiVars.UIVertexBuffer, 0};
@@ -986,10 +987,9 @@ void Renderer::DrawTerrain(Player &player) {
           DVertex &vert = Vertexdata[currentVertexOffset++];
           vert.Position = worldPos;
 
-          // Pack Data: side(3), tileIndex(16), light(4)
-          Uint32 tileIndex = (Uint32)BlockDef[blockID].Textures[side];
-          Uint32 packedData = (side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
-                              ((uint32_t(light) & 0xF) << 19);
+          // Pack Data: side(3), blockID(9), light(4)
+          Uint32 packedData = (side & 0x7) | ((blockID & 0x1FF) << 3) |
+                              ((uint32_t(light) & 0xF) << 12);
           vert.Data = *(float *)&packedData;
         }
       }
@@ -1077,9 +1077,9 @@ void Renderer::DrawTerrain(Player &player) {
       DVertex vert;
       vert.Position = face.pos;
 
-      Uint32 tileIndex = (Uint32)BlockDef[face.blockID].Textures[face.side];
-      Uint32 packed = (face.side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
-                      ((face.light & 0xF) << 19);
+      // Pack Data: side(3), blockID(9), light(4)
+      Uint32 packed = (face.side & 0x7) | ((face.blockID & 0x1FF) << 3) |
+                      ((face.light & 0xF) << 12);
       vert.Data = *(float *)&packed;
       vData[vOffset] = vert;
 
@@ -1171,11 +1171,12 @@ void Renderer::DrawBg(std::vector<Player> &players) {
       SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
                              &color_target_info, 1, &depth_target_info);
 
-  if (this->TextureAtlas && this->Sampler) {
-    SDL_GPUTextureSamplerBinding samplerBinding = {this->TextureAtlas,
-                                                   this->Sampler};
+  if (this->TextureAtlas && this->BlockPropsTexture && this->Sampler) {
+    SDL_GPUTextureSamplerBinding samplerBindings[2] = {
+        {this->TextureAtlas, this->Sampler},
+        {this->BlockPropsTexture, this->Sampler}};
     SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
-                                &samplerBinding, 1);
+                                samplerBindings, 2);
   }
 
   SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
@@ -2161,6 +2162,75 @@ void Renderer::LoadTexture() {
   fontSamplerInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
   uiVars.fontSampler =
       SDL_CreateGPUSampler(this->basicInitVars.GPU, &fontSamplerInfo);
+
+  UploadBlockProperties();
+}
+
+void Renderer::UploadBlockProperties() {
+  if (!this->basicInitVars.GPU)
+    return;
+
+  // We need 6 texture indices + Luminance + Type (8 shorts total per block)
+  // 8 shorts = 16 bytes.
+  // We'll use a 4xBlockNum texture with R8G8B8A8_UNORM format.
+  // Each RGBA texel is 4 bytes. 4 texels = 16 bytes.
+  Uint8 *data = new Uint8[BlockNum * 4 * 4];
+  SDL_memset(data, 0, BlockNum * 4 * 4);
+
+  for (int i = 0; i < BlockNum; i++) {
+    // Pack 8 shorts into 16 bytes
+    Uint16 shorts[8];
+    for (int j = 0; j < 6; j++)
+      shorts[j] = BlockDef[i].Textures[j];
+    shorts[6] = BlockDef[i].Luminance;
+    shorts[7] = (Uint16)BlockDef[i].Type;
+
+    for (int j = 0; j < 8; j++) {
+      data[i * 16 + j * 2 + 0] = (Uint8)(shorts[j] & 0xFF);
+      data[i * 16 + j * 2 + 1] = (Uint8)((shorts[j] >> 8) & 0xFF);
+    }
+  }
+
+  SDL_GPUTextureCreateInfo textureInfo = {};
+  textureInfo.type = SDL_GPU_TEXTURETYPE_2D;
+  textureInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+  textureInfo.width = 4;
+  textureInfo.height = (Uint32)BlockNum;
+  textureInfo.layer_count_or_depth = 1;
+  textureInfo.num_levels = 1;
+  textureInfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+
+  this->BlockPropsTexture =
+      SDL_CreateGPUTexture(this->basicInitVars.GPU, &textureInfo);
+
+  Uint32 dataSize = BlockNum * 4 * 4;
+  SDL_GPUTransferBufferCreateInfo transferInfo = {};
+  transferInfo.size = dataSize;
+  transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  SDL_GPUTransferBuffer *transferBuffer =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
+
+  void *map =
+      SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer, false);
+  if (map) {
+    SDL_memcpy(map, data, dataSize);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer);
+  }
+  delete[] data;
+
+  SDL_GPUCommandBuffer *cmd =
+      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
+  if (cmd) {
+    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTextureTransferInfo src = {transferBuffer, 0, 0, 0};
+    SDL_GPUTextureRegion dst = {BlockPropsTexture, 0, 0, 0, 0, 0, 4,
+                                (Uint32)BlockNum,  1};
+    SDL_UploadToGPUTexture(copy, &src, &dst, false);
+    SDL_EndGPUCopyPass(copy);
+    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer);
+    PrintSuccesfull("Block properties uploaded to GPU texture");
+  }
 }
 void Renderer::ColorTargetDes() {
   this->pipelineInitVars.colorTargetDescriptions[0] = {};
@@ -2191,7 +2261,7 @@ void Renderer::PipelineInit() {
     PrintError("Couldn't load vertex shader: %s" + std::string(SDL_GetError()));
   }
   this->pipelineInitVars.fragment_shader =
-      LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 1, 0, 0);
+      LoadShader(this->basicInitVars.GPU, "Shader.frag", 2, 1, 0, 0);
   if (!this->pipelineInitVars.fragment_shader) {
     PrintError("Couldn't load fragment shader: %s" +
                std::string(SDL_GetError()));
@@ -2255,7 +2325,7 @@ void Renderer::PipelineInit() {
   SDL_GPUShader *ui_vert =
       LoadShader(this->basicInitVars.GPU, "UI.vert", 0, 0, 0, 0);
   SDL_GPUShader *ui_frag =
-      LoadShader(this->basicInitVars.GPU, "UI.frag", 1, 0, 0, 0);
+      LoadShader(this->basicInitVars.GPU, "UI.frag", 2, 0, 0, 0);
 
   SDL_GPUGraphicsPipelineCreateInfo ui_desc;
   SDL_zero(ui_desc);
@@ -2388,6 +2458,7 @@ Renderer::Renderer(GameManager &manager) : gameManager(manager) {
     PrintError("SDL_Init failed: " + std::string(SDL_GetError()));
 
   TextureAtlas = nullptr;
+  BlockPropsTexture = nullptr;
   Sampler = nullptr;
   SDL_zero(uiVars);
 
