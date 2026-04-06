@@ -618,8 +618,8 @@ int ChunkPrefab::BinarySearchFace(Uint16 posIndex,
 }
 
 Uint8 ChunkPrefab::GetLightFromFaces(int x, int y, int z) const {
-  //std::lock_guard<std::recursive_mutex> lockManager(manager->chunks_mutex);
-  //std::lock_guard<std::recursive_mutex> lockFace(faceMutex);
+  // std::lock_guard<std::recursive_mutex> lockManager(manager->chunks_mutex);
+  // std::lock_guard<std::recursive_mutex> lockFace(faceMutex);
   Uint16 posIndex = (Uint16)(x + y * xSize + z * xSize * ySize);
 
   // Check opaque faces first
@@ -663,97 +663,99 @@ void ChunkPrefab::GenerateLighting(std::vector<LightData> &localLight) {
   }
 }
 void ChunkPrefab::PropagateLighting(std::vector<LightData> &localLight) {
-    const int SX  = xSize;
-    const int SY  = ySize;
-    const int SZ  = zSize;
-    const int SXY = SX * SY;
+  const int SX = xSize;
+  const int SY = ySize;
+  const int SZ = zSize;
+  const int SXY = SX * SY;
 
-    std::vector<int> sunQueue;
-    std::vector<int> blockQueue;
-    sunQueue.reserve(4096);
-    blockQueue.reserve(512);
+  std::vector<int> sunQueue;
+  std::vector<int> blockQueue;
+  sunQueue.reserve(4096);
+  blockQueue.reserve(512);
 
-    // 1. Seed queues — unchanged
-    for (int i = 0, TOTAL = SX * SY * SZ; i < TOTAL; i++) {
-        if (localLight[i].sunlight  > 0) sunQueue.push_back(i);
-        if (localLight[i].blockLight > 0) blockQueue.push_back(i);
-    }
+  // 1. Seed queues — unchanged
+  for (int i = 0, TOTAL = SX * SY * SZ; i < TOTAL; i++) {
+    if (localLight[i].sunlight > 0)
+      sunQueue.push_back(i);
+    if (localLight[i].blockLight > 0)
+      blockQueue.push_back(i);
+  }
 
-    // 2. Border ingress — same logic as original, just loop only border faces
-    for (int i = 0; i < 4; i++) {
-        int dx = (int)Direction[i].x;
-        int dz = (int)Direction[i].z;
+  // 2. Border ingress — same logic as original, just loop only border faces
+  for (int i = 0; i < 4; i++) {
+    int dx = (int)Direction[i].x;
+    int dz = (int)Direction[i].z;
 
-        for (int y = 0; y < SY; y++) {
-            for (int a = 0; a < (dx != 0 ? SZ : SX); a++) {
-                // x is fixed at border if dx!=0, else varies; same for z
-                int x = (dx == -1) ? 0 : (dx == 1) ? SX-1 : a;
-                int z = (dz == -1) ? 0 : (dz == 1) ? SZ-1 : a;
+    for (int y = 0; y < SY; y++) {
+      for (int a = 0; a < (dx != 0 ? SZ : SX); a++) {
+        // x is fixed at border if dx!=0, else varies; same for z
+        int x = (dx == -1) ? 0 : (dx == 1) ? SX - 1 : a;
+        int z = (dz == -1) ? 0 : (dz == 1) ? SZ - 1 : a;
 
-                int idx = x + y * SX + z * SXY;
-                if (blocks[idx] != (int)BlockIDDef::Air &&
-                    blocks[idx] != (int)BlockIDDef::Water)
-                    continue;
+        int idx = x + y * SX + z * SXY;
+        if (blocks[idx] != (int)BlockIDDef::Air &&
+            blocks[idx] != (int)BlockIDDef::Water)
+          continue;
 
-                Vector3 worldPos = {
-                    (float)(x + xPos) + Direction[i].x,
-                    (float)y,
-                    (float)(z + zPos) + Direction[i].z
-                };
-                Uint8 nSun = manager->GetLightLevel(worldPos);
-                if (nSun > 1) {
-                    Uint8 newSun = nSun - 1;
-                    if (BlockDef[blocks[idx]].isWater())
-                        newSun = (newSun > 2) ? newSun - 1 : 0;
-                    if (newSun > localLight[idx].sunlight) {
-                        localLight[idx].sunlight = newSun;
-                        sunQueue.push_back(idx);
-                    }
-                }
-            }
+        Vector3 worldPos = {(float)(x + xPos) + Direction[i].x, (float)y,
+                            (float)(z + zPos) + Direction[i].z};
+        Uint8 nSun = manager->GetLightLevel(worldPos);
+        if (nSun > 1) {
+          Uint8 newSun = nSun - 1;
+          if (BlockDef[blocks[idx]].isWater())
+            newSun = (newSun > 2) ? newSun - 1 : 0;
+          if (newSun > localLight[idx].sunlight) {
+            localLight[idx].sunlight = newSun;
+            sunQueue.push_back(idx);
+          }
         }
+      }
     }
+  }
 
-    // 3. BFS — flat offsets only, this is where the real speedup is
-    auto propagate = [&](std::vector<int> &q, bool isSun) {
-        int head = 0;
-        while (head < (int)q.size()) {
-            const int idx = q[head++];
-            const Uint8 cur = isSun ? localLight[idx].sunlight
-                                    : localLight[idx].blockLight;
-            if (cur <= 1) continue;
+  // 3. BFS — flat offsets only, this is where the real speedup is
+  auto propagate = [&](std::vector<int> &q, bool isSun) {
+    int head = 0;
+    while (head < (int)q.size()) {
+      const int idx = q[head++];
+      const Uint8 cur =
+          isSun ? localLight[idx].sunlight : localLight[idx].blockLight;
+      if (cur <= 1)
+        continue;
 
-            const int x = idx % SX;
-            const int y = (idx / SX) % SY;
-            const int z = idx / SXY;
+      const int x = idx % SX;
+      const int y = (idx / SX) % SY;
+      const int z = idx / SXY;
 
-            const int  nbr[6]     = { idx-1,  idx+1,  idx-SX, idx+SX, idx-SXY, idx+SXY };
-            const bool valid[6]   = { x>0,    x<SX-1, y>0,    y<SY-1, z>0,     z<SZ-1  };
+      const int nbr[6] = {idx - 1,  idx + 1,   idx - SX,
+                          idx + SX, idx - SXY, idx + SXY};
+      const bool valid[6] = {x > 0,      x < SX - 1, y > 0,
+                             y < SY - 1, z > 0,      z < SZ - 1};
 
-            for (int d = 0; d < 6; d++) {
-                if (!valid[d]) continue;
-                const int nIdx = nbr[d];
+      for (int d = 0; d < 6; d++) {
+        if (!valid[d])
+          continue;
+        const int nIdx = nbr[d];
 
-                Uint8 neighborBlock = blocks[nIdx];
-                if (neighborBlock != 0 &&
-                    !BlockDef[neighborBlock].isTransparent() &&
-                    BlockDef[neighborBlock].Luminance == 0)
-                    continue;
+        Uint8 neighborBlock = blocks[nIdx];
+        if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent() &&
+            BlockDef[neighborBlock].Luminance == 0)
+          continue;
 
-                Uint8 newLight = cur - 1;
-                if (BlockDef[neighborBlock].isWater())
-                    newLight = (newLight > 2) ? newLight - 1 : 0;
+        Uint8 newLight = cur - 1;
+        if (BlockDef[neighborBlock].isWater())
+          newLight = (newLight > 2) ? newLight - 1 : 0;
 
-                // Match original: both passes update sunlight
-                // (preserve your original behavior exactly)
-                if (newLight > localLight[nIdx].sunlight) {
-                    localLight[nIdx].sunlight = newLight;
-                    q.push_back(nIdx);
-                }
-            }
+        // Match original: both passes update sunlight
+        // (preserve your original behavior exactly)
+        if (newLight > localLight[nIdx].sunlight) {
+          localLight[nIdx].sunlight = newLight;
+          q.push_back(nIdx);
         }
-    };
+      }
+    }
+  };
 
-    propagate(sunQueue,   true);
-    propagate(blockQueue, false);
+  propagate(sunQueue, true);
+  propagate(blockQueue, false);
 }

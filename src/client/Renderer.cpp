@@ -782,19 +782,25 @@ void Renderer::DrawUIText() {
                         static_cast<Uint32>(uiVars.textVertices.size()), 1, 0,
                         0);
 }
-std::vector<ChunkPrefab*> Renderer::SortChunks(Player &player, Vector3 PlayerChunk) {
+std::vector<ChunkPrefab *> Renderer::SortChunks(Player &player,
+                                                Vector3 PlayerChunk) {
   SpiralIterator spiral(RenderDistance * 2 + 1);
-  std::vector<ChunkPrefab*> visibleChunkList;
+  struct ChunkDistance {
+    ChunkPrefab *chunk;
+    float distSq;
+  };
+  std::vector<ChunkDistance> distances;
+  distances.reserve((RenderDistance * 2 + 1) * (RenderDistance * 2 + 1));
 
   ChunkManager &chunkManager = this->gameManager.GetChunkManager();
 
   while (spiral.hasNext()) {
     std::pair<int, int> Pos = spiral.next();
 
-    Vector3 ChunkPos = {(float)Pos.first, 0, (float)Pos.second};
+    Vector3 ChunkPos = {(float)Pos.first, 0.0f, (float)Pos.second};
     ChunkPos += PlayerChunk;
 
-    Vector3 Min = {ChunkPos.x * (float)ChunkPrefab::xSize, 0,
+    Vector3 Min = {ChunkPos.x * (float)ChunkPrefab::xSize, 0.0f,
                    ChunkPos.z * (float)ChunkPrefab::zSize};
     Vector3 Max = {(ChunkPos.x + 1) * (float)ChunkPrefab::xSize,
                    (float)ChunkPrefab::ySize,
@@ -811,13 +817,25 @@ std::vector<ChunkPrefab*> Renderer::SortChunks(Player &player, Vector3 PlayerChu
                            ChunkPos.z * (float)ChunkPrefab::zSize +
                                (float)ChunkPrefab::zSize / 2.0f};
 
-    visibleChunkList.push_back(&chunk);
+    float dx = chunkCenter.x - player.Position.x;
+    float dy = chunkCenter.y - player.Position.y;
+    float dz = chunkCenter.z - player.Position.z;
+    float distSq = dx * dx + dy * dy + dz * dz;
+
+    distances.push_back({&chunk, distSq});
   }
 
-  //std::sort(visibleChunkList.begin(), visibleChunkList.end(),
-  //          [](const ChunkDistance &a, const ChunkDistance &b) {
-  //            return a.distSq < b.distSq;
-  //          });
+  // Sort back-to-front (furthest first) for better transparency sorting
+  std::sort(distances.begin(), distances.end(),
+            [](const ChunkDistance &a, const ChunkDistance &b) {
+              return a.distSq > b.distSq;
+            });
+
+  std::vector<ChunkPrefab *> visibleChunkList;
+  visibleChunkList.reserve(distances.size());
+  for (auto &cd : distances) {
+    visibleChunkList.push_back(cd.chunk);
+  }
 
   return visibleChunkList;
 }
@@ -835,17 +853,19 @@ void Renderer::DrawTerrain(Player &player) {
         break;
       }
     }
-    if (anyGlobalNeedUpdate) break;
+    if (anyGlobalNeedUpdate)
+      break;
   }
 
-  if (PlayerChunk == lastPlayerChunk && rotDiff < 5.0f && !anyGlobalNeedUpdate) {
+  if (PlayerChunk == lastPlayerChunk && rotDiff < 5.0f &&
+      !anyGlobalNeedUpdate) {
     return;
   }
 
   this->lastPlayerChunk = PlayerChunk;
   this->lastRot = player.Rotation;
 
-  std::vector<ChunkPrefab*> visibleChunks = SortChunks(player, PlayerChunk);
+  std::vector<ChunkPrefab *> visibleChunks = SortChunks(player, PlayerChunk);
 
   std::vector<std::vector<ChunkPrefab *>> newBuckets(this->totalBuffers - 1);
 
@@ -869,29 +889,33 @@ void Renderer::DrawTerrain(Player &player) {
     mesh->needsUpdate = false;
     mesh->BaseVertex = 0;
 
-    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer( this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
+    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(
+        this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
 
-    if (!Vertexdata) continue;
+    if (!Vertexdata)
+      continue;
 
     size_t currentVertexOffset = 0;
     const size_t maxVertices = chunksPerBuffer * FacesPerChunk;
 
     for (auto *chunk : newChunks) {
-      if (chunk->isProcessing) continue;
-      
-      Vector3 chunkPosKey = worldToChunkKey(Vector3{(float)chunk->xPos, 0, (float)chunk->zPos});
+      if (chunk->isProcessing)
+        continue;
+
+      Vector3 chunkPosKey =
+          worldToChunkKey(Vector3{(float)chunk->xPos, 0, (float)chunk->zPos});
 
       chunk->needsMeshUpdate = false;
 
       Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
-        std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
-        if (currentVertexOffset + chunk->opaqueFaces.size() > maxVertices) {
-          PrintLog(
-              "WARNING! Buffer full! Skipping chunk. Need " +
-              std::to_string(currentVertexOffset + chunk->opaqueFaces.size()) +
-              " vs " + std::to_string(maxVertices));
-          continue;
-        }
+      std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
+      if (currentVertexOffset + chunk->opaqueFaces.size() > maxVertices) {
+        PrintLog(
+            "WARNING! Buffer full! Skipping chunk. Need " +
+            std::to_string(currentVertexOffset + chunk->opaqueFaces.size()) +
+            " vs " + std::to_string(maxVertices));
+        continue;
+      }
 
       for (uint32_t packed : chunk->opaqueFaces) {
         uint16_t posIndex;
@@ -916,14 +940,17 @@ void Renderer::DrawTerrain(Player &player) {
       }
     }
 
-    if (currentVertexOffset == 0) continue;
+    if (currentVertexOffset == 0)
+      continue;
 
     mesh->BaseVertex += (int)currentVertexOffset;
 
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->VertextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               mesh->VertextransferBuffer);
 
     SDL_GPUTransferBufferLocation vLoc{mesh->VertextransferBuffer, 0};
-    SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0, (Uint32)(currentVertexOffset * sizeof(DVertex))};
+    SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
+                             (Uint32)(currentVertexOffset * sizeof(DVertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
   }
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
@@ -941,7 +968,7 @@ void Renderer::DrawTerrain(Player &player) {
 
   bool anyTransparentDirty = false;
   for (auto &cd : visibleChunks) {
-    ChunkPrefab *chunk = chunk;
+    ChunkPrefab *chunk = cd;
     anyTransparentDirty =
         (chunk->needsMeshUpdate && chunk->isGenerated) || anyTransparentDirty;
 
@@ -992,13 +1019,20 @@ void Renderer::DrawTerrain(Player &player) {
     }
 
     tMesh->BaseVertex += (int)vOffset;
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                               tMesh->VertextransferBuffer);
 
-    SDL_GPUTransferBufferLocation vLoc{tMesh->VertextransferBuffer, 0};
-    SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
-                             (Uint32)(vOffset * sizeof(DVertex))};
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
+    if (vOffset > 0) {
+      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                                 tMesh->VertextransferBuffer);
+
+      SDL_GPUTransferBufferLocation vLoc{tMesh->VertextransferBuffer, 0};
+      SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
+                               (Uint32)(vOffset * sizeof(DVertex))};
+      SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg,
+                            true);
+    } else {
+      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                                 tMesh->VertextransferBuffer);
+    }
   }
 }
 void Renderer::DrawBg(std::vector<Player> &players) {
@@ -1088,10 +1122,13 @@ void Renderer::DrawBg(std::vector<Player> &players) {
                          SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
   for (auto &mesh : this->Terrain) {
-    if (mesh.BaseVertex == 0) continue;
+    if (mesh.BaseVertex == 0)
+      continue;
 
-    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &mesh.VertexBuffer, 1);
-    SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, 6, mesh.BaseVertex, 0, 0, 0);
+    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0,
+                             &mesh.VertexBuffer, 1);
+    SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, 6,
+                                 mesh.BaseVertex, 0, 0, 0);
   }
 
   // DrawPlayers(players);
@@ -1703,7 +1740,7 @@ void Renderer::GenerateBuffer() {
       break;
     }
   }
-  this->totalBuffers = totalChunks / chunksPerBuffer;
+  this->totalBuffers = (totalChunks / chunksPerBuffer) + 2;
 
   // 1 vertex per face now (was 4), no per-mesh index buffer needed
   const Uint32 singleChunkVertexSize = sizeof(DVertex) * FacesPerChunk;

@@ -218,8 +218,8 @@ RaycastResult ChunkManager::RayCast(Vector3 origin, Vector3 direction,
     }
 
     if (chunk->isSolidBlock((int)newPos.x, (int)newPos.y, (int)newPos.z)) {
-      Uint8 blockID = chunk->GetBlockID((int)newPos.x, (int)newPos.y,
-                                        (int)newPos.z);
+      Uint8 blockID =
+          chunk->GetBlockID((int)newPos.x, (int)newPos.y, (int)newPos.z);
       return {true, newPos, lastPos, blockID};
     }
 
