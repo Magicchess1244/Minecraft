@@ -959,37 +959,39 @@ void Renderer::DrawTerrain(Player &player) {
 
       chunk->needsMeshUpdate = false;
 
-      if (currentVertexOffset + chunk->opaqueFaces.size() > maxVertices) {
-        PrintLog(
-            "WARNING! Buffer full! Skipping chunk. Need " +
-            std::to_string(currentVertexOffset + chunk->opaqueFaces.size()) +
-            " vs " + std::to_string(maxVertices));
-        continue;
-      }
-
       Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
+      {
+        std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
+        if (currentVertexOffset + chunk->opaqueFaces.size() > maxVertices) {
+          PrintLog(
+              "WARNING! Buffer full! Skipping chunk. Need " +
+              std::to_string(currentVertexOffset + chunk->opaqueFaces.size()) +
+              " vs " + std::to_string(maxVertices));
+          continue;
+        }
 
-      for (uint32_t packed : chunk->opaqueFaces) {
-        uint16_t posIndex;
-        uint8_t side, light;
-        uint16_t blockID;
-        DrawnFace::Unpack(packed, posIndex, side, light, blockID);
+        for (uint32_t packed : chunk->opaqueFaces) {
+          uint16_t posIndex;
+          uint8_t side, light;
+          uint16_t blockID;
+          DrawnFace::Unpack(packed, posIndex, side, light, blockID);
 
-        int lx = posIndex % ChunkPrefab::xSize;
-        int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
-        int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
+          int lx = posIndex % ChunkPrefab::xSize;
+          int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
+          int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
 
-        Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
-        Vector3 worldPos = blockPos + chunkWorldPos;
+          Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
+          Vector3 worldPos = blockPos + chunkWorldPos;
 
-        DVertex &vert = Vertexdata[currentVertexOffset++];
-        vert.Position = worldPos;
+          DVertex &vert = Vertexdata[currentVertexOffset++];
+          vert.Position = worldPos;
 
-        // Pack Data: side(3), tileIndex(16), light(4)
-        Uint32 tileIndex = (Uint32)BlockDef[blockID].Textures[side];
-        Uint32 packedData = (side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
-                            ((uint32_t(light) & 0xF) << 19);
-        vert.Data = *(float *)&packedData;
+          // Pack Data: side(3), tileIndex(16), light(4)
+          Uint32 tileIndex = (Uint32)BlockDef[blockID].Textures[side];
+          Uint32 packedData = (side & 0x7) | ((tileIndex & 0xFFFF) << 3) |
+                              ((uint32_t(light) & 0xF) << 19);
+          vert.Data = *(float *)&packedData;
+        }
       }
     }
 
@@ -1031,19 +1033,22 @@ void Renderer::DrawTerrain(Player &player) {
         (chunk->needsMeshUpdate && chunk->isGenerated) || anyTransparentDirty;
 
     Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
-    for (uint32_t packed : chunk->transparentFaces) {
-      uint16_t posIndex;
-      uint8_t side, light;
-      uint16_t blockID;
-      DrawnFace::Unpack(packed, posIndex, side, light, blockID);
+    {
+      std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
+      for (uint32_t packed : chunk->transparentFaces) {
+        uint16_t posIndex;
+        uint8_t side, light;
+        uint16_t blockID;
+        DrawnFace::Unpack(packed, posIndex, side, light, blockID);
 
-      int lx = posIndex % ChunkPrefab::xSize;
-      int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
-      int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
+        int lx = posIndex % ChunkPrefab::xSize;
+        int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
+        int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
 
-      Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
-      transparentFaces.push_back(
-          {blockPos + chunkWorldPos, side, blockID, (uint8_t)(light & 0xF)});
+        Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
+        transparentFaces.push_back(
+            {blockPos + chunkWorldPos, side, blockID, (uint8_t)(light & 0xF)});
+      }
     }
   }
 

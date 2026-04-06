@@ -3,6 +3,8 @@
 #include "ChunkManager.hpp"
 #include "Common.hpp"
 #include <atomic>
+#include <mutex>
+#include <vector>
 
 struct DrawnFace {
   Uint32 data;
@@ -66,6 +68,7 @@ public:
   void PropagateLighting(std::vector<LightData> &localLight);
   Uint8 GetLightFromFaces(int x, int y, int z) const;
   int BinarySearchFace(Uint16 posIndex, const std::vector<Uint32> &faces) const;
+  mutable std::recursive_mutex faceMutex;
 
   ChunkManager *manager = nullptr;
   ChunkPrefab() {}
