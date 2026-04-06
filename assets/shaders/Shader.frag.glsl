@@ -22,7 +22,8 @@ float NearFog = 100.0;
 float FarFog = 150.0;
 float NearFogInWater = 5.0;
 float FarFogInWater = 50.0;
-int BlockInAtlasRow = 32;
+int BlockInAtlasRow = 7;
+int BlockInAtlasCol = 32;
 
 const vec3 FaceLight[6] = vec3[6](
     vec3(0.80, 0.80, 0.80),  // Front  (+Z)
@@ -54,9 +55,6 @@ void main()
   uint type      = uint(t3.b * 255.0 + 0.5) | (uint(t3.a * 255.0 + 0.5) << 8);
 
   uint tileIndex = textures[side];
-
-  float tileX = float(tileIndex % BlockInAtlasRow);
-  float tileY = float(tileIndex / BlockInAtlasRow);
   
   vec2 uv = clamp(fract(v_uv), 0.0, 1.0);
   
@@ -65,14 +63,13 @@ void main()
   
   // Use a small inset to avoid bleeding from neighboring tiles
   vec2 insetUV = uv * 0.98 + 0.01;
-  vec2 atlasUV = (vec2(tileX, tileY) + insetUV) / float(BlockInAtlasRow);
+
+  float tileX = float(tileIndex % BlockInAtlasCol);
+  float tileY = float(tileIndex / BlockInAtlasCol);
+
+  vec2 atlasUV = (vec2(tileX, tileY) + insetUV) / vec2(float(BlockInAtlasCol), float(BlockInAtlasRow));
   
   vec4 texColor = texture(u_texture, atlasUV);
-  
-  // If texture is black/transparent, use a fallback to see if it's there
-  if (texColor.rgb == vec3(0.0, 0.0, 0.0) && texColor.a < 0.1) {
-      texColor = vec4(1.0, 0.0, 1.0, 1.0); // Magenta fallback
-  }
 
   vec3 finalColor = FaceLight[side] * texColor.rgb;
 

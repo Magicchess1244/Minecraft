@@ -230,8 +230,7 @@ void PlayerManager::PlayerAction(int inventorySlot, float deltaTime) {
     hasInitialChunkLoaded = true;
     GameClient& gameClient = this->gameManager.GetGameClient();
     if (gameClient.get_is_new_player()) {
-      int height = chunkManager.get_chunk(chunkKey).GetHeight(
-          {this->players[0].Position.x, this->players[0].Position.z});
+      int height = 120;
       this->players[0].Position.x = std::floor(this->players[0].Position.x) + 0.5f;
       this->players[0].Position.z = std::floor(this->players[0].Position.z) + 0.5f;
       this->players[0].Position.y = height + 2.5f;

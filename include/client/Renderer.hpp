@@ -2,17 +2,11 @@
 #include "../../include/common/Chunck.hpp"
 #include "../../include/common/ChunkManager.hpp"
 #include "../../include/common/Common.hpp"
-#include "GameClient.hpp"
 #include "PlayerManager.hpp"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <chrono>
 #include <cmath>
-#include <iostream>
-#include <memory>
-#include <mutex>
-#include <unordered_map>
 #include <vector>
 
 class GlobalData;
@@ -90,7 +84,7 @@ struct Plane {
   }
 };
 struct Frustum {
-  Plane topFace, bottomFace, rightFace, leftFace, farFace, nearFace;
+  Plane topFace, bottomFace, rightFace, leftFace, nearFace;
 
   static Frustum createFrustumFromCamera(float aspect, float tanHalfFov,
                                          float Znear, float Zfar) {
@@ -104,8 +98,6 @@ struct Frustum {
     Vector3 farCenter = camForward * Zfar;
     frustum.nearFace.normal = camForward;
     frustum.nearFace.distance = -frustum.nearFace.normal.Dot(nearCenter);
-    frustum.farFace.normal = camForward * -1;
-    frustum.farFace.distance = -frustum.farFace.normal.Dot(farCenter);
     {
       Vector3 rightEdge = (farCenter + camRight * halfHSide).Normalized();
       frustum.rightFace.normal = (rightEdge.Cross(camUp)).Normalized();
@@ -130,9 +122,9 @@ struct Frustum {
   }
   bool isChunkInFrustum(const Vector3 &minPoint, const Vector3 &maxPoint,
                         float tolerance = 10.0f) const {
-    const Plane *const planes[6] = {&nearFace,  &farFace, &leftFace,
+    const Plane *const planes[5] = {&nearFace, &leftFace,
                                     &rightFace, &topFace, &bottomFace};
-    for (int p = 0; p < 6; ++p) {
+    for (int p = 0; p < 5; ++p) {
       Vector3 p_vertex = minPoint;
       if (planes[p]->normal.x >= 0)
         p_vertex.x = maxPoint.x;
@@ -167,7 +159,6 @@ struct Frustum {
       plane.distance = plane.distance - plane.normal.Dot(cameraPosition);
     };
     transformPlane(nearFace);
-    transformPlane(farFace);
     transformPlane(leftFace);
     transformPlane(rightFace);
     transformPlane(topFace);
@@ -185,21 +176,12 @@ struct Vertex {
 };
 struct Mesh {
   SDL_GPUTransferBuffer *VertextransferBuffer = nullptr;
-  SDL_GPUTransferBuffer *IndextransferBuffer = nullptr;
   SDL_GPUBufferBinding VertexBuffer;
-  SDL_GPUBufferBinding IndexBuffer;
   std::vector<DrawnFace> Faces;
-  int BaseVertex = 0, BaseIndex = 0;
+  int BaseVertex = 0;
   std::vector<ChunkPrefab *> currentChunks;
   bool needsUpdate = true;
   Vertex *mappedVertexData = nullptr;
-  Uint32 *mappedIndexData = nullptr;
-  int OpaqueIndexCount = 0;
-  int TransparentIndexCount = 0;
-};
-struct ChunkDistance {
-  ChunkPrefab *chunk;
-  float distSq;
 };
 struct BasicInitVars {
   SDL_Window *window = nullptr;
@@ -275,10 +257,9 @@ private:
   UIRuntimeVars uiRuntimeVars;
   Frustum frustum;
   std::vector<Mesh> Terrain;
-  int chunksPerBuffer = 25, totalBuffers = 0;
+  int chunksPerBuffer = 0, totalBuffers = 0;
   Vector3 lastPlayerChunk{-999, -999, -999};
   Vector3 lastRot{-999, -999, -999};
-  std::vector<ChunkPrefab *> lastVisibleChunks;
   GameManager &gameManager;
   SDL_GPUBufferBinding QuadIndexBinding = {nullptr, 0};
 
@@ -305,7 +286,7 @@ private:
   void RenderUIPass();
   void DrawUISprites();
   void DrawUIText();
-  std::vector<ChunkDistance> SortChunks(Player &player, Vector3 PlayerChunk);
+  std::vector<ChunkPrefab*> SortChunks(Player &player, Vector3 PlayerChunk);
   void DrawTerrain(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();
@@ -342,13 +323,8 @@ public:
   Renderer(GameManager &manager);
   ~Renderer() {
     for (auto &mesh : this->Terrain) {
-      if (mesh.IndexBuffer.buffer)
-        SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.IndexBuffer.buffer);
       if (mesh.VertexBuffer.buffer)
         SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.VertexBuffer.buffer);
-      if (mesh.IndextransferBuffer)
-        SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
-                                     mesh.IndextransferBuffer);
       if (mesh.VertextransferBuffer)
         SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
                                      mesh.VertextransferBuffer);

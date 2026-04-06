@@ -149,45 +149,6 @@ Matrix LookAt(const Vector3 &Rotation, const Vector3 &Position) {
   Matrix translation = Translation(-Position.x, -Position.y, -Position.z);
   return viewRotation * translation;
 }
-bool isFaceInFrustum(const Frustum &frustum, const Vector3 faceVerts[4]) {
-  const Plane planes[6] = {frustum.nearFace,  frustum.farFace,
-                           frustum.rightFace, frustum.leftFace,
-                           frustum.topFace,   frustum.bottomFace};
-
-  // For each plane, check if all 4 vertices are outside
-  for (const auto &plane : planes) {
-    int outsideCount = 0;
-    for (int i = 0; i < 4; ++i) {
-      if (plane.getSignedDistanceToPlane(faceVerts[i]) < 0.0f) {
-        ++outsideCount;
-      }
-    }
-    if (outsideCount == 4) {
-      return false; // entire face is outside this plane
-    }
-  }
-
-  return true; // at least partially inside all planes
-}
-SDL_FPoint getUV(int tileIndex, float cornerX, float cornerY) {
-  const int tileSize = ChunkPrefab::xSize;
-  const int atlasSize = 512;
-  const float pixelNudge = 0.5f;
-
-  int tilesPerRow = atlasSize / tileSize;
-  int tileX = tileIndex % tilesPerRow;
-  int tileY = tileIndex / tilesPerRow;
-
-  float u =
-      (tileX * tileSize + cornerX * (tileSize - pixelNudge * 2) + pixelNudge) /
-      (float)atlasSize;
-  float v =
-      (tileY * tileSize + cornerY * (tileSize - pixelNudge * 2) + pixelNudge) /
-      (float)atlasSize;
-
-  SDL_FPoint point = {(float)u, (float)v};
-  return point;
-}
 auto Renderer::AddRect(float x, float y, float w, float h, Vector3 color,
                        float blockID) {
   Uint32 c = (Uint32)(color.x * 255.0f) << 0 | (Uint32)(color.y * 255.0f) << 8 |
@@ -259,11 +220,6 @@ void Renderer::DrawText(const std::string &text, float x, float y, float scale,
   float currentY = y;
 
   for (char c : text) {
-    // Word wrap: start a new line if we exceed wrapWidth
-    if (wrapWidth > 0.0f && (currentX - x) + charAdvance > wrapWidth) {
-      currentX = x;
-      currentY -= charH * 1.4f; // move down one line
-    }
 
     // Hard clip: stop rendering entirely if we exceed maxWidth
     if (maxWidth > 0.0f && (currentX - x) + charW > maxWidth)
@@ -276,7 +232,7 @@ void Renderer::DrawText(const std::string &text, float x, float y, float scale,
     int idx = (int)(ptr - fontChars);
     float uvX1 = (float)idx / (float)numChars;
     float uvX2 = (float)(idx + 1) / (float)numChars;
-    float padding = 0.0005f;
+    float padding = 0.00005f;
 
     AddTextRect(currentX, currentY, charW, charH, {uvX1 + padding, 0.0f},
                 {uvX2 - padding, 1.0f}, color);
@@ -826,13 +782,10 @@ void Renderer::DrawUIText() {
                         static_cast<Uint32>(uiVars.textVertices.size()), 1, 0,
                         0);
 }
-std::vector<ChunkDistance> Renderer::SortChunks(Player &player,
-                                                Vector3 PlayerChunk) {
+std::vector<ChunkPrefab*> Renderer::SortChunks(Player &player, Vector3 PlayerChunk) {
   SpiralIterator spiral(RenderDistance * 2 + 1);
-  std::vector<ChunkDistance> visibleChunkList;
+  std::vector<ChunkPrefab*> visibleChunkList;
 
-  int maxChunks = (RenderDistance * 2 + 1) * (RenderDistance * 2 + 1);
-  visibleChunkList.reserve(maxChunks);
   ChunkManager &chunkManager = this->gameManager.GetChunkManager();
 
   while (spiral.hasNext()) {
@@ -857,15 +810,14 @@ std::vector<ChunkDistance> Renderer::SortChunks(Player &player,
                            (float)ChunkPrefab::ySize / 2.0f,
                            ChunkPos.z * (float)ChunkPrefab::zSize +
                                (float)ChunkPrefab::zSize / 2.0f};
-    float d2 = (chunkCenter - player.Position).LengthSquared();
 
-    visibleChunkList.push_back({&chunk, d2});
+    visibleChunkList.push_back(&chunk);
   }
 
-  std::sort(visibleChunkList.begin(), visibleChunkList.end(),
-            [](const ChunkDistance &a, const ChunkDistance &b) {
-              return a.distSq < b.distSq;
-            });
+  //std::sort(visibleChunkList.begin(), visibleChunkList.end(),
+  //          [](const ChunkDistance &a, const ChunkDistance &b) {
+  //            return a.distSq < b.distSq;
+  //          });
 
   return visibleChunkList;
 }
@@ -883,32 +835,28 @@ void Renderer::DrawTerrain(Player &player) {
         break;
       }
     }
+    if (anyGlobalNeedUpdate) break;
   }
 
-  if (PlayerChunk == lastPlayerChunk && rotDiff < 0.1f &&
-      !anyGlobalNeedUpdate) {
+  if (PlayerChunk == lastPlayerChunk && rotDiff < 5.0f && !anyGlobalNeedUpdate) {
     return;
   }
 
-  // Unload chunks every time the player moves to a new chunk
-  float unloadDistance = (RenderDistance + 12) * ChunkPrefab::xSize;
-  this->gameManager.GetChunkManager().UnloadFarChunks(player.Position,
-                                                      unloadDistance);
   this->lastPlayerChunk = PlayerChunk;
   this->lastRot = player.Rotation;
 
-  std::vector<ChunkDistance> visibleChunks = SortChunks(player, PlayerChunk);
+  std::vector<ChunkPrefab*> visibleChunks = SortChunks(player, PlayerChunk);
 
   std::vector<std::vector<ChunkPrefab *>> newBuckets(this->totalBuffers - 1);
 
-  for (auto &cd : visibleChunks) {
-    int bx = cd.chunk->xPos / ChunkPrefab::xSize;
-    int bz = cd.chunk->zPos / ChunkPrefab::zSize;
+  for (auto &chunk : visibleChunks) {
+    int bx = chunk->xPos / ChunkPrefab::xSize;
+    int bz = chunk->zPos / ChunkPrefab::zSize;
     // Simple hash to distribute chunks stably across available opaque buffers
     // (totalBuffers-1)
     int bIdx = (std::abs(bx) * 7 + std::abs(bz)) % (this->totalBuffers - 1);
     if (newBuckets[bIdx].size() < (size_t)chunksPerBuffer) {
-      newBuckets[bIdx].push_back(cd.chunk);
+      newBuckets[bIdx].push_back(chunk);
     }
   }
 
@@ -917,51 +865,25 @@ void Renderer::DrawTerrain(Player &player) {
     auto *mesh = &this->Terrain[bufferIdx];
     const std::vector<ChunkPrefab *> &newChunks = newBuckets[bufferIdx];
 
-    bool anyChunkDirty = false;
-    for (auto *c : newChunks)
-      anyChunkDirty = c->needsMeshUpdate || anyChunkDirty;
-
-    if (newChunks == mesh->currentChunks && !anyChunkDirty &&
-        !mesh->needsUpdate) {
-      mesh->TransparentIndexCount = 0;
-      continue;
-    }
-
     mesh->currentChunks = newChunks;
     mesh->needsUpdate = false;
     mesh->BaseVertex = 0;
-    mesh->BaseIndex = 0;
-    mesh->TransparentIndexCount = 0;
 
-    if (newChunks.empty()) {
-      mesh->OpaqueIndexCount = 0;
-      continue;
-    }
+    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer( this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
 
-    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(
-        this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
-    // Uint32 *Indexdata = (Uint32
-    // *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
-    // mesh->IndextransferBuffer, true);
-
-    if (!Vertexdata)
-      continue;
+    if (!Vertexdata) continue;
 
     size_t currentVertexOffset = 0;
-    size_t currentIndexOffset = 0;
     const size_t maxVertices = chunksPerBuffer * FacesPerChunk;
-    const size_t maxIndices = chunksPerBuffer * FacesPerChunk;
 
     for (auto *chunk : newChunks) {
-      if (!chunk->isGenerated)
-        continue;
-      Vector3 chunkPosKey =
-          worldToChunkKey(Vector3{(float)chunk->xPos, 0, (float)chunk->zPos});
+      if (chunk->isProcessing) continue;
+      
+      Vector3 chunkPosKey = worldToChunkKey(Vector3{(float)chunk->xPos, 0, (float)chunk->zPos});
 
       chunk->needsMeshUpdate = false;
 
       Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
-      {
         std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
         if (currentVertexOffset + chunk->opaqueFaces.size() > maxVertices) {
           PrintLog(
@@ -971,45 +893,37 @@ void Renderer::DrawTerrain(Player &player) {
           continue;
         }
 
-        for (uint32_t packed : chunk->opaqueFaces) {
-          uint16_t posIndex;
-          uint8_t side, light;
-          uint16_t blockID;
-          DrawnFace::Unpack(packed, posIndex, side, light, blockID);
+      for (uint32_t packed : chunk->opaqueFaces) {
+        uint16_t posIndex;
+        uint8_t side, light;
+        uint16_t blockID;
+        DrawnFace::Unpack(packed, posIndex, side, light, blockID);
 
-          int lx = posIndex % ChunkPrefab::xSize;
-          int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
-          int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
+        int lx = posIndex % ChunkPrefab::xSize;
+        int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
+        int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
 
-          Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
-          Vector3 worldPos = blockPos + chunkWorldPos;
+        Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
+        Vector3 worldPos = blockPos + chunkWorldPos;
 
-          DVertex &vert = Vertexdata[currentVertexOffset++];
-          vert.Position = worldPos;
+        DVertex &vert = Vertexdata[currentVertexOffset++];
+        vert.Position = worldPos;
 
-          // Pack Data: side(3), blockID(9), light(4)
-          Uint32 packedData = (side & 0x7) | ((blockID & 0x1FF) << 3) |
-                              ((uint32_t(light) & 0xF) << 12);
-          vert.Data = *(float *)&packedData;
-        }
+        // Pack Data: side(3), blockID(9), light(4)
+        Uint32 packedData = (side & 0x7) | ((blockID & 0x1FF) << 3) |
+                            ((uint32_t(light) & 0xF) << 12);
+        vert.Data = *(float *)&packedData;
       }
     }
 
-    if (currentVertexOffset == 0)
-      continue;
+    if (currentVertexOffset == 0) continue;
 
-    mesh->OpaqueIndexCount = (int)currentVertexOffset;
-    mesh->BaseVertex = (int)currentVertexOffset;
-    mesh->BaseIndex = 0;
+    mesh->BaseVertex += (int)currentVertexOffset;
 
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                               mesh->VertextransferBuffer);
-    // SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-    // mesh->IndextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, mesh->VertextransferBuffer);
 
     SDL_GPUTransferBufferLocation vLoc{mesh->VertextransferBuffer, 0};
-    SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
-                             (Uint32)(currentVertexOffset * sizeof(DVertex))};
+    SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0, (Uint32)(currentVertexOffset * sizeof(DVertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
   }
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
@@ -1019,7 +933,6 @@ void Renderer::DrawTerrain(Player &player) {
     Uint16 blockID;
     Uint8 light;
   };
-  static std::vector<TransparentFace> cachedTransparentFaces;
   static Vector3 lastSortPos;
   static float lastSortRotY = -999.0f;
 
@@ -1028,7 +941,7 @@ void Renderer::DrawTerrain(Player &player) {
 
   bool anyTransparentDirty = false;
   for (auto &cd : visibleChunks) {
-    ChunkPrefab *chunk = cd.chunk;
+    ChunkPrefab *chunk = chunk;
     anyTransparentDirty =
         (chunk->needsMeshUpdate && chunk->isGenerated) || anyTransparentDirty;
 
@@ -1053,17 +966,9 @@ void Renderer::DrawTerrain(Player &player) {
   }
 
   Mesh *tMesh = &this->Terrain[this->totalBuffers - 1];
-  tMesh->OpaqueIndexCount = 0;
 
-  if (transparentFaces.empty()) {
-    tMesh->TransparentIndexCount = 0;
-    cachedTransparentFaces.clear();
-    return;
-  }
   DVertex *vData = (DVertex *)SDL_MapGPUTransferBuffer(
       this->basicInitVars.GPU, tMesh->VertextransferBuffer, true);
-  // Uint32 *iData = (Uint32 *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU,
-  // tMesh->IndextransferBuffer, true);
 
   if (vData) {
     size_t vOffset = 0;
@@ -1086,12 +991,9 @@ void Renderer::DrawTerrain(Player &player) {
       vOffset += 1;
     }
 
-    tMesh->TransparentIndexCount = (int)vOffset;
-    tMesh->BaseVertex = (int)vOffset;
+    tMesh->BaseVertex += (int)vOffset;
     SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
                                tMesh->VertextransferBuffer);
-    // SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-    // tMesh->IndextransferBuffer);
 
     SDL_GPUTransferBufferLocation vLoc{tMesh->VertextransferBuffer, 0};
     SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
@@ -1186,14 +1088,10 @@ void Renderer::DrawBg(std::vector<Player> &players) {
                          SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
   for (auto &mesh : this->Terrain) {
-    int faceCount = mesh.OpaqueIndexCount + mesh.TransparentIndexCount;
-    if (faceCount == 0)
-      continue;
+    if (mesh.BaseVertex == 0) continue;
 
-    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0,
-                             &mesh.VertexBuffer, 1);
-    SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, 6, faceCount, 0,
-                                 0, 0);
+    SDL_BindGPUVertexBuffers(this->runTimeRenderVars.pass, 0, &mesh.VertexBuffer, 1);
+    SDL_DrawGPUIndexedPrimitives(this->runTimeRenderVars.pass, 6, mesh.BaseVertex, 0, 0, 0);
   }
 
   // DrawPlayers(players);
@@ -1811,19 +1709,6 @@ void Renderer::GenerateBuffer() {
   const Uint32 singleChunkVertexSize = sizeof(DVertex) * FacesPerChunk;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
 
-  // Clear old buffers if they exist
-  for (auto &mesh : this->Terrain) {
-    if (mesh.VertexBuffer.buffer)
-      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.VertexBuffer.buffer);
-    if (mesh.VertextransferBuffer)
-      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
-                                   mesh.VertextransferBuffer);
-    if (mesh.IndexBuffer.buffer)
-      SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.IndexBuffer.buffer);
-    if (mesh.IndextransferBuffer)
-      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
-                                   mesh.IndextransferBuffer);
-  }
   this->Terrain.clear();
 
   PrintLog("Vertex size per buffer: " + std::to_string(packedVertexSize) +
@@ -2070,7 +1955,7 @@ void Renderer::LoadTexture() {
   }
 
   uiVars.font =
-      TTF_OpenFont(fullFontPath, 48); // Sharper text at higher resolution
+      TTF_OpenFont(fullFontPath, 32); // Sharper text at higher resolution
   if (!uiVars.font) {
     PrintWarning("Failed to load font at %s: %s" + std::string(fullFontPath) +
                  SDL_GetError());
@@ -2156,8 +2041,8 @@ void Renderer::LoadTexture() {
   }
 
   SDL_GPUSamplerCreateInfo fontSamplerInfo = {};
-  fontSamplerInfo.min_filter = SDL_GPU_FILTER_LINEAR;
-  fontSamplerInfo.mag_filter = SDL_GPU_FILTER_LINEAR;
+  fontSamplerInfo.min_filter = SDL_GPU_FILTER_NEAREST;
+  fontSamplerInfo.mag_filter = SDL_GPU_FILTER_NEAREST;
   fontSamplerInfo.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
   fontSamplerInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
   uiVars.fontSampler =

@@ -60,9 +60,8 @@ public:
     return x >= 0 && x < xSize && y >= 0 && y < ySize && z >= 0 && z < zSize;
   }
   void GenerateChunk();
-  bool isSolidBlock(int worldX, int worldY, int worldZ, int terrainHeight);
-  Uint8 GetBlockID(int worldX, int worldY, int worldZ, int terrainHeight);
-  int GetHeight(Vector2 Pos);
+  bool isSolidBlock(int worldX, int worldY, int worldZ);
+  Uint8 GetBlockID(int worldX, int worldY, int worldZ);
   void GenerateMesh(const std::vector<LightData> &localLight);
   void GenerateLighting(std::vector<LightData> &localLight);
   void PropagateLighting(std::vector<LightData> &localLight);
@@ -78,6 +77,8 @@ public:
   }
 
 private:
+  int GetHeight(Vector2 Pos);
+
   void GenerateVegetation(const std::vector<int> &heightCache,
                           const std::vector<Biome> &biomeMap,
                           std::vector<bool> &solidCache);
