@@ -723,7 +723,7 @@ void Renderer::UploadVertexBuffer(const std::vector<Vertex> &vertices,
 
   SDL_GPUCopyPass *copyPass =
       SDL_BeginGPUCopyPass(this->runTimeRenderVars.cmdRender);
-  SDL_UploadToGPUBuffer(copyPass, &src, &dst, true);
+  SDL_UploadToGPUBuffer(copyPass, &src, &dst, false);
   SDL_EndGPUCopyPass(copyPass);
 }
 
@@ -824,10 +824,10 @@ std::vector<ChunkPrefab *> Renderer::SortChunks(Player &player,
     distances.push_back({&chunk, distSq});
   }
 
-  // Sort back-to-front (furthest first) for better transparency sorting
+  // Sort front-to-back (nearest first) so close chunks fill GPU buckets first
   std::sort(distances.begin(), distances.end(),
             [](const ChunkDistance &a, const ChunkDistance &b) {
-              return a.distSq > b.distSq;
+              return a.distSq < b.distSq;
             });
 
   std::vector<ChunkPrefab *> visibleChunkList;
@@ -879,7 +879,15 @@ void Renderer::DrawTerrain(Player &player) {
     }
   }
 
-  // 3. Opaque Pass - Fill buffers 0 to totalBuffers-2 using stable buckets
+  // 3. Opaque Pass - map CommonTransferBuffer ONCE, fill all buckets at
+  // strided offsets, then unmap once. This avoids SDL creating N cycling
+  // backing stores (which cost N × 1MB per frame).
+  const size_t maxVerticesPerBucket = chunksPerBuffer * FacesPerChunk;
+  const size_t stride = maxVerticesPerBucket; // vertices per bucket slot
+
+  DVertex *allVertexData = (DVertex *)SDL_MapGPUTransferBuffer(
+      this->basicInitVars.GPU, this->CommonTransferBuffer, true);
+
   for (int bufferIdx = 0; bufferIdx < this->totalBuffers - 1; bufferIdx++) {
     auto *mesh = &this->Terrain[bufferIdx];
     const std::vector<ChunkPrefab *> &newChunks = newBuckets[bufferIdx];
@@ -888,40 +896,27 @@ void Renderer::DrawTerrain(Player &player) {
     mesh->needsUpdate = false;
     mesh->BaseVertex = 0;
 
-    const size_t maxVertices = chunksPerBuffer * FacesPerChunk;
-
-    SDL_GPUTransferBufferCreateInfo tInfo{};
-    tInfo.size = maxVertices * sizeof(DVertex);
-    tInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    SDL_GPUTransferBuffer *tBuf =
-        SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &tInfo);
-
-    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(
-        this->basicInitVars.GPU, tBuf, true);
-
-    if (!Vertexdata) {
-      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
+    if (!allVertexData)
       continue;
-    }
 
+    // Write this bucket into its dedicated slot in the common buffer
+    DVertex *Vertexdata = allVertexData + (bufferIdx * stride);
     size_t currentVertexOffset = 0;
 
     for (auto *chunk : newChunks) {
       if (chunk->isProcessing)
         continue;
 
-      Vector3 chunkPosKey =
-          worldToChunkKey(Vector3{(float)chunk->xPos, 0, (float)chunk->zPos});
-
       chunk->needsMeshUpdate = false;
 
       Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
       std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
-      if (currentVertexOffset + chunk->opaqueFaces.size() > maxVertices) {
+      if (currentVertexOffset + chunk->opaqueFaces.size() >
+          maxVerticesPerBucket) {
         PrintLog(
             "WARNING! Buffer full! Skipping chunk. Need " +
             std::to_string(currentVertexOffset + chunk->opaqueFaces.size()) +
-            " vs " + std::to_string(maxVertices));
+            " vs " + std::to_string(maxVerticesPerBucket));
         continue;
       }
 
@@ -942,7 +937,6 @@ void Renderer::DrawTerrain(Player &player) {
         vert.Position = worldPos;
 
         Uint32 tileIndex = BlockDef[blockID].Textures[side];
-        // Pack Data: side(3), blockID(9), light(4), tileIndex(9)
         Uint32 packedData = (side & 0x7) | ((blockID & 0x1FF) << 3) |
                             ((uint32_t(light) & 0xF) << 12) |
                             ((tileIndex & 0x1FF) << 16);
@@ -955,15 +949,20 @@ void Renderer::DrawTerrain(Player &player) {
 
     mesh->BaseVertex += (int)currentVertexOffset;
 
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
-
-    SDL_GPUTransferBufferLocation vLoc{tBuf, 0};
+    // Upload this bucket from its slot offset — no unmap needed yet
+    SDL_GPUTransferBufferLocation vLoc{
+        this->CommonTransferBuffer,
+        (Uint32)(bufferIdx * stride * sizeof(DVertex))};
     SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
                              (Uint32)(currentVertexOffset * sizeof(DVertex))};
-    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
-
-    SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
+    SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg,
+                          false);
   }
+
+  // Unmap once after all opaque buckets are written and submitted
+  if (allVertexData)
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               this->CommonTransferBuffer);
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
   struct TransparentFace {
     Vector3 pos;
@@ -971,49 +970,37 @@ void Renderer::DrawTerrain(Player &player) {
     Uint16 blockID;
     Uint8 light;
   };
-  static Vector3 lastSortPos;
-  static float lastSortRotY = -999.0f;
 
   std::vector<TransparentFace> transparentFaces;
   transparentFaces.reserve(500);
 
-  bool anyTransparentDirty = false;
   for (auto &cd : visibleChunks) {
     ChunkPrefab *chunk = cd;
-    anyTransparentDirty =
-        (chunk->needsMeshUpdate && chunk->isGenerated) || anyTransparentDirty;
 
     Vector3 chunkWorldPos{(float)chunk->xPos, 0, (float)chunk->zPos};
-    {
-      std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
-      for (uint32_t packed : chunk->transparentFaces) {
-        uint16_t posIndex;
-        uint8_t side, light;
-        uint16_t blockID;
-        DrawnFace::Unpack(packed, posIndex, side, light, blockID);
 
-        int lx = posIndex % ChunkPrefab::xSize;
-        int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
-        int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
+    std::lock_guard<std::recursive_mutex> lock(chunk->faceMutex);
+    for (uint32_t packed : chunk->transparentFaces) {
+      uint16_t posIndex;
+      uint8_t side, light;
+      uint16_t blockID;
+      DrawnFace::Unpack(packed, posIndex, side, light, blockID);
 
-        Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
-        transparentFaces.push_back(
-            {blockPos + chunkWorldPos, side, blockID, (uint8_t)(light & 0xF)});
-      }
+      int lx = posIndex % ChunkPrefab::xSize;
+      int ly = (posIndex / ChunkPrefab::xSize) % ChunkPrefab::ySize;
+      int lz = posIndex / (ChunkPrefab::xSize * ChunkPrefab::ySize);
+
+      Vector3 blockPos = {(float)lx, (float)ly, (float)lz};
+      transparentFaces.push_back(
+          {blockPos + chunkWorldPos, side, blockID, (uint8_t)(light & 0xF)});
     }
   }
 
   Mesh *tMesh = &this->Terrain[this->totalBuffers - 1];
   const size_t maxV = chunksPerBuffer * FacesPerChunk;
 
-  SDL_GPUTransferBufferCreateInfo tInfo{};
-  tInfo.size = maxV * sizeof(DVertex);
-  tInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-  SDL_GPUTransferBuffer *tBuf =
-      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &tInfo);
-
-  DVertex *vData =
-      (DVertex *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, tBuf, true);
+  DVertex *vData = (DVertex *)SDL_MapGPUTransferBuffer(
+      this->basicInitVars.GPU, this->CommonTransferBuffer, false);
 
   if (vData) {
     size_t vOffset = 0;
@@ -1037,16 +1024,16 @@ void Renderer::DrawTerrain(Player &player) {
 
     tMesh->BaseVertex += (int)vOffset;
 
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
+                               this->CommonTransferBuffer);
 
     if (vOffset > 0) {
-      SDL_GPUTransferBufferLocation vLoc{tBuf, 0};
+      SDL_GPUTransferBufferLocation vLoc{this->CommonTransferBuffer, 0};
       SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
                                (Uint32)(vOffset * sizeof(DVertex))};
       SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg,
-                            true);
+                            false);
     }
-    SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
   }
 }
 void Renderer::DrawBg(std::vector<Player> &players) {
@@ -1201,11 +1188,11 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
   SDL_GPUTransferBufferLocation vSrc = {EntityTransferBuffer, 0};
   SDL_GPUBufferRegion vDst = {EntityBuffer, 0,
                               (Uint32)(verts.size() * sizeof(DVertex))};
-  SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, true);
+  SDL_UploadToGPUBuffer(copy, &vSrc, &vDst, false);
   SDL_GPUTransferBufferLocation iSrc = {EntityIndexTransferBuffer, 0};
   SDL_GPUBufferRegion iDst = {EntityIndexBuffer, 0,
                               (Uint32)(indices.size() * sizeof(Uint32))};
-  SDL_UploadToGPUBuffer(copy, &iSrc, &iDst, true);
+  SDL_UploadToGPUBuffer(copy, &iSrc, &iDst, false);
   SDL_EndGPUCopyPass(copy);
   SDL_SubmitGPUCommandBuffer(cmd);
 
@@ -1758,6 +1745,15 @@ void Renderer::GenerateBuffer() {
   // 1 vertex per face now (was 4), no per-mesh index buffer needed
   const Uint32 singleChunkVertexSize = sizeof(DVertex) * FacesPerChunk;
   const Uint32 packedVertexSize = singleChunkVertexSize * chunksPerBuffer;
+
+  // Size the common transfer buffer to hold ALL opaque bucket slots at once
+  // so we can map it exactly once per frame instead of once per bucket.
+  const int numOpaqueBuckets = (this->totalBuffers - 1);
+  SDL_GPUTransferBufferCreateInfo tInfo{};
+  tInfo.size = packedVertexSize * numOpaqueBuckets;
+  tInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  this->CommonTransferBuffer =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &tInfo);
 
   this->Terrain.clear();
 

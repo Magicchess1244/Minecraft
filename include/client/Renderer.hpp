@@ -247,6 +247,7 @@ private:
   SDL_GPUTexture *DepthTexture = nullptr;
   SDL_GPUTexture *TextureAtlas = nullptr;
   SDL_GPUSampler *Sampler = nullptr;
+  SDL_GPUTransferBuffer *CommonTransferBuffer = nullptr;
   UIVars uiVars;
   SDL_GPUBuffer *EntityBuffer = nullptr;
   SDL_GPUTransferBuffer *EntityTransferBuffer = nullptr;
@@ -319,9 +320,19 @@ private:
 public:
   Renderer(GameManager &manager);
   ~Renderer() {
+    // Wait for all in-flight GPU work FIRST — otherwise releasing buffers
+    // that are still referenced causes the Vulkan validation flood.
+    if (basicInitVars.GPU) {
+      SDL_WaitForGPUIdle(basicInitVars.GPU);
+    }
+
     for (auto &mesh : this->Terrain) {
       if (mesh.VertexBuffer.buffer)
         SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.VertexBuffer.buffer);
+    }
+    if (this->CommonTransferBuffer) {
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
+                                   this->CommonTransferBuffer);
     }
 
     if (QuadIndexBinding.buffer) {
@@ -407,7 +418,6 @@ public:
     }
 
     if (basicInitVars.GPU) {
-      SDL_WaitForGPUIdle(basicInitVars.GPU);
       SDL_DestroyGPUDevice(basicInitVars.GPU);
       basicInitVars.GPU = nullptr;
     }
