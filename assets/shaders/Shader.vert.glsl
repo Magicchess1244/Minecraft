@@ -7,6 +7,7 @@ layout (location = 1) out vec2  v_uv;
 layout (location = 2) flat out float v_blockID;
 layout (location = 3) out vec3  v_pos;
 layout (location = 4) out float v_light;
+layout (location = 5) flat out float v_tileIndex;
 
 layout(set=1,binding=0,std140) uniform ProjectionBlock { mat4 projection; } projBlock;
 layout(set=1,binding=1,std140) uniform ViewBlock       { mat4 view;       } viewBlock;
@@ -48,6 +49,7 @@ void main() {
     v_color   = float(side);
     v_blockID = float((a_data >> 3u)  & 0x1FFu);
     v_light   = float((a_data >> 12u) & 0xFu);
+    v_tileIndex = float((a_data >> 16u) & 0x1FFu);
     v_uv      = vec2(cx, 1.0 - cy);
     v_pos     = gl_Position.xyz;
 }

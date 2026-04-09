@@ -122,8 +122,8 @@ struct Frustum {
   }
   bool isChunkInFrustum(const Vector3 &minPoint, const Vector3 &maxPoint,
                         float tolerance = 10.0f) const {
-    const Plane *const planes[5] = {&nearFace, &leftFace,
-                                    &rightFace, &topFace, &bottomFace};
+    const Plane *const planes[5] = {&nearFace, &leftFace, &rightFace, &topFace,
+                                    &bottomFace};
     for (int p = 0; p < 5; ++p) {
       Vector3 p_vertex = minPoint;
       if (planes[p]->normal.x >= 0)
@@ -175,7 +175,6 @@ struct Vertex {
   float BlockID;
 };
 struct Mesh {
-  SDL_GPUTransferBuffer *VertextransferBuffer = nullptr;
   SDL_GPUBufferBinding VertexBuffer;
   std::vector<DrawnFace> Faces;
   int BaseVertex = 0;
@@ -248,7 +247,6 @@ private:
   SDL_GPUTexture *DepthTexture = nullptr;
   SDL_GPUTexture *TextureAtlas = nullptr;
   SDL_GPUSampler *Sampler = nullptr;
-  SDL_GPUTexture *BlockPropsTexture = nullptr;
   UIVars uiVars;
   SDL_GPUBuffer *EntityBuffer = nullptr;
   SDL_GPUTransferBuffer *EntityTransferBuffer = nullptr;
@@ -286,7 +284,7 @@ private:
   void RenderUIPass();
   void DrawUISprites();
   void DrawUIText();
-  std::vector<ChunkPrefab*> SortChunks(Player &player, Vector3 PlayerChunk);
+  std::vector<ChunkPrefab *> SortChunks(Player &player, Vector3 PlayerChunk);
   void DrawTerrain(Player &player);
   SDL_GPUTexture *CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
   void UpdateViewportAndProjection();
@@ -296,7 +294,6 @@ private:
   void PipelineInit();
   void ColorTargetDes();
   void LoadTexture();
-  void UploadBlockProperties();
   void EventManager(Player &player, int &inventorySlot);
   void HandleQuit();
   void HandleMouseWheel(int &inventorySlot);
@@ -325,9 +322,6 @@ public:
     for (auto &mesh : this->Terrain) {
       if (mesh.VertexBuffer.buffer)
         SDL_ReleaseGPUBuffer(this->basicInitVars.GPU, mesh.VertexBuffer.buffer);
-      if (mesh.VertextransferBuffer)
-        SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU,
-                                     mesh.VertextransferBuffer);
     }
 
     if (QuadIndexBinding.buffer) {
@@ -355,10 +349,6 @@ public:
     if (TextureAtlas) {
       SDL_ReleaseGPUTexture(this->basicInitVars.GPU, TextureAtlas);
       TextureAtlas = nullptr;
-    }
-    if (BlockPropsTexture) {
-      SDL_ReleaseGPUTexture(this->basicInitVars.GPU, BlockPropsTexture);
-      BlockPropsTexture = nullptr;
     }
     if (Sampler) {
       SDL_ReleaseGPUSampler(this->basicInitVars.GPU, Sampler);

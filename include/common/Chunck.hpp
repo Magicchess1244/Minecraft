@@ -50,7 +50,8 @@ public:
 
   std::vector<Uint32> opaqueFaces;
   std::vector<Uint32> transparentFaces;
-  Uint8 *blocks = new Uint8[ySize * xSize * zSize]();
+  static constexpr int ySections = ySize / 16;
+  Uint8 *sections[ySections] = {nullptr};
 
   std::atomic<bool> isGenerated{false};
   std::atomic<bool> isDirty{false};
@@ -72,8 +73,31 @@ public:
   ChunkManager *manager = nullptr;
   ChunkPrefab() {}
   ~ChunkPrefab() {
-    delete[] blocks;
-    blocks = nullptr;
+    for (int i = 0; i < ySections; i++) {
+      if (sections[i])
+        delete[] sections[i];
+    }
+  }
+
+  Uint8 GetBlock(int x, int y, int z) const {
+    if (y < 0 || y >= ySize)
+      return 0;
+    int sy = y / 16;
+    if (!sections[sy])
+      return 0;
+    return sections[sy][x + (y % 16) * xSize + z * xSize * 16];
+  }
+
+  void SetBlock(int x, int y, int z, Uint8 id) {
+    if (y < 0 || y >= ySize)
+      return;
+    int sy = y / 16;
+    if (!sections[sy]) {
+      if (id == 0)
+        return; // Don't allocate for Air
+      sections[sy] = new Uint8[16 * xSize * zSize]();
+    }
+    sections[sy][x + (y % 16) * xSize + z * xSize * 16] = id;
   }
 
 private:

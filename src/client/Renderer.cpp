@@ -749,11 +749,10 @@ void Renderer::DrawUISprites() {
   SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
                               pipelineInitVars.uiPipeline);
 
-  if (TextureAtlas && BlockPropsTexture && Sampler) {
-    SDL_GPUTextureSamplerBinding samplerBindings[2] = {
-        {TextureAtlas, Sampler}, {BlockPropsTexture, Sampler}};
+  if (TextureAtlas && Sampler) {
+    SDL_GPUTextureSamplerBinding samplerBindings[1] = {{TextureAtlas, Sampler}};
     SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
-                                samplerBindings, 2);
+                                samplerBindings, 1);
   }
 
   SDL_GPUBufferBinding vb = {uiVars.UIVertexBuffer, 0};
@@ -889,14 +888,23 @@ void Renderer::DrawTerrain(Player &player) {
     mesh->needsUpdate = false;
     mesh->BaseVertex = 0;
 
-    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(
-        this->basicInitVars.GPU, mesh->VertextransferBuffer, true);
+    const size_t maxVertices = chunksPerBuffer * FacesPerChunk;
 
-    if (!Vertexdata)
+    SDL_GPUTransferBufferCreateInfo tInfo{};
+    tInfo.size = maxVertices * sizeof(DVertex);
+    tInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    SDL_GPUTransferBuffer *tBuf =
+        SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &tInfo);
+
+    DVertex *Vertexdata = (DVertex *)SDL_MapGPUTransferBuffer(
+        this->basicInitVars.GPU, tBuf, true);
+
+    if (!Vertexdata) {
+      SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
       continue;
+    }
 
     size_t currentVertexOffset = 0;
-    const size_t maxVertices = chunksPerBuffer * FacesPerChunk;
 
     for (auto *chunk : newChunks) {
       if (chunk->isProcessing)
@@ -933,9 +941,11 @@ void Renderer::DrawTerrain(Player &player) {
         DVertex &vert = Vertexdata[currentVertexOffset++];
         vert.Position = worldPos;
 
-        // Pack Data: side(3), blockID(9), light(4)
+        Uint32 tileIndex = BlockDef[blockID].Textures[side];
+        // Pack Data: side(3), blockID(9), light(4), tileIndex(9)
         Uint32 packedData = (side & 0x7) | ((blockID & 0x1FF) << 3) |
-                            ((uint32_t(light) & 0xF) << 12);
+                            ((uint32_t(light) & 0xF) << 12) |
+                            ((tileIndex & 0x1FF) << 16);
         vert.Data = *(float *)&packedData;
       }
     }
@@ -945,13 +955,14 @@ void Renderer::DrawTerrain(Player &player) {
 
     mesh->BaseVertex += (int)currentVertexOffset;
 
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                               mesh->VertextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
 
-    SDL_GPUTransferBufferLocation vLoc{mesh->VertextransferBuffer, 0};
+    SDL_GPUTransferBufferLocation vLoc{tBuf, 0};
     SDL_GPUBufferRegion vReg{mesh->VertexBuffer.buffer, 0,
                              (Uint32)(currentVertexOffset * sizeof(DVertex))};
     SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg, true);
+
+    SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
   }
   // 4. Transparent Pass - Dedicated buffer (totalBuffers-1)
   struct TransparentFace {
@@ -993,14 +1004,19 @@ void Renderer::DrawTerrain(Player &player) {
   }
 
   Mesh *tMesh = &this->Terrain[this->totalBuffers - 1];
+  const size_t maxV = chunksPerBuffer * FacesPerChunk;
 
-  DVertex *vData = (DVertex *)SDL_MapGPUTransferBuffer(
-      this->basicInitVars.GPU, tMesh->VertextransferBuffer, true);
+  SDL_GPUTransferBufferCreateInfo tInfo{};
+  tInfo.size = maxV * sizeof(DVertex);
+  tInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+  SDL_GPUTransferBuffer *tBuf =
+      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &tInfo);
+
+  DVertex *vData =
+      (DVertex *)SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, tBuf, true);
 
   if (vData) {
     size_t vOffset = 0;
-    // size_t iOffset = 0;
-    const size_t maxV = chunksPerBuffer * FacesPerChunk;
 
     for (auto &face : transparentFaces) {
       if (vOffset + 1 > maxV)
@@ -1009,9 +1025,10 @@ void Renderer::DrawTerrain(Player &player) {
       DVertex vert;
       vert.Position = face.pos;
 
-      // Pack Data: side(3), blockID(9), light(4)
+      Uint32 tileIndex = BlockDef[face.blockID].Textures[face.side];
+      // Pack Data: side(3), blockID(9), light(4), tileIndex(9)
       Uint32 packed = (face.side & 0x7) | ((face.blockID & 0x1FF) << 3) |
-                      ((face.light & 0xF) << 12);
+                      ((face.light & 0xF) << 12) | ((tileIndex & 0x1FF) << 16);
       vert.Data = *(float *)&packed;
       vData[vOffset] = vert;
 
@@ -1020,19 +1037,16 @@ void Renderer::DrawTerrain(Player &player) {
 
     tMesh->BaseVertex += (int)vOffset;
 
-    if (vOffset > 0) {
-      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                                 tMesh->VertextransferBuffer);
+    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
 
-      SDL_GPUTransferBufferLocation vLoc{tMesh->VertextransferBuffer, 0};
+    if (vOffset > 0) {
+      SDL_GPUTransferBufferLocation vLoc{tBuf, 0};
       SDL_GPUBufferRegion vReg{tMesh->VertexBuffer.buffer, 0,
                                (Uint32)(vOffset * sizeof(DVertex))};
       SDL_UploadToGPUBuffer(this->runTimeRenderVars.copyPass, &vLoc, &vReg,
                             true);
-    } else {
-      SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU,
-                                 tMesh->VertextransferBuffer);
     }
+    SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, tBuf);
   }
 }
 void Renderer::DrawBg(std::vector<Player> &players) {
@@ -1107,12 +1121,11 @@ void Renderer::DrawBg(std::vector<Player> &players) {
       SDL_BeginGPURenderPass(this->runTimeRenderVars.cmdRender,
                              &color_target_info, 1, &depth_target_info);
 
-  if (this->TextureAtlas && this->BlockPropsTexture && this->Sampler) {
-    SDL_GPUTextureSamplerBinding samplerBindings[2] = {
-        {this->TextureAtlas, this->Sampler},
-        {this->BlockPropsTexture, this->Sampler}};
+  if (this->TextureAtlas && this->Sampler) {
+    SDL_GPUTextureSamplerBinding samplerBindings[1] = {
+        {this->TextureAtlas, this->Sampler}};
     SDL_BindGPUFragmentSamplers(this->runTimeRenderVars.pass, 0,
-                                samplerBindings, 2);
+                                samplerBindings, 1);
   }
 
   SDL_BindGPUGraphicsPipeline(this->runTimeRenderVars.pass,
@@ -1155,7 +1168,7 @@ void Renderer::DrawPlayers(std::vector<Player> &players) {
       for (int i = 0; i < 4; i++) {
         Vector3 p = EntityDef[(int)EntityType::PLAYER].Model[side][i] + pos;
         // Dummy UVs since players don't use them yet
-        Uint32 packedData = (side & 0x7) | (0 << 3) | (15 << 19);
+        Uint32 packedData = (side & 0x7) | (0 << 3) | (15 << 12) | (0 << 16);
         DVertex vert;
         vert.Position = Vector3(p.x, p.y, p.z);
         vert.Data = *(float *)&packedData;
@@ -1762,12 +1775,6 @@ void Renderer::GenerateBuffer() {
         SDL_CreateGPUBuffer(this->basicInitVars.GPU, &vertexInfo);
     mesh.VertexBuffer.offset = 0;
 
-    SDL_GPUTransferBufferCreateInfo vertexTransferInfo{};
-    vertexTransferInfo.size = packedVertexSize;
-    vertexTransferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    mesh.VertextransferBuffer = SDL_CreateGPUTransferBuffer(
-        this->basicInitVars.GPU, &vertexTransferInfo);
-
     this->Terrain.push_back(mesh);
   }
 
@@ -2084,75 +2091,6 @@ void Renderer::LoadTexture() {
   fontSamplerInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
   uiVars.fontSampler =
       SDL_CreateGPUSampler(this->basicInitVars.GPU, &fontSamplerInfo);
-
-  UploadBlockProperties();
-}
-
-void Renderer::UploadBlockProperties() {
-  if (!this->basicInitVars.GPU)
-    return;
-
-  // We need 6 texture indices + Luminance + Type (8 shorts total per block)
-  // 8 shorts = 16 bytes.
-  // We'll use a 4xBlockNum texture with R8G8B8A8_UNORM format.
-  // Each RGBA texel is 4 bytes. 4 texels = 16 bytes.
-  Uint8 *data = new Uint8[BlockNum * 4 * 4];
-  SDL_memset(data, 0, BlockNum * 4 * 4);
-
-  for (int i = 0; i < BlockNum; i++) {
-    // Pack 8 shorts into 16 bytes
-    Uint16 shorts[8];
-    for (int j = 0; j < 6; j++)
-      shorts[j] = BlockDef[i].Textures[j];
-    shorts[6] = BlockDef[i].Luminance;
-    shorts[7] = (Uint16)BlockDef[i].Type;
-
-    for (int j = 0; j < 8; j++) {
-      data[i * 16 + j * 2 + 0] = (Uint8)(shorts[j] & 0xFF);
-      data[i * 16 + j * 2 + 1] = (Uint8)((shorts[j] >> 8) & 0xFF);
-    }
-  }
-
-  SDL_GPUTextureCreateInfo textureInfo = {};
-  textureInfo.type = SDL_GPU_TEXTURETYPE_2D;
-  textureInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-  textureInfo.width = 4;
-  textureInfo.height = (Uint32)BlockNum;
-  textureInfo.layer_count_or_depth = 1;
-  textureInfo.num_levels = 1;
-  textureInfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
-
-  this->BlockPropsTexture =
-      SDL_CreateGPUTexture(this->basicInitVars.GPU, &textureInfo);
-
-  Uint32 dataSize = BlockNum * 4 * 4;
-  SDL_GPUTransferBufferCreateInfo transferInfo = {};
-  transferInfo.size = dataSize;
-  transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-  SDL_GPUTransferBuffer *transferBuffer =
-      SDL_CreateGPUTransferBuffer(this->basicInitVars.GPU, &transferInfo);
-
-  void *map =
-      SDL_MapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer, false);
-  if (map) {
-    SDL_memcpy(map, data, dataSize);
-    SDL_UnmapGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer);
-  }
-  delete[] data;
-
-  SDL_GPUCommandBuffer *cmd =
-      SDL_AcquireGPUCommandBuffer(this->basicInitVars.GPU);
-  if (cmd) {
-    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
-    SDL_GPUTextureTransferInfo src = {transferBuffer, 0, 0, 0};
-    SDL_GPUTextureRegion dst = {BlockPropsTexture, 0, 0, 0, 0, 0, 4,
-                                (Uint32)BlockNum,  1};
-    SDL_UploadToGPUTexture(copy, &src, &dst, false);
-    SDL_EndGPUCopyPass(copy);
-    SDL_SubmitGPUCommandBuffer(cmd);
-    SDL_ReleaseGPUTransferBuffer(this->basicInitVars.GPU, transferBuffer);
-    PrintSuccesfull("Block properties uploaded to GPU texture");
-  }
 }
 void Renderer::ColorTargetDes() {
   this->pipelineInitVars.colorTargetDescriptions[0] = {};
@@ -2183,7 +2121,7 @@ void Renderer::PipelineInit() {
     PrintError("Couldn't load vertex shader: %s" + std::string(SDL_GetError()));
   }
   this->pipelineInitVars.fragment_shader =
-      LoadShader(this->basicInitVars.GPU, "Shader.frag", 2, 1, 0, 0);
+      LoadShader(this->basicInitVars.GPU, "Shader.frag", 1, 1, 0, 0);
   if (!this->pipelineInitVars.fragment_shader) {
     PrintError("Couldn't load fragment shader: %s" +
                std::string(SDL_GetError()));
@@ -2247,7 +2185,7 @@ void Renderer::PipelineInit() {
   SDL_GPUShader *ui_vert =
       LoadShader(this->basicInitVars.GPU, "UI.vert", 0, 0, 0, 0);
   SDL_GPUShader *ui_frag =
-      LoadShader(this->basicInitVars.GPU, "UI.frag", 2, 0, 0, 0);
+      LoadShader(this->basicInitVars.GPU, "UI.frag", 1, 0, 0, 0);
 
   SDL_GPUGraphicsPipelineCreateInfo ui_desc;
   SDL_zero(ui_desc);
@@ -2380,7 +2318,6 @@ Renderer::Renderer(GameManager &manager) : gameManager(manager) {
     PrintError("SDL_Init failed: " + std::string(SDL_GetError()));
 
   TextureAtlas = nullptr;
-  BlockPropsTexture = nullptr;
   Sampler = nullptr;
   SDL_zero(uiVars);
 

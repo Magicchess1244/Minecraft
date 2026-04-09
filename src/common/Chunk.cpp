@@ -33,8 +33,7 @@ bool ChunkPrefab::isSolidBlock(int worldX, int worldY, int worldZ) {
   int localZ = worldZ - zPos;
 
   if (isValidPos(localX, localY, localZ)) {
-    Uint8 blockID = blocks[localX + localY * ChunkPrefab::xSize +
-                           localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
+    Uint8 blockID = GetBlock(localX, localY, localZ);
     return blockID != 0 && blockID != 5 &&
            !BlockDef[blockID].collisionBoxes.has_value();
   }
@@ -49,8 +48,7 @@ Uint8 ChunkPrefab::GetBlockID(int worldX, int worldY, int worldZ) {
   int localZ = worldZ - zPos;
 
   if (isValidPos(localX, localY, localZ)) {
-    return blocks[localX + localY * ChunkPrefab::xSize +
-                  localZ * ChunkPrefab::xSize * ChunkPrefab::ySize];
+    return GetBlock(localX, localY, localZ);
   }
 
   // For neighbor queries during generation or meshing, fall back to manager
@@ -211,7 +209,7 @@ void ChunkPrefab::PopulateBlocks(const std::vector<int> &heightCache,
           blockID = (int)BlockIDDef::Water;
         }
 
-        blocks[idx] = blockID;
+        SetBlock(x, y, z, blockID);
         solidCache[idx] = isSolid;
       }
     }
@@ -294,9 +292,8 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
       float treeNoise = PerlinNoise2D({(float)worldX, (float)worldZ}, 1, 0.4f);
 
       if (treeNoise > treeChanceThreshold) {
-        int idx = x + height * xSize + z * xSize * ySize;
-        if (this->blocks[idx] == 1 ||
-            this->blocks[idx] == 2) { // On Grass or Dirt
+        if (GetBlock(x, height, z) == 1 ||
+            GetBlock(x, height, z) == 2) { // On Grass or Dirt
           // Proximity check: don't place if there's wood nearby
           bool tooClose = false;
           for (int dx = -2; dx <= 2; dx++) {
@@ -310,8 +307,7 @@ void ChunkPrefab::GenerateVegetation(const std::vector<int> &heightCache,
                 for (int dy = -1; dy <= 5; dy++) {
                   int checkY = height + dy;
                   if (checkY >= 0 && checkY < ySize) {
-                    if (this->blocks[nx + checkY * xSize +
-                                     nz * xSize * ySize] == 6) {
+                    if (GetBlock(nx, checkY, nz) == 6) {
                       tooClose = true;
                       break;
                     }
@@ -359,10 +355,10 @@ void ChunkPrefab::PlaceStandardTree(int x, int y, int z, int trunkHeight,
                                     std::vector<bool> &solidCache) {
   for (int ty = 1; ty <= trunkHeight; ty++) {
     if (isValidPos(x, y + ty, z)) {
-      int tidx = x + (y + ty) * xSize + z * xSize * ySize;
       if (manager->GetMod(
               {(float)(xPos + x), (float)(y + ty), (float)(zPos + z)}) == 255) {
-        this->blocks[tidx] = 6; // Wood
+        SetBlock(x, y + ty, z, 6); // Wood
+        int tidx = x + (y + ty) * xSize + z * xSize * ySize;
         solidCache[tidx] = true;
       }
     }
@@ -373,13 +369,13 @@ void ChunkPrefab::PlaceStandardTree(int x, int y, int z, int trunkHeight,
         int nx = x + lx, ny = y + ly, nz = z + lz;
         if (isValidPos(nx, ny, nz)) {
           int lidx = nx + ny * xSize + nz * xSize * ySize;
-          if (this->blocks[lidx] == 0 &&
+          if (GetBlock(nx, ny, nz) == 0 &&
               manager->GetMod(
                   {(float)(xPos + nx), (float)ny, (float)(zPos + nz)}) == 255) {
             if (lx * lx + lz * lz + (ly - trunkHeight) * (ly - trunkHeight) <=
                 5) {
               solidCache[lidx] = true;
-              this->blocks[lidx] = 7; // Leaves
+              SetBlock(nx, ny, nz, 7); // Leaves
             }
           }
         }
@@ -394,7 +390,7 @@ void ChunkPrefab::PlacePineTree(int x, int y, int z, int trunkHeight,
   for (int ty = 1; ty <= trunkHeight; ty++) {
     if (isValidPos(x, y + ty, z)) {
       int tidx = x + (y + ty) * xSize + z * xSize * ySize;
-      this->blocks[tidx] = 6;
+      SetBlock(x, y + ty, z, 6);
       solidCache[tidx] = true;
     }
   }
@@ -406,8 +402,8 @@ void ChunkPrefab::PlacePineTree(int x, int y, int z, int trunkHeight,
           int nx = x + lx, ny = y + ly, nz = z + lz;
           if (isValidPos(nx, ny, nz)) {
             int lidx = nx + ny * xSize + nz * xSize * ySize;
-            if (this->blocks[lidx] == 0) {
-              this->blocks[lidx] = 7;
+            if (GetBlock(nx, ny, nz) == 0) {
+              SetBlock(nx, ny, nz, 7);
               solidCache[lidx] = true;
             }
           }
@@ -423,7 +419,7 @@ void ChunkPrefab::PlaceLargeTree(int x, int y, int z, int trunkHeight,
   for (int ty = 1; ty <= trunkHeight; ty++) {
     if (isValidPos(x, y + ty, z)) {
       int tidx = x + (y + ty) * xSize + z * xSize * ySize;
-      this->blocks[tidx] = 6;
+      SetBlock(x, y + ty, z, 6);
       solidCache[tidx] = true;
     }
   }
@@ -436,8 +432,8 @@ void ChunkPrefab::PlaceLargeTree(int x, int y, int z, int trunkHeight,
         int nx = x + lx, ny = y + ly, nz = z + lz;
         if (isValidPos(nx, ny, nz)) {
           int lidx = nx + ny * xSize + nz * xSize * ySize;
-          if (this->blocks[lidx] == 0) {
-            this->blocks[lidx] = 7;
+          if (GetBlock(nx, ny, nz) == 0) {
+            SetBlock(nx, ny, nz, 7);
             solidCache[lidx] = true;
           }
         }
@@ -451,7 +447,7 @@ void ChunkPrefab::PlaceSavannaTree(int x, int y, int z, int trunkHeight,
   for (int ty = 1; ty <= trunkHeight; ty++) {
     if (isValidPos(x, y + ty, z)) {
       int tidx = x + (y + ty) * xSize + z * xSize * ySize;
-      this->blocks[tidx] = 6;
+      SetBlock(x, y + ty, z, 6);
       solidCache[tidx] = true;
     }
   }
@@ -462,15 +458,15 @@ void ChunkPrefab::PlaceSavannaTree(int x, int y, int z, int trunkHeight,
       int nx = x + lx, ny = y + trunkHeight, nz = z + lz;
       if (isValidPos(nx, ny, nz)) {
         int lidx = nx + ny * xSize + nz * xSize * ySize;
-        if (this->blocks[lidx] == 0) {
-          this->blocks[lidx] = 7;
+        if (GetBlock(nx, ny, nz) == 0) {
+          SetBlock(nx, ny, nz, 7);
           solidCache[lidx] = true;
         }
       }
       if (lx * lx + lz * lz < 5 && isValidPos(nx, ny + 1, nz)) {
         int lidx = nx + (ny + 1) * xSize + nz * xSize * ySize;
-        if (this->blocks[lidx] == 0) {
-          this->blocks[lidx] = 7;
+        if (GetBlock(nx, ny + 1, nz) == 0) {
+          SetBlock(nx, ny + 1, nz, 7);
           solidCache[lidx] = true;
         }
       }
@@ -484,7 +480,7 @@ void ChunkPrefab::PlaceJungleTree(int x, int y, int z, int trunkHeight,
   for (int ty = 1; ty <= trunkHeight; ty++) {
     if (isValidPos(x, y + ty, z)) {
       int tidx = x + (y + ty) * xSize + z * xSize * ySize;
-      this->blocks[tidx] = 6;
+      SetBlock(x, y + ty, z, 6);
       solidCache[tidx] = true;
     }
   }
@@ -495,8 +491,8 @@ void ChunkPrefab::PlaceJungleTree(int x, int y, int z, int trunkHeight,
         int nx = x + lx, ny = y + ly, nz = z + lz;
         if (isValidPos(nx, ny, nz)) {
           int lidx = nx + ny * xSize + nz * xSize * ySize;
-          if (this->blocks[lidx] == 0) {
-            this->blocks[lidx] = 7;
+          if (GetBlock(nx, ny, nz) == 0) {
+            SetBlock(nx, ny, nz, 7);
             solidCache[lidx] = true;
           }
         }
@@ -519,7 +515,7 @@ void ChunkPrefab::GenerateMesh(const std::vector<LightData> &localLight) {
       for (int y = 0; y < ChunkPrefab::ySize; y++) {
         int idx = x + y * ChunkPrefab::xSize +
                   z * ChunkPrefab::xSize * ChunkPrefab::ySize;
-        Uint8 blockID = blocks[idx];
+        Uint8 blockID = GetBlock(x, y, z);
         if (blockID == (int)BlockIDDef::Air)
           continue;
 
@@ -534,9 +530,7 @@ void ChunkPrefab::GenerateMesh(const std::vector<LightData> &localLight) {
 
           if (nx >= 0 && nx < ChunkPrefab::xSize && ny >= 0 &&
               ny < ChunkPrefab::ySize && nz >= 0 && nz < ChunkPrefab::zSize) {
-            int nIdx = nx + ny * ChunkPrefab::xSize +
-                       nz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-            nBid = this->blocks[nIdx];
+            nBid = GetBlock(nx, ny, nz);
           } else {
             nBid = manager->GetBlockID(
                 {(float)(nx + xPos), (float)ny, (float)(nz + zPos)});
@@ -646,7 +640,7 @@ void ChunkPrefab::GenerateLighting(std::vector<LightData> &localLight) {
       for (int y = ChunkPrefab::ySize - 1; y >= 0; y--) {
         int idx = x + y * ChunkPrefab::xSize +
                   z * ChunkPrefab::xSize * ChunkPrefab::ySize;
-        Uint8 blockID = blocks[idx];
+        Uint8 blockID = GetBlock(x, y, z);
 
         if (blockID == (int)BlockIDDef::Air)
           localLight[idx].sunlight = sun;
@@ -693,8 +687,9 @@ void ChunkPrefab::PropagateLighting(std::vector<LightData> &localLight) {
         int z = (dz == -1) ? 0 : (dz == 1) ? SZ - 1 : a;
 
         int idx = x + y * SX + z * SXY;
-        if (blocks[idx] != (int)BlockIDDef::Air &&
-            blocks[idx] != (int)BlockIDDef::Water)
+        Uint8 borderBlock = GetBlock(x, y, z);
+        if (borderBlock != (int)BlockIDDef::Air &&
+            borderBlock != (int)BlockIDDef::Water)
           continue;
 
         Vector3 worldPos = {(float)(x + xPos) + Direction[i].x, (float)y,
@@ -702,7 +697,7 @@ void ChunkPrefab::PropagateLighting(std::vector<LightData> &localLight) {
         Uint8 nSun = manager->GetLightLevel(worldPos);
         if (nSun > 1) {
           Uint8 newSun = nSun - 1;
-          if (BlockDef[blocks[idx]].isWater())
+          if (BlockDef[borderBlock].isWater())
             newSun = (newSun > 2) ? newSun - 1 : 0;
           if (newSun > localLight[idx].sunlight) {
             localLight[idx].sunlight = newSun;
@@ -736,8 +731,11 @@ void ChunkPrefab::PropagateLighting(std::vector<LightData> &localLight) {
         if (!valid[d])
           continue;
         const int nIdx = nbr[d];
+        const int nx = nIdx % SX;
+        const int ny = (nIdx / SX) % SY;
+        const int nz = nIdx / SXY;
 
-        Uint8 neighborBlock = blocks[nIdx];
+        Uint8 neighborBlock = GetBlock(nx, ny, nz);
         if (neighborBlock != 0 && !BlockDef[neighborBlock].isTransparent() &&
             BlockDef[neighborBlock].Luminance == 0)
           continue;

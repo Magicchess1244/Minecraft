@@ -314,9 +314,7 @@ void ChunkManager::SetBlock(Vector3 worldPos, int blockID,
     int lz = (int)std::floor(worldPos.z) - chunk.zPos;
     if (lx >= 0 && lx < ChunkPrefab::xSize && ly >= 0 &&
         ly < ChunkPrefab::ySize && lz >= 0 && lz < ChunkPrefab::zSize) {
-      chunk.blocks[lx + ly * ChunkPrefab::xSize +
-                   lz * ChunkPrefab::xSize * ChunkPrefab::ySize] =
-          (Uint8)blockID;
+      chunk.SetBlock(lx, ly, lz, (Uint8)blockID);
     }
 
     ownerChunk = &chunk;
@@ -357,8 +355,7 @@ bool ChunkManager::try_set_block_local(ChunkPrefab &chunk, Vector3 worldPos,
       ly >= ChunkPrefab::ySize || lz < 0 || lz >= ChunkPrefab::zSize)
     return false;
 
-  chunk.blocks[lx + ly * ChunkPrefab::xSize +
-               lz * ChunkPrefab::xSize * ChunkPrefab::ySize] = blockID;
+  chunk.SetBlock(lx, ly, lz, blockID);
   return true;
 }
 
@@ -417,10 +414,7 @@ Uint8 ChunkManager::GetBlockID(Vector3 worldPos) {
     return (worldPos.y < ChunkPrefab::SeaLevel) ? 5 : 0;
   }
 
-  int idx = lx + ly * ChunkPrefab::xSize +
-            lz * ChunkPrefab::xSize * ChunkPrefab::ySize;
-
-  return chunk->blocks[idx];
+  return chunk->GetBlock(lx, ly, lz);
 }
 
 Uint8 ChunkManager::GetLightLevel(Vector3 worldPos) {
